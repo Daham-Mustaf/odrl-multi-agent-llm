@@ -10,7 +10,7 @@
 - [ ] Add modularity (split components, reuseable hooks)
 - [ ] Link API docs and GitHub repo dynamically
 - [ ] Improve UI/UX for model selection
-- [ ] Add dark mode toggle persistence
+- [x] Add dark mode toggle persistence ✅
 
 ## Testing
 - [ ] Add unit tests for agents
