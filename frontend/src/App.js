@@ -939,6 +939,15 @@ const ODRLDemo = () => {
               <RefreshCw className="w-4 h-4" />
               Reset Demo
             </button>
+             {/* API Docs Button */}
+              <a
+                href="http://localhost:8000/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-200'} rounded-lg transition`}
+              >
+                API Docs
+              </a>
           </div>
         </div>
 
