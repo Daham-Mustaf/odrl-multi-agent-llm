@@ -1,0 +1,8 @@
+# Ignore custom models (contains API keys!)
+custom_models.json
+
+# Keep backups out of git too
+*.backup_*
+
+# But keep the example template
+!custom_models.example.json

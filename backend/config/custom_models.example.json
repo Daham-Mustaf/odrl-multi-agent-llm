@@ -1,0 +1,26 @@
+[
+  {
+    "value": "custom:fits-llama3.3",
+    "label": "FITS Llama 3.3 70B",
+    "provider_type": "openai-compatible",
+    "base_url": "http://dgx.fit.fraunhofer.de",
+    "model_id": "llama3.3:70b",
+    "api_key": "your-fits-api-key-if-needed",
+    "context_length": 8192,
+    "temperature_default": 0.3,
+    "created_at": 0,
+    "updated_at": 0
+  },
+  {
+    "value": "custom:local-model",
+    "label": "Local Ollama Model",
+    "provider_type": "ollama",
+    "base_url": "http://localhost:11434",
+    "model_id": "llama3.1:8b",
+    "api_key": "not-needed",
+    "context_length": 4096,
+    "temperature_default": 0.5,
+    "created_at": 0,
+    "updated_at": 0
+  }
+]

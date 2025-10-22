@@ -1,0 +1,94 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix odrl: <http://www.w3.org/ns/odrl/2/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ODRL Policy Shape
+odrl:PolicyShape
+    a sh:NodeShape ;
+    sh:targetClass odrl:Policy, odrl:Set, odrl:Offer, odrl:Agreement ;
+    sh:property [
+        sh:path odrl:uid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Policy must have exactly one unique identifier (uid)" ;
+    ] ;
+    sh:property [
+        sh:path odrl:permission ;
+        sh:nodeKind sh:BlankNodeOrIRI ;
+        sh:message "Permission must be a valid node" ;
+    ] ;
+    sh:property [
+        sh:path odrl:prohibition ;
+        sh:nodeKind sh:BlankNodeOrIRI ;
+        sh:message "Prohibition must be a valid node" ;
+    ] ;
+    sh:property [
+        sh:path odrl:obligation ;
+        sh:nodeKind sh:BlankNodeOrIRI ;
+        sh:message "Obligation must be a valid node" ;
+    ] .
+
+# ODRL Permission Shape
+odrl:PermissionShape
+    a sh:NodeShape ;
+    sh:targetClass odrl:Permission ;
+    sh:property [
+        sh:path odrl:action ;
+        sh:minCount 1 ;
+        sh:message "Permission must have at least one action" ;
+    ] ;
+    sh:property [
+        sh:path odrl:target ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Permission must have a valid target asset" ;
+    ] .
+
+# ODRL Prohibition Shape
+odrl:ProhibitionShape
+    a sh:NodeShape ;
+    sh:targetClass odrl:Prohibition ;
+    sh:property [
+        sh:path odrl:action ;
+        sh:minCount 1 ;
+        sh:message "Prohibition must have at least one action" ;
+    ] ;
+    sh:property [
+        sh:path odrl:target ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Prohibition must have a valid target asset" ;
+    ] .
+
+# ODRL Constraint Shape
+odrl:ConstraintShape
+    a sh:NodeShape ;
+    sh:targetClass odrl:Constraint ;
+    sh:property [
+        sh:path odrl:leftOperand ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Constraint must have exactly one leftOperand" ;
+    ] ;
+    sh:property [
+        sh:path odrl:operator ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Constraint must have exactly one operator" ;
+    ] ;
+    sh:property [
+        sh:path odrl:rightOperand ;
+        sh:minCount 1 ;
+        sh:message "Constraint must have at least one rightOperand" ;
+    ] .
+
+# ODRL Action Shape
+odrl:ActionShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf odrl:action ;
+    sh:property [
+        sh:path odrl:action ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Action must be a valid IRI from ODRL vocabulary" ;
+    ] .
