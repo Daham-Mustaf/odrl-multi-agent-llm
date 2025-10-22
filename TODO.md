@@ -40,3 +40,6 @@
   - Environment-based API docs links
   - Authentication/authorization
   - CI/CD pipelines
+  -  Docker Compose for local development
+  - Environment variable handling (e.g., CUSTOM_MODELS_FILE)
+  - Easy deployment on different OS (Windows/Mac/Linux)
