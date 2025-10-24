@@ -895,82 +895,85 @@ const handleFileUpload = async (e) => {
                     </button>
                   )}
                 </div>
-
-                {/* Example Policies */}
-                <div className={`${darkMode ? 'bg-purple-900/20 border-purple-800' : 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200'} border rounded-lg p-4`}>
-                  <h3 className={`font-semibold ${darkMode ? 'text-purple-300' : 'text-gray-800'} mb-3 flex items-center gap-2`}>
-                    <Sparkles className={`w-5 h-5 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                    Example Policies (Click to load)
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                
+                {/* Input Area */}
+              <div>
+                {/* Compact Example Selector - NEW */}
+                <div className="flex items-center gap-2 mb-3">
+                  <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-1`}>
+                    <Sparkles className="w-3 h-3" />
+                    Quick examples:
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setInputText(e.target.value);
+                        e.target.value = ''; // Reset dropdown
+                      }
+                    }}
+                    className={`flex-1 px-3 py-1.5 text-xs rounded-lg ${
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    } border focus:ring-2 focus:ring-blue-500`}
+                  >
+                    <option value="">Choose an example policy...</option>
                     {examples.map((ex, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setInputText(ex.text)}
-                        className={`text-left p-3 ${darkMode ? 'bg-gray-700 border-purple-700 hover:border-purple-500' : 'bg-white border-purple-200 hover:border-purple-400'} rounded-lg border hover:shadow-md transition`}
-                      >
-                        <div className={`font-medium text-sm ${darkMode ? 'text-purple-300' : 'text-purple-900'} flex items-center gap-2`}>
-                          <span className="text-xl">{ex.icon}</span>
-                          {ex.title}
-                        </div>
-                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1 line-clamp-2`}>{ex.text}</div>
-                      </button>
+                      <option key={idx} value={ex.text}>
+                        {ex.icon} {ex.title}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
 
-               {/* Input Area */}
-          <div>
-            <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
-              Enter Policy Description
-            </label>
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Describe your policy in natural language..."
-              className={`w-full h-40 px-4 py-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'} border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none`}
-            />
-            
-           {/* File Upload Section - TXT & MD Only */}
-            <div className={`mt-3 flex items-center gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              <span className="text-xs">Or upload file:</span>
-              <label className={`cursor-pointer px-3 py-1.5 text-xs rounded-lg flex items-center gap-2 ${
-                darkMode ? 'bg-gray-700 hover:bg-gray-600 border-gray-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
-              } border transition`}>
-                <Upload className="w-3 h-3" />
-                Choose File
-                <input
-                  type="file"
-                  accept=".txt,.md"
-                  onChange={handleFileUpload}
-                  className="hidden"
+                <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+                  Enter Policy Description
+                </label>
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Describe your policy in natural language..."
+                  className={`w-full h-40 px-4 py-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'} border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none`}
                 />
-              </label>
-              <span className="text-xs text-gray-500">.txt, .md (max 5MB)</span>
-            </div>
-
-            {/* Success/Upload Status Message */}
-            {uploadStatus && (
-              <div className={`mt-2 text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {uploadStatus}
+                
+                {/* File Upload Section - TXT & MD Only */}
+                <div className={`mt-3 flex items-center gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <span className="text-xs">Or:</span>
+                  <label className={`cursor-pointer px-3 py-1.5 text-xs rounded-lg flex items-center gap-2 ${
+                    darkMode ? 'bg-gray-700 hover:bg-gray-600 border-gray-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
+                  } border transition`}>
+                    <Upload className="w-3 h-3" />
+                    Choose File
+                    <input
+                      type="file"
+                      accept=".txt,.md"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <span className="text-xs text-gray-500">.txt, .md (max 5MB)</span>
+                </div>
+                
+                {/* Success/Upload Status Message */}
+                {uploadStatus && (
+                  <div className={`mt-2 text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                    {uploadStatus}
+                  </div>
+                )}
+                
+                {/* Character/Token Count */}
+                <div className="flex justify-between items-center mt-2">
+                  <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {inputText.length} characters (~{Math.ceil(inputText.length / 4)} tokens)
+                  </span>
+                  {inputText && (
+                    <button
+                      onClick={() => setInputText('')}
+                      className={`text-xs ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-            
-            {/* Character/Token Count */}
-            <div className="flex justify-between items-center mt-2">
-              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {inputText.length} characters (~{Math.ceil(inputText.length / 4)} tokens)
-              </span>
-              {inputText && (
-                <button
-                  onClick={() => setInputText('')}
-                  className={`text-xs ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
 
                 {/* Parse Button */}
                 <button
@@ -1241,7 +1244,7 @@ const handleFileUpload = async (e) => {
                       onChange={(e) => setCustomForm({...customForm, model_id: e.target.value})}
                       className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg font-mono text-sm`}
                     />
-                    {/* ✅ NEW: Context Length Presets */}
+                    {/* NEW: Context Length Presets */}
                     <div>
                       <label className={`block text-sm font-semibold ${textClass} mb-2`}>
                         Context Length (tokens)
@@ -1381,7 +1384,7 @@ const handleFileUpload = async (e) => {
                                 {model.provider_type === 'google-genai' && '🌟 '}
                                 {model.provider_type} • {model.model_id}
                               </span>
-                              {/* ✅ NEW: Show context length badge */}
+                              {/* NEW: Show context length badge */}
                               {model.context_length && (
                                 <span className={`px-2 py-0.5 rounded text-xs ${
                                   darkMode 
