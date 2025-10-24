@@ -1,12 +1,9 @@
 """
 File Upload & Parsing Utilities
-Handles PDF, DOCX, TXT, MD files
+Handles TXT and MD files (simplified version)
 """
 
 from fastapi import UploadFile, HTTPException
-from pypdf import PdfReader
-import docx
-import io
 import logging
 from typing import Dict
 
@@ -14,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_EXTENSIONS = ['.txt', '.pdf', '.docx', '.md']
+ALLOWED_EXTENSIONS = ['.txt', '.md']
 
 async def parse_uploaded_file(file: UploadFile) -> Dict[str, any]:
     """
-    Extract text from uploaded files
+    Extract text from uploaded text files
     
     Args:
         file: UploadFile from FastAPI
@@ -33,6 +30,16 @@ async def parse_uploaded_file(file: UploadFile) -> Dict[str, any]:
     # Read file content
     content = await file.read()
     
+    # Log what we received
+    logger.info(f"Received file: {file.filename} ({len(content)} bytes)")
+    
+    # Validate file is not empty
+    if len(content) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="File is empty (0 bytes)"
+        )
+    
     # Validate file size
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
@@ -45,27 +52,18 @@ async def parse_uploaded_file(file: UploadFile) -> Dict[str, any]:
     if not any(filename_lower.endswith(ext) for ext in ALLOWED_EXTENSIONS):
         raise HTTPException(
             status_code=400, 
-            detail=f"Unsupported file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Unsupported file type. Only .txt and .md files are supported"
         )
     
     try:
-        text = ""
-        
-        # Parse based on file type
-        if filename_lower.endswith('.pdf'):
-            text = _parse_pdf(content)
-            
-        elif filename_lower.endswith('.docx'):
-            text = _parse_docx(content)
-            
-        else:  # .txt or .md
-            text = _parse_text(content)
+        # Decode text content
+        text = _decode_text(content)
         
         # Final validation
         if not text or len(text.strip()) == 0:
             raise HTTPException(
                 status_code=400, 
-                detail="File appears to be empty"
+                detail="File contains no readable text"
             )
         
         logger.info(f"Successfully parsed: {file.filename} ({len(text)} chars)")
@@ -81,72 +79,39 @@ async def parse_uploaded_file(file: UploadFile) -> Dict[str, any]:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error parsing {file.filename}: {e}")
+        logger.error(f"Error parsing {file.filename}: {str(e)}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error parsing file: {str(e)}"
         )
 
 
-def _parse_pdf(content: bytes) -> str:
-    """Extract text from PDF"""
+def _decode_text(content: bytes) -> str:
+    """Decode text content with multiple encoding fallbacks"""
+    
+    # Try UTF-8 first (most common)
     try:
-        pdf_reader = PdfReader(io.BytesIO(content))
-        text = ""
-        
-        for page in pdf_reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-        
-        if not text.strip():
-            raise HTTPException(
-                status_code=400, 
-                detail="PDF appears to be empty or contains only images"
-            )
-        
+        text = content.decode('utf-8')
+        logger.info(f"Decoded as UTF-8")
         return text
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Error parsing PDF: {str(e)}"
-        )
-
-
-def _parse_docx(content: bytes) -> str:
-    """Extract text from DOCX"""
-    try:
-        doc = docx.Document(io.BytesIO(content))
-        paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-        text = "\n".join(paragraphs)
-        
-        if not text.strip():
-            raise HTTPException(
-                status_code=400, 
-                detail="DOCX appears to be empty"
-            )
-        
-        return text
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Error parsing DOCX: {str(e)}"
-        )
-
-
-def _parse_text(content: bytes) -> str:
-    """Extract text from plain text files (txt, md)"""
-    try:
-        # Try UTF-8 first
-        return content.decode('utf-8')
     except UnicodeDecodeError:
-        try:
-            # Fallback to latin-1
-            return content.decode('latin-1')
-        except Exception:
-            raise HTTPException(
-                status_code=400, 
-                detail="Unable to decode text file. Please use UTF-8 encoding"
-            )
+        logger.debug(f"UTF-8 decode failed, trying Latin-1")
+    
+    # Fallback to Latin-1
+    try:
+        text = content.decode('latin-1')
+        logger.info(f"Decoded as Latin-1")
+        return text
+    except UnicodeDecodeError:
+        logger.debug(f"Latin-1 decode failed, trying with errors='ignore'")
+    
+    # Last resort: decode with errors ignored
+    try:
+        text = content.decode('utf-8', errors='ignore')
+        logger.warning(f"  ⚠ Decoded with some characters ignored")
+        return text
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unable to decode text file: {str(e)}"
+        )

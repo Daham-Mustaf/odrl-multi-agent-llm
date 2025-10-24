@@ -12,6 +12,7 @@ const ODRLDemo = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null);
   
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -142,7 +143,7 @@ const ODRLDemo = () => {
       const merged = mergeModels(localModels, backendModels);
       setCustomModels(merged);
       
-      console.log(`✅ Total custom models loaded: ${merged.length}`);
+      console.log(`Total custom models loaded: ${merged.length}`);
     } catch (err) {
       console.error('Error loading custom models:', err);
     }
@@ -193,7 +194,7 @@ const ODRLDemo = () => {
       });
 
       if (response.ok) {
-        console.log(`✅ Saved to backend: ${model.label}`);
+        console.log(`Saved to backend: ${model.label}`);
         return true;
       }
     } catch (err) {
@@ -343,10 +344,10 @@ const ODRLDemo = () => {
           saveToLocalStorage(merged);
         }
         
-        alert(`✅ Imported ${addedCount} new, ${updatedCount} updated. Total: ${merged.length}`);
+        alert(`Imported ${addedCount} new, ${updatedCount} updated. Total: ${merged.length}`);
       } catch (err) {
         console.error('Error importing custom models:', err);
-        alert('❌ Failed to import models. Invalid JSON file.');
+        alert('Failed to import models. Invalid JSON file.');
       }
     };
     reader.readAsText(file);
@@ -634,7 +635,7 @@ const ODRLDemo = () => {
       default: return 'bg-gray-300';
     }
   };
-  // ============================================
+// ============================================
 // FILE UPLOAD HANDLER
 // ============================================
 
@@ -644,50 +645,40 @@ const handleFileUpload = async (e) => {
   
   // Check file size (5MB limit)
   if (file.size > 5 * 1024 * 1024) {
-    setError('❌ File too large. Maximum size is 5MB.');
+    setError('File too large. Maximum size is 5MB.');
+    setUploadStatus(null);
     return;
   }
   
   setLoading(true);
   setError(null);
+  setUploadStatus(null);
   
   try {
     const fileType = file.name.split('.').pop().toLowerCase();
     
+    // Only support txt and md
     if (fileType === 'txt' || fileType === 'md') {
-      // Handle text files
       const text = await file.text();
+      
+      if (text.trim().length === 0) {
+        setError('File is empty. Please upload a file with content.');
+        return;
+      }
+      
       setInputText(text);
-      setError(`✅ Loaded: ${file.name} (${text.length} characters)`);
+      setUploadStatus(`Loaded: ${file.name} (${text.length} characters)`);
     } 
-    else if (fileType === 'pdf' || fileType === 'docx') {
-      // Send to backend for processing
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`${API_BASE_URL}/parse-file`, {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) throw new Error('Failed to parse file');
-      
-      const data = await response.json();
-      setInputText(data.text);
-      setError(`Loaded: ${file.name} (${data.text.length} characters)`);
-    }
     else {
-      setError('Unsupported file type. Use .txt, .pdf, .docx, or .md');
+      setError('Unsupported file type. Use .txt or .md files only.');
     }
   } catch (err) {
     setError(`Error reading file: ${err.message}`);
   } finally {
     setLoading(false);
-    // Reset file input
-    e.target.value = '';
+    e.target.value = ''; // Reset file input
   }
 };
-
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 to-indigo-100';
   const cardBg = darkMode ? 'bg-gray-800' : 'bg-white';
   const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
@@ -928,50 +919,58 @@ const handleFileUpload = async (e) => {
                   </div>
                 </div>
 
-                {/* Input Area */}
-                <div>
-                  <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
-                    Enter Policy Description
-                  </label>
-                  <textarea
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Describe your policy in natural language..."
-                    className={`w-full h-40 px-4 py-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'} border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none`}
-                  />
-                  
-                  {/* File Upload Section - NEW */}
-                  <div className={`mt-3 flex items-center gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    <span className="text-xs">Or upload file:</span>
-                    <label className={`cursor-pointer px-3 py-1.5 text-xs rounded-lg flex items-center gap-2 ${
-                      darkMode ? 'bg-gray-700 hover:bg-gray-600 border-gray-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
-                    } border transition`}>
-                      <Upload className="w-3 h-3" />
-                      Choose File
-                      <input
-                        type="file"
-                        accept=".txt,.pdf,.docx,.md"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                    </label>
-                    <span className="text-xs text-gray-500">.txt, .pdf, .docx, .md (max 5MB)</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center mt-2">
-                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {inputText.length} characters (~{Math.ceil(inputText.length / 4)} tokens)
-                    </span>
-                    {inputText && (
-                      <button
-                        onClick={() => setInputText('')}
-                        className={`text-xs ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
+               {/* Input Area */}
+          <div>
+            <label className={`block text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+              Enter Policy Description
+            </label>
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Describe your policy in natural language..."
+              className={`w-full h-40 px-4 py-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'} border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none`}
+            />
+            
+           {/* File Upload Section - TXT & MD Only */}
+            <div className={`mt-3 flex items-center gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span className="text-xs">Or upload file:</span>
+              <label className={`cursor-pointer px-3 py-1.5 text-xs rounded-lg flex items-center gap-2 ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600 border-gray-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
+              } border transition`}>
+                <Upload className="w-3 h-3" />
+                Choose File
+                <input
+                  type="file"
+                  accept=".txt,.md"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-xs text-gray-500">.txt, .md (max 5MB)</span>
+            </div>
+
+            {/* Success/Upload Status Message */}
+            {uploadStatus && (
+              <div className={`mt-2 text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                {uploadStatus}
+              </div>
+            )}
+            
+            {/* Character/Token Count */}
+            <div className="flex justify-between items-center mt-2">
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {inputText.length} characters (~{Math.ceil(inputText.length / 4)} tokens)
+              </span>
+              {inputText && (
+                <button
+                  onClick={() => setInputText('')}
+                  className={`text-xs ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
 
                 {/* Parse Button */}
                 <button

@@ -12,7 +12,7 @@ import os
 import time
 import json
 import logging
-from pathlib import Path
+from fastapi import UploadFile, File
 
 # Load environment first
 from dotenv import load_dotenv
@@ -160,29 +160,43 @@ class CustomModelRequest(BaseModel):
 # FILE UPLOAD ENDPOINT
 # ============================================
 
-from fastapi import UploadFile, File
 
 @app.post("/api/parse-file")
 async def parse_file(file: UploadFile = File(...)):
-    """Extract text from uploaded files (.txt, .pdf, .docx, .md)"""
+    """
+    Extract text from uploaded files (.txt, .pdf, .docx, .md)
+    
+    Returns:
+        - text: Extracted text content
+        - filename: Original filename
+        - size: File size in bytes
+        - characters: Character count
+        - file_type: File extension
+    """
     
     if not FILE_PARSER_AVAILABLE:
         raise HTTPException(
             status_code=503, 
-            detail="File parser not available. Install: pip install PyPDF2 python-docx"
+            detail="File parser not available. Install: pip install pypdf python-docx"
         )
     
-    logger.info(f"File upload request: {file.filename}")
+    logger.info(f"File upload: {file.filename} (Content-Type: {file.content_type})")
     
     try:
         result = await parse_uploaded_file(file)
+        
+        logger.info(f"Parsed successfully: {result['characters']} characters")
         return result
         
     except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
         raise
     except Exception as e:
-        logger.error(f"File upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Unexpected error: {str(e)}"
+        )
     
     
 @app.get("/")

@@ -1,31 +1,32 @@
 """
-Unit tests for file_parser utility
+Unit tests for file_parser utility (TXT/MD only)
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import pytest
-import asyncio
-
-# Force asyncio mode
-pytest_plugins = ('pytest_asyncio',)
 import pytest
 import io
 from fastapi import UploadFile, HTTPException
 from utils.file_parser import parse_uploaded_file, MAX_FILE_SIZE
 
 # ============================================
-# FIXTURES - Create mock files
+# FIXTURES
 # ============================================
 
 @pytest.fixture
 def mock_txt_file():
     """Create a mock .txt file"""
-    content = b"This is a test policy document.\nIt has multiple lines."
+    content = b"This is a test policy document.\nUsers can read and modify."
     file = UploadFile(
         filename="test.txt",
+        file=io.BytesIO(content)
+    )
+    return file
+
+@pytest.fixture
+def mock_md_file():
+    """Create a mock .md file"""
+    content = b"# Policy Document\n\n## Permissions\n- Read: Allowed\n- Modify: Prohibited"
+    file = UploadFile(
+        filename="test.md",
         file=io.BytesIO(content)
     )
     return file
@@ -43,7 +44,7 @@ def mock_empty_file():
 @pytest.fixture
 def mock_large_file():
     """Create a file exceeding size limit"""
-    content = b"x" * (MAX_FILE_SIZE + 1000)  # Larger than max
+    content = b"x" * (MAX_FILE_SIZE + 1000)
     file = UploadFile(
         filename="large.txt",
         file=io.BytesIO(content)
@@ -55,7 +56,7 @@ def mock_invalid_file():
     """Create an unsupported file type"""
     content = b"fake content"
     file = UploadFile(
-        filename="test.exe",
+        filename="test.pdf",
         file=io.BytesIO(content)
     )
     return file
@@ -70,10 +71,20 @@ async def test_parse_txt_file_success(mock_txt_file):
     result = await parse_uploaded_file(mock_txt_file)
     
     assert result["filename"] == "test.txt"
-    assert "This is a test policy" in result["text"]
+    assert "test policy" in result["text"]
     assert result["characters"] > 0
     assert result["file_type"] == "txt"
     print("TXT parsing test passed")
+
+@pytest.mark.asyncio
+async def test_parse_md_file_success(mock_md_file):
+    """Test successful parsing of .md file"""
+    result = await parse_uploaded_file(mock_md_file)
+    
+    assert result["filename"] == "test.md"
+    assert "Policy Document" in result["text"]
+    assert result["file_type"] == "md"
+    print("Markdown parsing test passed")
 
 @pytest.mark.asyncio
 async def test_parse_empty_file_fails(mock_empty_file):
@@ -83,7 +94,7 @@ async def test_parse_empty_file_fails(mock_empty_file):
     
     assert exc_info.value.status_code == 400
     assert "empty" in str(exc_info.value.detail).lower()
-    print("Empty file validation test passed")
+    print("✅ Empty file validation test passed")
 
 @pytest.mark.asyncio
 async def test_parse_large_file_fails(mock_large_file):
@@ -93,7 +104,7 @@ async def test_parse_large_file_fails(mock_large_file):
     
     assert exc_info.value.status_code == 413
     assert "too large" in str(exc_info.value.detail).lower()
-    print("✅ File size validation test passed")
+    print(" File size validation test passed")
 
 @pytest.mark.asyncio
 async def test_parse_invalid_extension_fails(mock_invalid_file):
@@ -103,18 +114,17 @@ async def test_parse_invalid_extension_fails(mock_invalid_file):
     
     assert exc_info.value.status_code == 400
     assert "Unsupported file type" in exc_info.value.detail
-    print(" File type validation test passed")
+    print("File type validation test passed")
 
 @pytest.mark.asyncio
-async def test_parse_md_file():
-    """Test markdown file parsing"""
-    content = b"# Policy Document\n\nThis is a **markdown** file."
+async def test_parse_utf8_file():
+    """Test UTF-8 encoded file"""
+    content = "Hello 世界! This is UTF-8 text.".encode('utf-8')
     file = UploadFile(
-        filename="test.md",
+        filename="utf8.txt",
         file=io.BytesIO(content)
     )
     
     result = await parse_uploaded_file(file)
-    assert result["file_type"] == "md"
-    assert "markdown" in result["text"]
-    print("Markdown parsing test passed")
+    assert "世界" in result["text"]
+    print("UTF-8 encoding test passed")
