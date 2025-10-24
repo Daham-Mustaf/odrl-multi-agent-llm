@@ -13,6 +13,14 @@ const ODRLDemo = () => {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+
+  const [advancedMode, setAdvancedMode] = useState(false);
+  const [agentModels, setAgentModels] = useState({
+    parser: null,      
+    reasoner: null,
+    generator: null,
+    validator: null
+  });
   
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -895,6 +903,147 @@ const handleFileUpload = async (e) => {
                     </button>
                   )}
                 </div>
+
+                {/* Advanced Mode Toggle */}
+<div className={`mb-6 p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'} border`}>
+  <label className="flex items-center gap-3 cursor-pointer">
+    <input
+      type="checkbox"
+      checked={advancedMode}
+      onChange={(e) => setAdvancedMode(e.target.checked)}
+      className="w-4 h-4 rounded"
+    />
+    <div>
+      <span className={`font-semibold ${textClass}`}>
+        🚀 Advanced Mode: Per-Agent Model Selection
+      </span>
+      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-0.5`}>
+        Use different LLM models for each agent (Parser, Reasoner, Generator, Validator)
+      </p>
+    </div>
+  </label>
+</div>
+
+{/* Per-Agent Model Selection */}
+{advancedMode && (
+  <div className={`mb-6 p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${borderClass}`}>
+    <h3 className={`text-lg font-bold ${textClass} mb-4 flex items-center gap-2`}>
+      <Brain className="w-5 h-5" />
+      Agent-Specific Models
+    </h3>
+    
+    <div className="space-y-3">
+      {/* Parser Model */}
+      <div>
+        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+          📄 Parser Model
+        </label>
+        <select
+          value={agentModels.parser || ''}
+          onChange={(e) => setAgentModels({...agentModels, parser: e.target.value || null})}
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+        >
+          <option value="">Use default model</option>
+          {providers.map(provider => 
+            provider.models.map(model => (
+              <option key={model.value} value={model.value}>
+                {model.label}
+              </option>
+            ))
+          )}
+          {customModels.map(model => (
+            <option key={model.value} value={model.value}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Reasoner Model */}
+      <div>
+        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+          🧠 Reasoner Model
+        </label>
+        <select
+          value={agentModels.reasoner || ''}
+          onChange={(e) => setAgentModels({...agentModels, reasoner: e.target.value || null})}
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+        >
+          <option value="">Use default model</option>
+          {providers.map(provider => 
+            provider.models.map(model => (
+              <option key={model.value} value={model.value}>
+                {model.label}
+              </option>
+            ))
+          )}
+          {customModels.map(model => (
+            <option key={model.value} value={model.value}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Generator Model */}
+      <div>
+        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+          ⚙️ Generator Model
+        </label>
+        <select
+          value={agentModels.generator || ''}
+          onChange={(e) => setAgentModels({...agentModels, generator: e.target.value || null})}
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+        >
+          <option value="">Use default model</option>
+          {providers.map(provider => 
+            provider.models.map(model => (
+              <option key={model.value} value={model.value}>
+                {model.label}
+              </option>
+            ))
+          )}
+          {customModels.map(model => (
+            <option key={model.value} value={model.value}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Validator Model */}
+      <div>
+        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+          🛡️ Validator Model
+        </label>
+        <select
+          value={agentModels.validator || ''}
+          onChange={(e) => setAgentModels({...agentModels, validator: e.target.value || null})}
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+        >
+          <option value="">Use default model</option>
+          {providers.map(provider => 
+            provider.models.map(model => (
+              <option key={model.value} value={model.value}>
+                {model.label}
+              </option>
+            ))
+          )}
+          {customModels.map(model => (
+            <option key={model.value} value={model.value}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+
+    {/* Info Tip */}
+    <div className={`mt-3 p-2 rounded text-xs ${darkMode ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
+      💡 Tip: Use faster models for parsing/validation, powerful models for reasoning/generation
+    </div>
+  </div>
+)}
                 
                 {/* Input Area */}
               <div>
