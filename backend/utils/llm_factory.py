@@ -1,5 +1,5 @@
 """
-LLM Factory - Enhanced Provider-Agnostic LLM Creation
+LLM Factory - Provider-Agnostic LLM Creation
 ======================================================
 
 This factory creates the appropriate LLM instance based on:
@@ -740,7 +740,7 @@ def create_llm(model: Optional[str] = None, temperature: float = 0.3, **kwargs) 
 
 # Test function
 if __name__ == "__main__":
-    print("Testing Enhanced LLM Factory\n")
+    print("Testing LLM Factory\n")
     print("=" * 50)
     
     # Show available providers

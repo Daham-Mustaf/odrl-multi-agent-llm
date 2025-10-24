@@ -1,0 +1,13 @@
+Sample Policy Document
+
+Users are permitted to:
+- Read the document
+- Print the document
+- Share with team members
+
+Users are prohibited from:
+- Modifying the content
+- Commercial redistribution
+- Removing attribution
+
+This policy expires on December 31, 2025.

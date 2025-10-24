@@ -29,6 +29,7 @@ from config.settings import (
     log_configuration,
 )
 
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -54,6 +55,14 @@ try:
 except ImportError as e:
     logger.error(f"Failed to import LLM Factory: {e}")
     FACTORY_AVAILABLE = False
+    
+# Import file parser utility   
+try:
+    from utils.file_parser import parse_uploaded_file
+    FILE_PARSER_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"Failed to import file parser: {e}")
+    FILE_PARSER_AVAILABLE = False
 
 # ============================================
 # CUSTOM MODELS STORAGE (NOW IN config/)
@@ -147,6 +156,35 @@ class CustomModelRequest(BaseModel):
 # BASIC ENDPOINTS
 # ============================================
 
+# ============================================
+# FILE UPLOAD ENDPOINT
+# ============================================
+
+from fastapi import UploadFile, File
+
+@app.post("/api/parse-file")
+async def parse_file(file: UploadFile = File(...)):
+    """Extract text from uploaded files (.txt, .pdf, .docx, .md)"""
+    
+    if not FILE_PARSER_AVAILABLE:
+        raise HTTPException(
+            status_code=503, 
+            detail="File parser not available. Install: pip install PyPDF2 python-docx"
+        )
+    
+    logger.info(f"File upload request: {file.filename}")
+    
+    try:
+        result = await parse_uploaded_file(file)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"File upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
 @app.get("/")
 async def root():
     return {
@@ -155,7 +193,7 @@ async def root():
         "status": "operational",
         "message": "API is running with config directory support!",
         "docs": "/docs",
-        "config_location": str(CONFIG_DIR),  # ✅ NEW
+        "config_location": str(CONFIG_DIR),  
         "features": [
             "Multi-agent ODRL generation",
             "Custom LLM model support",
@@ -174,8 +212,8 @@ async def health_check():
         "agents_available": AGENTS_AVAILABLE,
         "factory_available": FACTORY_AVAILABLE,
         "custom_models_count": len(custom_models),
-        "storage_location": str(CUSTOM_MODELS_FILE),  # ✅ Full path
-        "config_directory": str(CONFIG_DIR),  # ✅ NEW
+        "storage_location": str(CUSTOM_MODELS_FILE),  
+        "config_directory": str(CONFIG_DIR),  
         "timestamp": time.time()
     }
 
@@ -405,11 +443,11 @@ async def parse_text(request: ParseRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  # ✅ From config
+        result['model_used'] = request.model or DEFAULT_MODEL  
         
         return result
     except Exception as e:
-        logger.error(f"❌ Parse error: {e}")
+        logger.error(f"Parse error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/reason")
@@ -437,11 +475,11 @@ async def reason(request: ReasonRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  # ✅ From config
+        result['model_used'] = request.model or DEFAULT_MODEL  
         
         return result
     except Exception as e:
-        logger.error(f"❌ Reason error: {e}")
+        logger.error(f"Reason error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate")
@@ -472,10 +510,10 @@ async def generate_odrl(request: GenerateRequest):
         return {
             'odrl_policy': odrl_policy,
             'processing_time_ms': elapsed_ms,
-            'model_used': request.model or DEFAULT_MODEL  # ✅ From config
+            'model_used': request.model or DEFAULT_MODEL  
         }
     except Exception as e:
-        logger.error(f"❌ Generate error: {e}")
+        logger.error(f"Generate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/validate")
@@ -484,7 +522,7 @@ async def validate_odrl(request: ValidateRequest):
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"✅ Validate request: model={request.model}")
+    logger.info(f"Validate request: model={request.model}")
     start = time.time()
     
     try:
@@ -503,11 +541,11 @@ async def validate_odrl(request: ValidateRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  # ✅ From config
+        result['model_used'] = request.model or DEFAULT_MODEL  
         
         return result
     except Exception as e:
-        logger.error(f"❌ Validate error: {e}")
+        logger.error(f"Validate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================

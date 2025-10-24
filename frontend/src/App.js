@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { encoding_for_model } from 'js-tiktoken';
 import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload } from 'lucide-react';
 
 const ODRLDemo = () => {
@@ -633,6 +634,59 @@ const ODRLDemo = () => {
       default: return 'bg-gray-300';
     }
   };
+  // ============================================
+// FILE UPLOAD HANDLER
+// ============================================
+
+const handleFileUpload = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  
+  // Check file size (5MB limit)
+  if (file.size > 5 * 1024 * 1024) {
+    setError('❌ File too large. Maximum size is 5MB.');
+    return;
+  }
+  
+  setLoading(true);
+  setError(null);
+  
+  try {
+    const fileType = file.name.split('.').pop().toLowerCase();
+    
+    if (fileType === 'txt' || fileType === 'md') {
+      // Handle text files
+      const text = await file.text();
+      setInputText(text);
+      setError(`✅ Loaded: ${file.name} (${text.length} characters)`);
+    } 
+    else if (fileType === 'pdf' || fileType === 'docx') {
+      // Send to backend for processing
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`${API_BASE_URL}/parse-file`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) throw new Error('Failed to parse file');
+      
+      const data = await response.json();
+      setInputText(data.text);
+      setError(`Loaded: ${file.name} (${data.text.length} characters)`);
+    }
+    else {
+      setError('Unsupported file type. Use .txt, .pdf, .docx, or .md');
+    }
+  } catch (err) {
+    setError(`Error reading file: ${err.message}`);
+  } finally {
+    setLoading(false);
+    // Reset file input
+    e.target.value = '';
+  }
+};
 
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 to-indigo-100';
   const cardBg = darkMode ? 'bg-gray-800' : 'bg-white';
@@ -885,8 +939,29 @@ const ODRLDemo = () => {
                     placeholder="Describe your policy in natural language..."
                     className={`w-full h-40 px-4 py-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'} border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none`}
                   />
+                  
+                  {/* File Upload Section - NEW */}
+                  <div className={`mt-3 flex items-center gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span className="text-xs">Or upload file:</span>
+                    <label className={`cursor-pointer px-3 py-1.5 text-xs rounded-lg flex items-center gap-2 ${
+                      darkMode ? 'bg-gray-700 hover:bg-gray-600 border-gray-600' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
+                    } border transition`}>
+                      <Upload className="w-3 h-3" />
+                      Choose File
+                      <input
+                        type="file"
+                        accept=".txt,.pdf,.docx,.md"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <span className="text-xs text-gray-500">.txt, .pdf, .docx, .md (max 5MB)</span>
+                  </div>
+                  
                   <div className="flex justify-between items-center mt-2">
-                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{inputText.length} characters</span>
+                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {inputText.length} characters (~{Math.ceil(inputText.length / 4)} tokens)
+                    </span>
                     {inputText && (
                       <button
                         onClick={() => setInputText('')}
