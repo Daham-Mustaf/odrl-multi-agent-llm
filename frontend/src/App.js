@@ -381,17 +381,19 @@ const ODRLDemo = () => {
     const startTime = Date.now();
     
     try {
-      const isCustomModel = selectedModel?.startsWith('custom:');
+      // USE AGENT-SPECIFIC MODEL (or fall back to default)
+      const modelToUse = agentModels.parser || selectedModel;
+      const isCustomModel = modelToUse?.startsWith('custom:');
       const customModelConfig = isCustomModel 
-        ? customModels.find(m => m.value === selectedModel)
+        ? customModels.find(m => m.value === modelToUse)
         : null;
-
+        
       const response = await fetch(`${API_BASE_URL}/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           text: inputText,
-          model: selectedModel,
+          model: modelToUse,  // Use agent-specific model
           temperature: temperature,
           ...(customModelConfig && {
             custom_model: {
@@ -427,7 +429,7 @@ const ODRLDemo = () => {
     }
     setLoading(false);
   };
-
+    
   const handleReason = async () => {
     setLoading(true);
     setError(null);
@@ -435,9 +437,10 @@ const ODRLDemo = () => {
     const startTime = Date.now();
     
     try {
-      const isCustomModel = selectedModel?.startsWith('custom:');
+      const modelToUse = agentModels.reasoner || selectedModel;
+      const isCustomModel = modelToUse?.startsWith('custom:');
       const customModelConfig = isCustomModel 
-        ? customModels.find(m => m.value === selectedModel)
+        ? customModels.find(m => m.value === modelToUse)
         : null;
 
       const response = await fetch(`${API_BASE_URL}/reason`, {
@@ -445,7 +448,7 @@ const ODRLDemo = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           parsed_data: parsedData,
-          model: selectedModel,
+          model: modelToUse, 
           temperature: temperature,
           ...(customModelConfig && {
             custom_model: {
@@ -486,9 +489,10 @@ const ODRLDemo = () => {
     const startTime = Date.now();
     
     try {
-      const isCustomModel = selectedModel?.startsWith('custom:');
+      const modelToUse = agentModels.generator || selectedModel;
+      const isCustomModel = modelToUse?.startsWith('custom:');
       const customModelConfig = isCustomModel 
-        ? customModels.find(m => m.value === selectedModel)
+        ? customModels.find(m => m.value === modelToUse)
         : null;
 
       const response = await fetch(`${API_BASE_URL}/generate`, {
@@ -496,7 +500,7 @@ const ODRLDemo = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           reasoning_result: reasoningResult,
-          model: selectedModel,
+          model: modelToUse,  
           temperature: temperature,
           ...(customModelConfig && {
             custom_model: {
@@ -542,9 +546,10 @@ const ODRLDemo = () => {
     const startTime = Date.now();
     
     try {
-      const isCustomModel = selectedModel?.startsWith('custom:');
+      const modelToUse = agentModels.validator || selectedModel;
+      const isCustomModel = modelToUse?.startsWith('custom:');
       const customModelConfig = isCustomModel 
-        ? customModels.find(m => m.value === selectedModel)
+        ? customModels.find(m => m.value === modelToUse)
         : null;
 
       const response = await fetch(`${API_BASE_URL}/validate`, {
@@ -552,7 +557,7 @@ const ODRLDemo = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           odrl_policy: policy || generatedODRL?.odrl_policy,
-          model: selectedModel,
+          model: modelToUse, 
           temperature: temperature,
           ...(customModelConfig && {
             custom_model: {
@@ -904,147 +909,166 @@ const handleFileUpload = async (e) => {
                   )}
                 </div>
 
-                {/* Advanced Mode Toggle */}
-<div className={`mb-6 p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'} border`}>
-  <label className="flex items-center gap-3 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={advancedMode}
-      onChange={(e) => setAdvancedMode(e.target.checked)}
-      className="w-4 h-4 rounded"
-    />
-    <div>
-      <span className={`font-semibold ${textClass}`}>
-        🚀 Advanced Mode: Per-Agent Model Selection
-      </span>
-      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-0.5`}>
-        Use different LLM models for each agent (Parser, Reasoner, Generator, Validator)
-      </p>
-    </div>
-  </label>
-</div>
+            {/* Advanced Mode Toggle - Compact Design */}
+            <div className={`mb-6 overflow-hidden rounded-xl border-2 ${
+              darkMode ? 'bg-gray-800 border-blue-800' : 'bg-white border-blue-200'
+            }`}>
+              {/* Header */}
+              <div className={`p-4 ${darkMode ? 'bg-gradient-to-r from-blue-900/30 to-purple-900/30' : 'bg-gradient-to-r from-blue-50 to-purple-50'}`}>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={advancedMode}
+                    onChange={(e) => setAdvancedMode(e.target.checked)}
+                    className="w-5 h-5 rounded"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold text-base ${textClass}`}>
+                        Advanced Mode
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        advancedMode 
+                          ? 'bg-green-500 text-white' 
+                          : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        {advancedMode ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Configure different models for each agent
+                    </p>
+                  </div>
+                </label>
+              </div>
+              
+              {/* Info Box */}
+              <div className={`px-4 py-3 border-t ${darkMode ? 'bg-blue-900/10 border-gray-700' : 'bg-blue-50/50 border-blue-100'}`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-sm">💡</span>
+                  <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <strong>Pro Tip:</strong> Faster models for parsing/validation • Powerful models for reasoning/generation
+                  </p>
+                </div>
+              </div>
+            </div>
 
-{/* Per-Agent Model Selection */}
-{advancedMode && (
-  <div className={`mb-6 p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${borderClass}`}>
-    <h3 className={`text-lg font-bold ${textClass} mb-4 flex items-center gap-2`}>
-      <Brain className="w-5 h-5" />
-      Agent-Specific Models
-    </h3>
-    
-    <div className="space-y-3">
-      {/* Parser Model */}
-      <div>
-        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
-          📄 Parser Model
-        </label>
-        <select
-          value={agentModels.parser || ''}
-          onChange={(e) => setAgentModels({...agentModels, parser: e.target.value || null})}
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-        >
-          <option value="">Use default model</option>
-          {providers.map(provider => 
-            provider.models.map(model => (
-              <option key={model.value} value={model.value}>
-                {model.label}
-              </option>
-            ))
-          )}
-          {customModels.map(model => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Reasoner Model */}
-      <div>
-        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
-          🧠 Reasoner Model
-        </label>
-        <select
-          value={agentModels.reasoner || ''}
-          onChange={(e) => setAgentModels({...agentModels, reasoner: e.target.value || null})}
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-        >
-          <option value="">Use default model</option>
-          {providers.map(provider => 
-            provider.models.map(model => (
-              <option key={model.value} value={model.value}>
-                {model.label}
-              </option>
-            ))
-          )}
-          {customModels.map(model => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Generator Model */}
-      <div>
-        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
-          ⚙️ Generator Model
-        </label>
-        <select
-          value={agentModels.generator || ''}
-          onChange={(e) => setAgentModels({...agentModels, generator: e.target.value || null})}
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-        >
-          <option value="">Use default model</option>
-          {providers.map(provider => 
-            provider.models.map(model => (
-              <option key={model.value} value={model.value}>
-                {model.label}
-              </option>
-            ))
-          )}
-          {customModels.map(model => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Validator Model */}
-      <div>
-        <label className={`text-sm font-medium ${textClass} mb-1 block`}>
-          🛡️ Validator Model
-        </label>
-        <select
-          value={agentModels.validator || ''}
-          onChange={(e) => setAgentModels({...agentModels, validator: e.target.value || null})}
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-        >
-          <option value="">Use default model</option>
-          {providers.map(provider => 
-            provider.models.map(model => (
-              <option key={model.value} value={model.value}>
-                {model.label}
-              </option>
-            ))
-          )}
-          {customModels.map(model => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-
-    {/* Info Tip */}
-    <div className={`mt-3 p-2 rounded text-xs ${darkMode ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
-      💡 Tip: Use faster models for parsing/validation, powerful models for reasoning/generation
-    </div>
-  </div>
-)}
+            {/* Per-Agent Model Selection */}
+            {advancedMode && (
+              <div className={`mb-6 p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${borderClass}`}>
+                <h3 className={`text-lg font-bold ${textClass} mb-4 flex items-center gap-2`}>
+                  <Brain className="w-5 h-5" />
+                  Agent-Specific Models
+                </h3>
                 
+                <div className="space-y-3">
+                  {/* Parser Model */}
+                  <div>
+                    <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+                      📄 Parser Model
+                    </label>
+                    <select
+                      value={agentModels.parser || ''}
+                      onChange={(e) => setAgentModels({...agentModels, parser: e.target.value || null})}
+                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+                    >
+                      <option value="">Use default model</option>
+                      {providers.map(provider => 
+                        provider.models.map(model => (
+                          <option key={model.value} value={model.value}>
+                            {model.label}
+                          </option>
+                        ))
+                      )}
+                      {customModels.map(model => (
+                        <option key={model.value} value={model.value}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Reasoner Model */}
+                  <div>
+                    <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+                      🧠 Reasoner Model
+                    </label>
+                    <select
+                      value={agentModels.reasoner || ''}
+                      onChange={(e) => setAgentModels({...agentModels, reasoner: e.target.value || null})}
+                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+                    >
+                      <option value="">Use default model</option>
+                      {providers.map(provider => 
+                        provider.models.map(model => (
+                          <option key={model.value} value={model.value}>
+                            {model.label}
+                          </option>
+                        ))
+                      )}
+                      {customModels.map(model => (
+                        <option key={model.value} value={model.value}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Generator Model */}
+                  <div>
+                    <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+                      ⚙️ Generator Model
+                    </label>
+                    <select
+                      value={agentModels.generator || ''}
+                      onChange={(e) => setAgentModels({...agentModels, generator: e.target.value || null})}
+                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+                    >
+                      <option value="">Use default model</option>
+                      {providers.map(provider => 
+                        provider.models.map(model => (
+                          <option key={model.value} value={model.value}>
+                            {model.label}
+                          </option>
+                        ))
+                      )}
+                      {customModels.map(model => (
+                        <option key={model.value} value={model.value}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Validator Model */}
+                  <div>
+                    <label className={`text-sm font-medium ${textClass} mb-1 block`}>
+                      🛡️ Validator Model
+                    </label>
+                    <select
+                      value={agentModels.validator || ''}
+                      onChange={(e) => setAgentModels({...agentModels, validator: e.target.value || null})}
+                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+                    >
+                      <option value="">Use default model</option>
+                      {providers.map(provider => 
+                        provider.models.map(model => (
+                          <option key={model.value} value={model.value}>
+                            {model.label}
+                          </option>
+                        ))
+                      )}
+                      {customModels.map(model => (
+                        <option key={model.value} value={model.value}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+                            
                 {/* Input Area */}
               <div>
                 {/* Compact Example Selector - NEW */}

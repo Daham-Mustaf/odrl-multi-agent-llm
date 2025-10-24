@@ -437,14 +437,13 @@ async def parse_text(request: ParseRequest):
     """Agent 1: Parse text"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
-    
-    logger.info(f"🔍 Parse request: model={request.model}")
+    logger.info(f"Parse request: model={request.model}")
     start = time.time()
     
     try:
         # Handle custom model
         if request.custom_model:
-            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+            logger.info(f"Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
             parser = TextParser(
                 model=request.model,
                 temperature=request.temperature,
