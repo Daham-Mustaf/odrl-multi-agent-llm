@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================
-# IMPORT CONFIG (NEW!)
+# IMPORT CONFIG
 # ============================================
 from config.settings import (
     CUSTOM_MODELS_FILE,
@@ -74,7 +74,7 @@ def load_custom_models_from_file():
         try:
             with open(CUSTOM_MODELS_FILE, 'r') as f:
                 data = json.load(f)
-                logger.info(f" Loaded {len(data)} custom models from config/")
+                logger.info(f"📦 Loaded {len(data)} custom models from config/")
                 return data
         except Exception as e:
             logger.error(f"Error loading custom models: {e}")
@@ -90,7 +90,7 @@ def save_custom_models_to_file(models: List[Dict]):
         
         with open(CUSTOM_MODELS_FILE, 'w') as f:
             json.dump(models, f, indent=2)
-        logger.info(f"Saved {len(models)} custom models to {CUSTOM_MODELS_FILE.name}")
+        logger.info(f"💾 Saved {len(models)} custom models to {CUSTOM_MODELS_FILE.name}")
         return True
     except Exception as e:
         logger.error(f"Error saving custom models: {e}")
@@ -102,21 +102,21 @@ def save_custom_models_to_file(models: List[Dict]):
 
 app = FastAPI(
     title="ODRL Policy Generator API",
-    version="2.1.0",  # Bumped version for config update
+    version="2.1.0",
     description="Multi-agent LLM system for ODRL policy generation with custom model support"
 )
 
 # CORS (now using config)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,  # ✅ From config
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ============================================
-# REQUEST MODELS
+# REQUEST MODELS - ✅ VERIFIED CORRECT
 # ============================================
 
 class ParseRequest(BaseModel):
@@ -126,27 +126,27 @@ class ParseRequest(BaseModel):
     custom_model: Optional[Dict[str, Any]] = None
 
 class ReasonRequest(BaseModel):
-    parsed_data: Dict[str, Any]
+    parsed_data: Dict[str, Any]  # ✅ Expects full parsed result
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
 
 class GenerateRequest(BaseModel):
-    reasoning_result: Dict[str, Any]
+    reasoning_result: Dict[str, Any]  # ✅ Expects full reasoning result
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
 
 class ValidateRequest(BaseModel):
-    odrl_policy: Dict[str, Any]
+    odrl_policy: Dict[str, Any]  # ✅ Called odrl_policy
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
 
 class CustomModelRequest(BaseModel):
     name: str
-    provider_type: str  # "ollama", "openai-compatible", "custom"
-    base_url: str
+    provider_type: str  # "ollama", "openai-compatible", "google-genai", "custom"
+    base_url: Optional[str] = None
     model_id: str
     api_key: Optional[str] = None
     context_length: Optional[int] = 4096
@@ -156,49 +156,6 @@ class CustomModelRequest(BaseModel):
 # BASIC ENDPOINTS
 # ============================================
 
-# ============================================
-# FILE UPLOAD ENDPOINT
-# ============================================
-
-
-@app.post("/api/parse-file")
-async def parse_file(file: UploadFile = File(...)):
-    """
-    Extract text from uploaded files (.txt, .pdf, .docx, .md)
-    
-    Returns:
-        - text: Extracted text content
-        - filename: Original filename
-        - size: File size in bytes
-        - characters: Character count
-        - file_type: File extension
-    """
-    
-    if not FILE_PARSER_AVAILABLE:
-        raise HTTPException(
-            status_code=503, 
-            detail="File parser not available. Install: pip install pypdf python-docx"
-        )
-    
-    logger.info(f"File upload: {file.filename} (Content-Type: {file.content_type})")
-    
-    try:
-        result = await parse_uploaded_file(file)
-        
-        logger.info(f"Parsed successfully: {result['characters']} characters")
-        return result
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions (validation errors)
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Unexpected error: {str(e)}"
-        )
-    
-    
 @app.get("/")
 async def root():
     return {
@@ -207,12 +164,13 @@ async def root():
         "status": "operational",
         "message": "API is running with config directory support!",
         "docs": "/docs",
-        "config_location": str(CONFIG_DIR),  
+        "config_location": str(CONFIG_DIR),
         "features": [
             "Multi-agent ODRL generation",
             "Custom LLM model support",
             "Ollama integration",
             "OpenAI-compatible endpoints",
+            "Google GenAI support",
             "Persistent model storage in config/",
             "Cross-platform path handling"
         ]
@@ -226,8 +184,8 @@ async def health_check():
         "agents_available": AGENTS_AVAILABLE,
         "factory_available": FACTORY_AVAILABLE,
         "custom_models_count": len(custom_models),
-        "storage_location": str(CUSTOM_MODELS_FILE),  
-        "config_directory": str(CONFIG_DIR),  
+        "storage_location": str(CUSTOM_MODELS_FILE),
+        "config_directory": str(CONFIG_DIR),
         "timestamp": time.time()
     }
 
@@ -239,7 +197,7 @@ async def get_available_providers():
     
     try:
         providers = LLMFactory.get_available_providers()
-        default_model = DEFAULT_MODEL  # ✅ From config
+        default_model = DEFAULT_MODEL
         
         # Return basic provider info
         provider_list = []
@@ -261,6 +219,15 @@ async def get_available_providers():
                 ]
             })
         
+        # Add custom models to the provider list
+        custom_models = load_custom_models_from_file()
+        if custom_models:
+            provider_list.append({
+                "id": "custom",
+                "name": "Custom Models",
+                "models": custom_models
+            })
+        
         return {
             "providers": provider_list,
             "default_model": default_model
@@ -268,6 +235,47 @@ async def get_available_providers():
     except Exception as e:
         logger.error(f"Error getting providers: {e}")
         return {"providers": [], "error": str(e)}
+
+# ============================================
+# FILE UPLOAD ENDPOINT
+# ============================================
+
+@app.post("/api/parse-file")
+async def parse_file(file: UploadFile = File(...)):
+    """
+    Extract text from uploaded files (.txt, .pdf, .docx, .md)
+    
+    Returns:
+        - text: Extracted text content
+        - filename: Original filename
+        - size: File size in bytes
+        - characters: Character count
+        - file_type: File extension
+    """
+    
+    if not FILE_PARSER_AVAILABLE:
+        raise HTTPException(
+            status_code=503, 
+            detail="File parser not available. Install: pip install pypdf python-docx"
+        )
+    
+    logger.info(f"📁 File upload: {file.filename} (Content-Type: {file.content_type})")
+    
+    try:
+        result = await parse_uploaded_file(file)
+        
+        logger.info(f"✅ Parsed successfully: {result['characters']} characters")
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 # ============================================
 # CUSTOM MODELS ENDPOINTS
@@ -281,7 +289,7 @@ async def get_custom_models():
         return {
             "models": models,
             "count": len(models),
-            "source": "config/custom_models.json",  # ✅ Updated
+            "source": "config/custom_models.json",
             "storage_path": str(CUSTOM_MODELS_FILE)
         }
     except Exception as e:
@@ -295,16 +303,22 @@ async def add_custom_model(model: CustomModelRequest):
         # Load existing models
         models = load_custom_models_from_file()
         
+        # Create value based on provider type
+        if model.provider_type == "google-genai":
+            value = f"{model.provider_type}:{model.model_id}"
+        else:
+            value = f"{model.provider_type}:{model.model_id}"
+        
         # Create new model entry
         new_model = {
-            "value": f"custom:{model.model_id}",
+            "value": value,
             "label": model.name,
             "provider_type": model.provider_type,
             "base_url": model.base_url,
             "model_id": model.model_id,
             "api_key": model.api_key,
-            "context_length": model.context_length,
-            "temperature_default": model.temperature_default,
+            "context_length": model.context_length or 4096,
+            "temperature_default": model.temperature_default or 0.3,
             "created_at": time.time(),
             "updated_at": time.time()
         }
@@ -429,21 +443,22 @@ async def import_custom_models(data: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# AGENT ENDPOINTS (WITH CUSTOM MODEL SUPPORT)
+# AGENT ENDPOINTS - ✅ VERIFIED CORRECT
 # ============================================
 
 @app.post("/api/parse")
 async def parse_text(request: ParseRequest):
-    """Agent 1: Parse text"""
+    """Agent 1: Parse text - Extract entities from natural language"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
-    logger.info(f"Parse request: model={request.model}")
+    
+    logger.info(f"📝 Parse request: model={request.model}")
     start = time.time()
     
     try:
         # Handle custom model
         if request.custom_model:
-            logger.info(f"Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
             parser = TextParser(
                 model=request.model,
                 temperature=request.temperature,
@@ -456,16 +471,18 @@ async def parse_text(request: ParseRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  
+        result['model_used'] = request.model or DEFAULT_MODEL
         
+        logger.info(f"✅ Parse complete: {elapsed_ms}ms")
         return result
+        
     except Exception as e:
-        logger.error(f"Parse error: {e}")
+        logger.error(f"❌ Parse error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/reason")
 async def reason(request: ReasonRequest):
-    """Agent 2: Reason"""
+    """Agent 2: Reason - Analyze parsed data and determine ODRL structure"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
@@ -484,20 +501,23 @@ async def reason(request: ReasonRequest):
         else:
             reasoner = Reasoner(model=request.model, temperature=request.temperature)
         
+        # ✅ Pass the entire parsed_data object
         result = reasoner.reason(request.parsed_data)
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  
+        result['model_used'] = request.model or DEFAULT_MODEL
         
+        logger.info(f"✅ Reason complete: {elapsed_ms}ms")
         return result
+        
     except Exception as e:
-        logger.error(f"Reason error: {e}")
+        logger.error(f"❌ Reason error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate")
 async def generate_odrl(request: GenerateRequest):
-    """Agent 3: Generate ODRL"""
+    """Agent 3: Generate - Create ODRL JSON-LD policy"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
@@ -516,26 +536,29 @@ async def generate_odrl(request: GenerateRequest):
         else:
             generator = Generator(model=request.model, temperature=request.temperature)
         
+        # ✅ Pass the entire reasoning_result object
         odrl_policy = generator.generate(request.reasoning_result)
         
         elapsed_ms = int((time.time() - start) * 1000)
         
+        logger.info(f"✅ Generate complete: {elapsed_ms}ms")
         return {
-            'odrl_policy': odrl_policy,
+            'odrl_policy': odrl_policy,  # ✅ Returns as odrl_policy
             'processing_time_ms': elapsed_ms,
-            'model_used': request.model or DEFAULT_MODEL  
+            'model_used': request.model or DEFAULT_MODEL
         }
+        
     except Exception as e:
-        logger.error(f"Generate error: {e}")
+        logger.error(f"❌ Generate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/validate")
 async def validate_odrl(request: ValidateRequest):
-    """Agent 4: Validate ODRL"""
+    """Agent 4: Validate - Check ODRL policy compliance"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"Validate request: model={request.model}")
+    logger.info(f"🛡️  Validate request: model={request.model}")
     start = time.time()
     
     try:
@@ -554,36 +577,40 @@ async def validate_odrl(request: ValidateRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL  
+        result['model_used'] = request.model or DEFAULT_MODEL
         
+        logger.info(f"✅ Validate complete: {elapsed_ms}ms - Valid: {result.get('is_valid', False)}")
         return result
+        
     except Exception as e:
-        logger.error(f"Validate error: {e}")
+        logger.error(f"❌ Validate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# STARTUP (NOW WITH CONFIG LOGGING)
+# STARTUP
 # ============================================
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 80)
-    logger.info("ODRL Policy Generator API Starting v2.1.0")
+    logger.info("🚀 ODRL Policy Generator API Starting v2.1.0")
     logger.info("=" * 80)
-    logger.info(f"API: http://localhost:8000")
-    logger.info(f"Docs: http://localhost:8000/docs")
-    logger.info(f" Config: {CONFIG_DIR}")  # ✅ NEW
-    logger.info(f"Models Storage: {CUSTOM_MODELS_FILE.name}")  # ✅ NEW
-    logger.info(f"Agents: {AGENTS_AVAILABLE}")
-    logger.info(f"Factory: {FACTORY_AVAILABLE}")
+    logger.info(f"📍 API: http://localhost:8000")
+    logger.info(f"📚 Docs: http://localhost:8000/docs")
+    logger.info(f"📁 Config: {CONFIG_DIR}")
+    logger.info(f"💾 Models Storage: {CUSTOM_MODELS_FILE.name}")
+    logger.info(f"🤖 Agents: {AGENTS_AVAILABLE}")
+    logger.info(f"🏭 Factory: {FACTORY_AVAILABLE}")
     
     # Load custom models
     custom_models = load_custom_models_from_file()
     logger.info(f"📦 Custom Models: {len(custom_models)} loaded")
     
     # Log configuration
-    log_configuration()  # ✅ NEW: Shows enabled providers
+    log_configuration()
     
+    logger.info("=" * 80)
+    logger.info("✅ API Ready!")
     logger.info("=" * 80)
 
 if __name__ == "__main__":
