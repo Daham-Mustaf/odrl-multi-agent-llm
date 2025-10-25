@@ -710,9 +710,8 @@ const handleFileUpload = async (e) => {
                   <Sparkles className="w-8 h-8" />
                   ODRL Policy Generator
                 </h1>
-                <p className="text-blue-100">Multi-Agent System • Flexible LLM Configuration • Real-time Processing</p>
+                <p className="text-blue-100">Transform Text to Policies • Multi-Model AI • Instant Validation</p>
               </div>
-              
               <div className="flex flex-col gap-2 items-end">
                 <div className="flex items-center gap-2">
                   <button
