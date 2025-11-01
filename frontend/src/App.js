@@ -1592,7 +1592,8 @@ Or drag and drop a .txt, .md, or .json file here"
           </div>
         </div>
       )}
-      {/* ADD THIS LINE HERE - This is all you need! */}
+      
+      {/* DebugPanel*/}
         <DebugPanel 
           darkMode={darkMode}
           selectedModel={selectedModel}
