@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { encodingForModel } from 'js-tiktoken';
 import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import DebugPanel from './DebugPanel'; 
 
 
 // ============================================
@@ -388,6 +389,9 @@ const ODRLDemo = () => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
 
+// Fixed handleProcess function for your React component
+// Replace your existing handleProcess function with this one
+
 const handleProcess = async () => {
   if (!inputText.trim()) {
     setError('Please enter a policy description');
@@ -406,15 +410,40 @@ const handleProcess = async () => {
 
   const startTimes = { parse: Date.now(), reason: 0, generate: 0, validate: 0 };
 
+  // Helper function to get custom model config if it's a custom model
+  const getModelConfig = (modelValue) => {
+    if (!modelValue) return null;
+    
+    // Check if this is a custom model
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (customModel) {
+      // Return the custom model configuration
+      return {
+        provider_type: customModel.provider_type,
+        base_url: customModel.base_url,
+        model_id: customModel.model_id,
+        api_key: customModel.api_key,
+        context_length: customModel.context_length,
+        temperature_default: customModel.temperature_default
+      };
+    }
+    return null;
+  };
+
   try {
     // PARSE
     updateAgentState('parser', 'processing');
     setProcessingStage('Parsing policy text...');
     setProcessingProgress(10);
+    
+    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+    const parserCustomConfig = getModelConfig(parserModel);
+    
     const parseResult = await callAPI('parse', {
       text: inputText,
-      model: advancedMode && agentModels.parser ? agentModels.parser : selectedModel,
-      temperature
+      model: parserModel,
+      temperature,
+      custom_model: parserCustomConfig  // Pass custom config if it exists
     });
     
     setParsedData(parseResult);
@@ -426,14 +455,19 @@ const handleProcess = async () => {
     if (autoProgress) setActiveTab('reasoner');
     startTimes.reason = Date.now();
 
-    // REASON - Fixed: Send full parseResult
+    // REASON
     updateAgentState('reasoner', 'processing');
     setProcessingStage('Reasoning about policy...');
     setProcessingProgress(30);
+    
+    const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
+    const reasonerCustomConfig = getModelConfig(reasonerModel);
+    
     const reasonResult = await callAPI('reason', {
-      parsed_data: parseResult, 
-      model: advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel,
-      temperature
+      parsed_data: parseResult,
+      model: reasonerModel,
+      temperature,
+      custom_model: reasonerCustomConfig  // Pass custom config if it exists
     });
     
     setReasoningResult(reasonResult);
@@ -445,14 +479,19 @@ const handleProcess = async () => {
     if (autoProgress) setActiveTab('generator');
     startTimes.generate = Date.now();
 
-    // GENERATE - Fixed: Send full reasonResult
+    // GENERATE
     updateAgentState('generator', 'processing');
     setProcessingStage('Generating ODRL policy...');
     setProcessingProgress(55);
+    
+    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const generatorCustomConfig = getModelConfig(generatorModel);
+    
     const genResult = await callAPI('generate', {
-      reasoning_result: reasonResult, 
-      model: advancedMode && agentModels.generator ? agentModels.generator : selectedModel,
-      temperature
+      reasoning_result: reasonResult,
+      model: generatorModel,
+      temperature,
+      custom_model: generatorCustomConfig  // Pass custom config if it exists
     });
     
     setGeneratedODRL(genResult);
@@ -464,14 +503,19 @@ const handleProcess = async () => {
     if (autoProgress) setActiveTab('validator');
     startTimes.validate = Date.now();
 
-    // VALIDATE - Fixed: Use odrl_policy field
+    // VALIDATE
     updateAgentState('validator', 'processing');
     setProcessingStage('Validating ODRL policy...');
     setProcessingProgress(80);
+    
+    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validatorCustomConfig = getModelConfig(validatorModel);
+    
     const valResult = await callAPI('validate', {
-      odrl_policy: genResult.odrl_policy, 
-      model: advancedMode && agentModels.validator ? agentModels.validator : selectedModel,
-      temperature
+      odrl_policy: genResult.odrl_policy,
+      model: validatorModel,
+      temperature,
+      custom_model: validatorCustomConfig  // Pass custom config if it exists
     });
     
     setValidationResult(valResult);
@@ -1548,6 +1592,17 @@ Or drag and drop a .txt, .md, or .json file here"
           </div>
         </div>
       )}
+      {/* ADD THIS LINE HERE - This is all you need! */}
+        <DebugPanel 
+          darkMode={darkMode}
+          selectedModel={selectedModel}
+          customModels={customModels}
+          agentModels={agentModels}
+          advancedMode={advancedMode}
+          temperature={temperature}
+        />
+
+
 
       <style jsx>{`
         @keyframes fade-in {
