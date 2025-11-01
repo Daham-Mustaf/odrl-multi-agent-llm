@@ -1,6 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { encodingForModel } from 'js-tiktoken';
-import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+
+
+// ============================================
+// TOAST NOTIFICATION COMPONENT
+// ============================================
+const Toast = ({ message, type = 'success', onClose }) => {
+  const icons = {
+    success: <CheckCircle2 className="w-5 h-5" />,
+    error: <XCircle className="w-5 h-5" />,
+    warning: <AlertTriangle className="w-5 h-5" />,
+    info: <Info className="w-5 h-5" />
+  };
+
+  const styles = {
+    success: 'bg-green-500 text-white',
+    error: 'bg-red-500 text-white',
+    warning: 'bg-yellow-500 text-white',
+    info: 'bg-blue-500 text-white'
+  };
+
+  return (
+    <div className={`fixed top-20 right-6 z-50 ${styles[type]} rounded-lg shadow-2xl px-6 py-4 flex items-center gap-3 min-w-[300px] max-w-[500px] animate-slide-in-right`}>
+      {icons[type]}
+      <span className="flex-1 font-medium">{message}</span>
+      <button 
+        onClick={onClose}
+        className="hover:bg-white/20 rounded p-1 transition"
+        aria-label="Close notification"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+// ============================================
+// PROGRESS BAR COMPONENT
+// ============================================
+const ProgressBar = ({ progress, label, darkMode }) => {
+  return (
+    <div className="w-full">
+      <div className="flex justify-between items-center mb-2">
+        <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          {label}
+        </span>
+        <span className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+          {progress}%
+        </span>
+      </div>
+      <div className={`w-full h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+        <div 
+          className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-300 ease-out"
+          style={{ width: `${progress}%` }}
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin="0"
+          aria-valuemax="100"
+        />
+      </div>
+    </div>
+  );
+};
 
 const ODRLDemo = () => {
   const [activeTab, setActiveTab] = useState('parser');
@@ -63,9 +125,37 @@ const ODRLDemo = () => {
   const [syncMode, setSyncMode] = useState('both');
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [showExamples, setShowExamples] = useState(true);
+  const [showExamples, setShowExamples] = useState(false);
+
+  // NEW: Toast notification state
+  const [toasts, setToasts] = useState([]);
+  
+  // NEW: Processing progress state
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState('');
+
 
   const API_BASE_URL = 'http://localhost:8000/api';
+
+  // ============================================
+  // TOAST NOTIFICATION HELPER
+  // ============================================
+  const showToast = (message, type = 'success') => {
+    const id = Date.now();
+    const newToast = { id, message, type };
+    setToasts(prev => [...prev, newToast]);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 4000);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+
 
   const examples = [
     { 
@@ -113,6 +203,7 @@ const ODRLDemo = () => {
       const data = await response.json();
       setProviders(data.providers || []);
       setBackendConnected(true);
+      showToast('Successfully connected to backend', 'success');
       
       if (data.default_model) {
         setSelectedModel(data.default_model);
@@ -123,6 +214,7 @@ const ODRLDemo = () => {
       console.error('Provider detection failed:', err);
       setError('⚠️ Backend not connected. Start: cd backend && uvicorn main:app --reload');
       setBackendConnected(false);
+      showToast('Backend connection failed', 'error');
     }
     setLoadingProviders(false);
   };
@@ -148,6 +240,7 @@ const ODRLDemo = () => {
       console.log(`Total custom models loaded: ${merged.length}`);
     } catch (err) {
       console.error('Error loading custom models:', err);
+      showToast('Failed to load custom models', 'error');
     }
   };
 
@@ -238,7 +331,7 @@ const ODRLDemo = () => {
       await saveToBackend(newModel);
     }
 
-    console.log(`✅ Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${newModel.label}`);
+    console.log(`Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${newModel.label}`);
   };
 
   const deleteCustomModel = async (modelValue) => {
@@ -284,30 +377,8 @@ const ODRLDemo = () => {
     });
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch {
-        throw new Error(`API request failed: ${response.statusText}`);
-      }
-      
-      // Handle different error formats
-      if (errorData.detail) {
-        if (Array.isArray(errorData.detail)) {
-          // FastAPI validation errors
-          const errorMessages = errorData.detail.map(e => {
-            const location = e.loc ? e.loc.join(' → ') : 'unknown';
-            return `${location}: ${e.msg}`;
-          }).join('\n');
-          throw new Error(`Validation Error:\n${errorMessages}`);
-        } else if (typeof errorData.detail === 'string') {
-          throw new Error(errorData.detail);
-        } else {
-          throw new Error(JSON.stringify(errorData.detail));
-        }
-      }
-      
-      throw new Error(`API request failed: ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
     }
 
     return response.json();
@@ -317,104 +388,112 @@ const ODRLDemo = () => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
 
-  const handleProcess = async () => {
-    if (!inputText.trim()) {
-      setError('Please enter a policy description');
-      return;
-    }
+const handleProcess = async () => {
+  if (!inputText.trim()) {
+    setError('Please enter a policy description');
+    showToast('Please enter a policy description', 'warning');
+    return;
+  }
 
-    setLoading(true);
-    setError(null);
-    setParsedData(null);
-    setReasoningResult(null);
-    setGeneratedODRL(null);
-    setValidationResult(null);
+  setLoading(true);
+  setError(null);
+  setProcessingProgress(0);
+  setProcessingStage('Starting process...');
+  setParsedData(null);
+  setReasoningResult(null);
+  setGeneratedODRL(null);
+  setValidationResult(null);
 
-    const startTimes = { parse: Date.now(), reason: 0, generate: 0, validate: 0 };
+  const startTimes = { parse: Date.now(), reason: 0, generate: 0, validate: 0 };
 
-    try {
-      updateAgentState('parser', 'processing');
-      const parseResult = await callAPI('parse', {
-        text: inputText,
-        model: advancedMode && agentModels.parser ? agentModels.parser : selectedModel,
-        temperature
-      });
-      
-      setParsedData(parseResult);
-      setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
-      updateAgentState('parser', 'completed');
+  try {
+    // PARSE
+    updateAgentState('parser', 'processing');
+    setProcessingStage('Parsing policy text...');
+    setProcessingProgress(10);
+    const parseResult = await callAPI('parse', {
+      text: inputText,
+      model: advancedMode && agentModels.parser ? agentModels.parser : selectedModel,
+      temperature
+    });
+    
+    setParsedData(parseResult);
+    setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
+    updateAgentState('parser', 'completed');
+    setProcessingProgress(25);
+    showToast('Policy parsed successfully!', 'success');
 
-      if (autoProgress) setActiveTab('reasoner');
-      startTimes.reason = Date.now();
+    if (autoProgress) setActiveTab('reasoner');
+    startTimes.reason = Date.now();
 
-      updateAgentState('reasoner', 'processing');
-      const reasonResult = await callAPI('reason', {
-        parsed_data: parseResult,  // ✅ Send the entire parseResult as parsed_data
-        model: advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel,
-        temperature
-      });
-      
-      setReasoningResult(reasonResult);
-      setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
-      updateAgentState('reasoner', 'completed');
+    // REASON - Fixed: Send full parseResult
+    updateAgentState('reasoner', 'processing');
+    setProcessingStage('Reasoning about policy...');
+    setProcessingProgress(30);
+    const reasonResult = await callAPI('reason', {
+      parsed_data: parseResult, 
+      model: advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel,
+      temperature
+    });
+    
+    setReasoningResult(reasonResult);
+    setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
+    updateAgentState('reasoner', 'completed');
+    setProcessingProgress(50);
+    showToast('Reasoning completed!', 'success');
 
-      if (autoProgress) setActiveTab('generator');
-      startTimes.generate = Date.now();
+    if (autoProgress) setActiveTab('generator');
+    startTimes.generate = Date.now();
 
-      updateAgentState('generator', 'processing');
-      const genResult = await callAPI('generate', {
-        reasoning_result: reasonResult,  // ✅ Send the entire reasonResult as reasoning_result
-        model: advancedMode && agentModels.generator ? agentModels.generator : selectedModel,
-        temperature
-      });
-      
-      setGeneratedODRL(genResult);
-      setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
-      updateAgentState('generator', 'completed');
+    // GENERATE - Fixed: Send full reasonResult
+    updateAgentState('generator', 'processing');
+    setProcessingStage('Generating ODRL policy...');
+    setProcessingProgress(55);
+    const genResult = await callAPI('generate', {
+      reasoning_result: reasonResult, 
+      model: advancedMode && agentModels.generator ? agentModels.generator : selectedModel,
+      temperature
+    });
+    
+    setGeneratedODRL(genResult);
+    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
+    updateAgentState('generator', 'completed');
+    setProcessingProgress(75);
+    showToast('ODRL policy generated!', 'success');
 
-      if (autoProgress) setActiveTab('validator');
-      startTimes.validate = Date.now();
+    if (autoProgress) setActiveTab('validator');
+    startTimes.validate = Date.now();
 
-      updateAgentState('validator', 'processing');
-      const valResult = await callAPI('validate', {
-        odrl_policy: genResult.odrl_policy,  // ✅ Changed from odrl_json to odrl_policy, and from genResult.odrl to genResult.odrl_policy
-        model: advancedMode && agentModels.validator ? agentModels.validator : selectedModel,
-        temperature
-      });
-      
-      setValidationResult(valResult);
-      setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
-      updateAgentState('validator', 'completed');
+    // VALIDATE - Fixed: Use odrl_policy field
+    updateAgentState('validator', 'processing');
+    setProcessingStage('Validating ODRL policy...');
+    setProcessingProgress(80);
+    const valResult = await callAPI('validate', {
+      odrl_policy: genResult.odrl_policy, 
+      model: advancedMode && agentModels.validator ? agentModels.validator : selectedModel,
+      temperature
+    });
+    
+    setValidationResult(valResult);
+    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
+    updateAgentState('validator', 'completed');
+    setProcessingProgress(100);
+    showToast('Validation complete!', 'success');
 
-    } catch (err) {
-      // Better error handling - extract meaningful message
-      let errorMessage = 'An error occurred during processing';
-      
-      if (err.message) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      } else if (err.detail) {
-        // FastAPI validation errors
-        if (Array.isArray(err.detail)) {
-          errorMessage = err.detail.map(e => `${e.loc?.join('.')}: ${e.msg}`).join(', ');
-        } else {
-          errorMessage = err.detail;
-        }
+  } catch (err) {
+    setError(err.message);
+    showToast(`Error: ${err.message}`, 'error');
+    Object.keys(agentStates).forEach(agent => {
+      if (agentStates[agent] === 'processing') {
+        updateAgentState(agent, 'error');
       }
-      
-      console.error('Processing error:', err);
-      setError(errorMessage);
-      
-      Object.keys(agentStates).forEach(agent => {
-        if (agentStates[agent] === 'processing') {
-          updateAgentState(agent, 'error');
-        }
-      });
-    }
-
+    });
+  } finally {
     setLoading(false);
-  };
+    setProcessingProgress(0);
+    setProcessingStage('');
+  }
+};
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -465,6 +544,7 @@ const ODRLDemo = () => {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
+    showToast('Copied to clipboard!', 'success');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -478,6 +558,7 @@ const ODRLDemo = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast(`Downloaded ${filename}`, 'success');
   };
 
   const resetDemo = () => {
@@ -527,6 +608,19 @@ const ODRLDemo = () => {
 
   return (
     <div className={`min-h-screen ${bgClass} transition-colors duration-300`}>
+      
+      {/* Toast Notifications */}
+      <div className="fixed top-20 right-6 z-50 space-y-3">
+        {toasts.map(toast => (
+          <Toast 
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
+
       {/* IMPROVED HEADER */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b shadow-sm`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -574,6 +668,7 @@ const ODRLDemo = () => {
               {/* Settings Button */}
               <button
                 onClick={() => setSettingsOpen(true)}
+                aria-label="Open settings"
                 className={`p-2 rounded-lg transition ${
                   darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
                 }`}
@@ -585,6 +680,7 @@ const ODRLDemo = () => {
               {/* Dark Mode Toggle */}
               <button
                 onClick={() => setDarkMode(!darkMode)}
+                aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
                 className={`p-2 rounded-lg transition ${
                   darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
                 }`}
@@ -609,6 +705,20 @@ const ODRLDemo = () => {
       </div>
 
       {/* PROGRESS BAR */}
+      
+      {/* Processing Progress Bar */}
+      {loading && processingProgress > 0 && (
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="max-w-7xl mx-auto">
+            <ProgressBar 
+              progress={processingProgress} 
+              label={processingStage} 
+              darkMode={darkMode}
+            />
+          </div>
+        </div>
+      )}
+
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -708,12 +818,16 @@ const ODRLDemo = () => {
                 </h2>
               </div>
 
+              
+
+
               <div className="p-6 space-y-4">
-                {/* IMPROVED: Example Cards - Collapsible */}
+                {/* Example Cards - Collapsible */}
                 {!inputText && (
                   <div className={`rounded-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <button
                       onClick={() => setShowExamples(!showExamples)}
+                      aria-label="Toggle example policies"
                       className={`w-full px-4 py-3 flex items-center justify-between transition ${
                         darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
                       }`}
@@ -726,12 +840,15 @@ const ODRLDemo = () => {
                     </button>
 
                     {showExamples && (
-                      <div className={`px-4 pb-4 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                      <div className={`px-4 pb-4 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} animate-fade-in`}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {examples.map((example, idx) => (
                             <button
                               key={idx}
-                              onClick={() => setInputText(example.text)}
+                              onClick={() => {
+                                setInputText(example.text);
+                                setShowExamples(false);
+                              }}
                               className={`p-4 rounded-lg border-2 text-left transition hover:scale-105 ${
                                 darkMode 
                                   ? 'bg-gray-700 border-gray-600 hover:border-blue-500' 
@@ -753,7 +870,7 @@ const ODRLDemo = () => {
                   </div>
                 )}
 
-                {/* IMPROVED: Drag and Drop Text Area */}
+                {/* Drag and Drop Text Area */}
                 <div
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
@@ -798,6 +915,7 @@ Or drag and drop a .txt, .md, or .json file here"
                       <span className="text-sm font-medium">Choose File</span>
                       <input
                         type="file"
+                        aria-label="Upload policy file"
                         accept=".txt,.md,.json"
                         onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
                         className="hidden"
@@ -896,6 +1014,7 @@ Or drag and drop a .txt, .md, or .json file here"
                     <input
                       type="checkbox"
                       checked={autoProgress}
+                      aria-label="Toggle automatic progression through stages"
                       onChange={(e) => setAutoProgress(e.target.checked)}
                       className="w-4 h-4 text-green-600 rounded"
                     />
@@ -912,14 +1031,8 @@ Or drag and drop a .txt, .md, or .json file here"
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-red-900 dark:text-red-200">Error</p>
-                      <pre className="text-sm text-red-700 dark:text-red-300 mt-1 whitespace-pre-wrap font-sans">{error}</pre>
+                      <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
                     </div>
-                    <button
-                      onClick={() => setError(null)}
-                      className="text-red-500 hover:text-red-700 transition"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                 )}
 
@@ -953,6 +1066,39 @@ Or drag and drop a .txt, .md, or .json file here"
                 </div>
               </div>
             </div>
+    {parsedData && (
+      <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
+            <FileText className="w-6 h-6" />
+            Parsed Results
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => copyToClipboard(JSON.stringify(parsedData, null, 2))}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <button
+              onClick={() => downloadJSON(parsedData, 'parsed-data.json')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </button>
+          </div>
+        </div>
+        <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
+          <pre className={`text-sm ${textClass}`}>
+            {JSON.stringify(parsedData, null, 2)}
+          </pre>
+        </div>
+      </div>
+    )}
 
             {/* Model Info Footer */}
             <div className={`flex items-center justify-between ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -982,95 +1128,6 @@ Or drag and drop a .txt, .md, or .json file here"
               <p>ODRL Policy Generator • Multi-Agent System</p>
               <p>Flexible LLM Configuration • localStorage + Backend Storage</p>
             </div>
-
-            {/* PARSER RESULTS - Show when data is available */}
-            {parsedData && (
-              <div className={`${cardClass} border rounded-xl shadow-sm p-6 mt-6 animate-fade-in`}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-                    <FileText className="w-6 h-6 text-blue-500" />
-                    Parser Results
-                  </h2>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => copyToClipboard(JSON.stringify(parsedData, null, 2))}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                      {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                    <button
-                      onClick={() => downloadJSON(parsedData, 'parsed-data.json')}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      <Download className="w-4 h-4" />
-                      Download
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                  {parsedData.entities && (
-                    <>
-                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-                        <div className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                          {parsedData.entities.assets?.length || 0}
-                        </div>
-                        <div className={`text-sm ${mutedTextClass}`}>Assets</div>
-                      </div>
-                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-green-900/20 border border-green-800' : 'bg-green-50 border border-green-200'}`}>
-                        <div className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                          {parsedData.entities.actions?.length || 0}
-                        </div>
-                        <div className={`text-sm ${mutedTextClass}`}>Actions</div>
-                      </div>
-                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-purple-900/20 border border-purple-800' : 'bg-purple-50 border border-purple-200'}`}>
-                        <div className={`text-2xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                          {parsedData.entities.constraints?.length || 0}
-                        </div>
-                        <div className={`text-sm ${mutedTextClass}`}>Constraints</div>
-                      </div>
-                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-orange-900/20 border border-orange-800' : 'bg-orange-50 border border-orange-200'}`}>
-                        <div className={`text-2xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                          {(parsedData.confidence * 100).toFixed(0)}%
-                        </div>
-                        <div className={`text-sm ${mutedTextClass}`}>Confidence</div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Issues if any */}
-                {parsedData.issues && parsedData.issues.length > 0 && (
-                  <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-yellow-900/20 border border-yellow-800' : 'bg-yellow-50 border border-yellow-200'}`}>
-                    <h3 className={`font-semibold mb-2 ${textClass} flex items-center gap-2`}>
-                      <AlertCircle className="w-4 h-4 text-yellow-500" />
-                      Issues Found ({parsedData.issues.length})
-                    </h3>
-                    <ul className="list-disc list-inside space-y-1">
-                      {parsedData.issues.map((issue, idx) => (
-                        <li key={idx} className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
-                          {issue}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Full JSON output */}
-                <div>
-                  <h3 className={`font-semibold mb-2 ${textClass}`}>Extracted Entities</h3>
-                  <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-                    <pre className={`text-sm ${textClass}`}>
-                      {JSON.stringify(parsedData, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -1086,7 +1143,8 @@ Or drag and drop a .txt, .md, or .json file here"
               </h2>
               <button
                 onClick={() => copyToClipboard(JSON.stringify(reasoningResult, null, 2))}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                aria-label="Copy to clipboard"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                   darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
                 }`}
               >
@@ -1103,38 +1161,40 @@ Or drag and drop a .txt, .md, or .json file here"
         )}
 
         {activeTab === 'generator' && generatedODRL && (
-          <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-                <Code className="w-6 h-6" />
-                Generated ODRL Policy
-              </h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => copyToClipboard(JSON.stringify(generatedODRL.odrl_policy, null, 2))}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                    darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                  }`}
-                >
-                  {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-                <button
-                  onClick={() => downloadJSON(generatedODRL.odrl_policy, 'odrl-policy.json')}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  <Download className="w-4 h-4" />
-                  Download
-                </button>
-              </div>
-            </div>
-            <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-              <pre className={`text-sm ${textClass}`}>
-                {JSON.stringify(generatedODRL.odrl_policy, null, 2)}
-              </pre>
+        <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
+              <Code className="w-6 h-6" />
+              Generated ODRL Policy
+            </h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => copyToClipboard(JSON.stringify(generatedODRL.odrl_policy || generatedODRL.odrl, null, 2))}  // ✅ Fixed
+                aria-label="Copy to clipboard"
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                }`}
+              >
+                {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                onClick={() => downloadJSON(generatedODRL.odrl_policy || generatedODRL.odrl, 'odrl-policy.json')}  // ✅ Fixed
+                aria-label="Download JSON"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
             </div>
           </div>
-        )}
+          <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
+            <pre className={`text-sm ${textClass}`}>
+              {JSON.stringify(generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL, null, 2)}  // ✅ Fixed
+            </pre>
+          </div>
+        </div>
+      )}
 
         {activeTab === 'validator' && validationResult && (
           <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
@@ -1510,6 +1570,31 @@ Or drag and drop a .txt, .md, or .json file here"
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+
+        
+        @keyframes slide-in-right {
+          from {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        
+        .animate-slide-in-right {
+          animation: slide-in-right 0.3s ease-out;
+        }
+        
+        /* Better focus states for accessibility */
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
+          outline: 2px solid #3b82f6;
+          outline-offset: 2px;
         }
       `}</style>
     </div>

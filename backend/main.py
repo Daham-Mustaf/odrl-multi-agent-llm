@@ -116,7 +116,7 @@ app.add_middleware(
 )
 
 # ============================================
-# REQUEST MODELS - ✅ VERIFIED CORRECT
+# REQUEST MODELS
 # ============================================
 
 class ParseRequest(BaseModel):
@@ -126,19 +126,19 @@ class ParseRequest(BaseModel):
     custom_model: Optional[Dict[str, Any]] = None
 
 class ReasonRequest(BaseModel):
-    parsed_data: Dict[str, Any]  # ✅ Expects full parsed result
+    parsed_data: Dict[str, Any]  #
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
 
 class GenerateRequest(BaseModel):
-    reasoning_result: Dict[str, Any]  # ✅ Expects full reasoning result
+    reasoning_result: Dict[str, Any]  
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
 
 class ValidateRequest(BaseModel):
-    odrl_policy: Dict[str, Any]  # ✅ Called odrl_policy
+    odrl_policy: Dict[str, Any]  # 
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
@@ -473,7 +473,7 @@ async def parse_text(request: ParseRequest):
         result['processing_time_ms'] = elapsed_ms
         result['model_used'] = request.model or DEFAULT_MODEL
         
-        logger.info(f"✅ Parse complete: {elapsed_ms}ms")
+        logger.info(f"Parse complete: {elapsed_ms}ms")
         return result
         
     except Exception as e:
