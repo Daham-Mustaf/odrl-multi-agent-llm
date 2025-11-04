@@ -60,8 +60,6 @@ class ParsedPolicy(BaseModel):
     source_text: str
     metadata: Metadata
 
-
-# ✅ NEW: Wrapper for multiple policies
 class ParsedPolicies(BaseModel):
     """Parser output - can contain multiple policies"""
     policies: List[ParsedPolicy]
@@ -69,183 +67,109 @@ class ParsedPolicies(BaseModel):
     total_policies: int
 
 
-PARSER_PROMPT = """You are an ODRL policy parser. Extract structured ODRL-compliant information from user text.
+PARSER_PROMPT = """You are an ODRL policy parser. Extract information EXACTLY as stated by the user.
 
-## IMPORTANT: MULTI-POLICY SUPPORT
-- If the input contains MULTIPLE rules (e.g., "can do X but cannot do Y"), extract them as SEPARATE policies
-- Each permission, prohibition, or duty should be its own policy object
-- Use the same source_text for related policies but give each a unique policy_id
+## YOUR ONLY JOB:
+Extract what the user explicitly wrote. Do NOT:
+- Interpret vague terms
+- Expand ambiguous words
+- Infer missing information
+- Add assumptions
 
-## OUTPUT SCHEMA:
-Return a JSON object with:
-- **policies**: Array of policy objects
-- **raw_text**: Original input
-- **total_policies**: Count of extracted policies
+## EXTRACTION RULES:
 
-Each policy object must have:
-1. **policy_id**: Unique ID (e.g., "p1", "p2")
-2. **policy_type**: One of: "odrl:Set", "odrl:Offer", "odrl:Agreement"
-3. **assigner**: Entity granting the permission/obligation
-4. **assignee**: List of entities receiving the permission/obligation
-5. **rule_type**: "permission", "prohibition", or "duty"
-6. **actions**: List of ODRL action URIs
-7. **targets**: List of resources affected
-8. **constraints**: List of constraint objects
-9. **duties**: List of duty objects
-10. **source_text**: Original input text
-11. **metadata**: Parsing metadata
+### 1. POLICY TYPE:
+- Generic statement ("Users can...") → "odrl:Set"
+- Specific offer ("Netflix offers...") → "odrl:Offer"  
+- Agreement between parties ("Netflix grants User123...") → "odrl:Agreement"
 
-## ODRL ACTION MAPPINGS:
-- "read" → "odrl:read"
-- "print" → "odrl:print"
-- "modify" → "odrl:modify"
-- "distribute" → "odrl:distribute"
-- "collect" → "odrl:reproduce"
-- "store" → "odrl:archive"
-- "use" → "odrl:use"
-- "share" → "odrl:distribute"
-- "delete" → "odrl:delete"
-- "access" → "odrl:read"
-- "stream" → "odrl:play"
-- "download" → "odrl:reproduce"
+### 2. ACTORS:
+- Extract exactly as written
+- If not mentioned → use "not_specified"
+- Examples: "users" → ["user"], "researchers" → ["researcher"]
 
-## ODRL CONSTRAINT STRUCTURE:
-Each constraint must have EXACTLY these three fields:
-- **leftOperand**: The property being constrained (see valid options below)
-- **operator**: MUST be one of the official ODRL operators (see list below)
-- **rightOperand**: The value
+### 3. RULE TYPE:
+- "can", "may", "allowed" → "permission"
+- "cannot", "must not", "prohibited" → "prohibition"
+- "must", "required", "shall" → "duty"
 
-### VALID ODRL OPERATORS (from spec):
-You MUST use ONLY these operators:
-- **odrl:eq** - equals
-- **odrl:gt** - greater than
-- **odrl:gteq** - greater than or equal
-- **odrl:lt** - less than
-- **odrl:lteq** - less than or equal
-- **odrl:neq** - not equal
-- **odrl:isA** - is a member of class
-- **odrl:hasPart** - has part
-- **odrl:isPartOf** - is part of
-- **odrl:isAllOf** - is all of (requires all values)
-- **odrl:isAnyOf** - is any of (matches any value)
+### 4. ACTIONS:
+- If user says specific action (read, print, download) → map to ODRL:
+  * read → odrl:read
+  * write → odrl:write
+  * print → odrl:print
+  * download → odrl:reproduce
+  * share/distribute → odrl:distribute
+  * delete → odrl:delete
+  * modify/edit → odrl:modify
+  * store/archive → odrl:archive
+  * use → odrl:use
+  * play/stream → odrl:play
+  
+- If user says vague term (do, everything, something, things) → keep original text as-is
+- If no action mentioned → actions: []
 
-### VALID LEFT OPERANDS (Common ODRL Terms):
-- **odrl:dateTime** - specific date/time (format: YYYY-MM-DD or ISO 8601)
-- **odrl:delayPeriod** - duration (format: ISO 8601 duration like P30D for 30 days)
-- **odrl:elapsedTime** - time elapsed since some event
-- **odrl:purpose** - purpose of use (e.g., "research", "commercial")
-- **odrl:spatial** - geographic location
-- **odrl:count** - number of uses
-- **odrl:event** - specific event trigger
-- **odrl:industry** - industry sector
-- **odrl:language** - language code
-- **odrl:recipient** - recipient party
-- **odrl:product** - product type
-- **odrl:absolutePosition** - position in sequence
-- **odrl:relativePosition** - relative position
-- **odrl:absoluteSize** - absolute size constraint
-- **odrl:relativeSize** - relative size constraint
+### 5. TARGETS:
+- Extract exactly as written
+- If not mentioned → "not_specified"
 
-## CONSTRAINT EXAMPLES:
-### Temporal Constraints:
-- "expires on December 31, 2025" → 
-  {{"leftOperand": "odrl:dateTime", "operator": "odrl:lteq", "rightOperand": "2025-12-31"}}
+### 6. CONSTRAINTS:
+- Only extract if explicitly stated with condition
+- Structure: leftOperand, operator, rightOperand
 
-- "valid for 30 days" → 
-  {{"leftOperand": "odrl:delayPeriod", "operator": "odrl:eq", "rightOperand": "P30D"}}
+**Common patterns:**
+- Time: "expires on DATE" → leftOperand: "odrl:dateTime", operator: "odrl:lteq", rightOperand: "DATE"
+- Duration: "for X days" → leftOperand: "odrl:delayPeriod", operator: "odrl:eq", rightOperand: "PXD"
+- Purpose: "for PURPOSE" → leftOperand: "odrl:purpose", operator: "odrl:eq", rightOperand: "PURPOSE"
+- Location: "in PLACE" → leftOperand: "odrl:spatial", operator: "odrl:eq", rightOperand: "PLACE"
+- Count: "up to X times" → leftOperand: "odrl:count", operator: "odrl:lteq", rightOperand: "X"
 
-- "after 90 days" → 
-  {{"leftOperand": "odrl:elapsedTime", "operator": "odrl:gteq", "rightOperand": "P90D"}}
+**Valid operators (use only these):**
+odrl:eq, odrl:neq, odrl:lt, odrl:lteq, odrl:gt, odrl:gteq, odrl:isA, odrl:hasPart, odrl:isPartOf, odrl:isAllOf, odrl:isAnyOf
 
-### Purpose Constraints:
-- "for research purposes" → 
-  {{"leftOperand": "odrl:purpose", "operator": "odrl:eq", "rightOperand": "research"}}
+- If no constraint → constraints: []
 
-- "for commercial or educational use" → 
-  {{"leftOperand": "odrl:purpose", "operator": "odrl:isAnyOf", "rightOperand": "commercial,educational"}}
+### 7. DUTIES:
+- Only extract if explicitly stated (e.g., "must attribute", "required to delete")
+- If none → duties: []
 
-### Location Constraints:
-- "in Germany" → 
-  {{"leftOperand": "odrl:spatial", "operator": "odrl:eq", "rightOperand": "Germany"}}
+### 8. MULTI-POLICY:
+- "can X but cannot Y" → 2 policies (1 permission, 1 prohibition)
+- "can X and must Y" → 1 policy with permission + duty
+- Each distinct rule = separate policy
 
-- "within EU countries" → 
-  {{"leftOperand": "odrl:spatial", "operator": "odrl:isPartOf", "rightOperand": "EU"}}
-
-### Count Constraints:
-- "up to 5 times" → 
-  {{"leftOperand": "odrl:count", "operator": "odrl:lteq", "rightOperand": "5"}}
-
-## EXAMPLE (MULTI-POLICY WITH CONSTRAINTS):
-Input: "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025."
-
-Output:
+## OUTPUT FORMAT:
 {{
   "policies": [
     {{
       "policy_id": "p1",
-      "policy_type": "odrl:Set",
-      "assigner": "system",
-      "assignee": ["user"],
-      "rule_type": "permission",
-      "actions": ["odrl:read", "odrl:print"],
-      "targets": ["document"],
+      "policy_type": "odrl:Set|odrl:Offer|odrl:Agreement",
+      "assigner": "string or not_specified",
+      "assignee": ["string"],
+      "rule_type": "permission|prohibition|duty",
+      "actions": ["odrl:action or original_text"],
+      "targets": ["string or not_specified"],
       "constraints": [
         {{
-          "leftOperand": "odrl:dateTime",
-          "operator": "odrl:lteq",
-          "rightOperand": "2025-12-31"
+          "leftOperand": "odrl:term",
+          "operator": "odrl:operator",
+          "rightOperand": "value"
         }}
       ],
       "duties": [],
-      "source_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
-      "metadata": {{
-        "sentence_index": 0,
-        "parser_version": "1.0.0",
-        "timestamp": ""
-      }}
-    }},
-    {{
-      "policy_id": "p2",
-      "policy_type": "odrl:Set",
-      "assigner": "system",
-      "assignee": ["user"],
-      "rule_type": "prohibition",
-      "actions": ["odrl:modify", "odrl:distribute"],
-      "targets": ["document"],
-      "constraints": [
-        {{
-          "leftOperand": "odrl:dateTime",
-          "operator": "odrl:lteq",
-          "rightOperand": "2025-12-31"
-        }}
-      ],
-      "duties": [],
-      "source_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
-      "metadata": {{
-        "sentence_index": 0,
-        "parser_version": "1.0.0",
-        "timestamp": ""
-      }}
+      "source_text": "original input",
+      "metadata": {{"sentence_index": 0, "parser_version": "1.0.0", "timestamp": ""}}
     }}
   ],
-  "raw_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
-  "total_policies": 2
+  "raw_text": "original input",
+  "total_policies": 1
 }}
 
-## CRITICAL RULES:
-1. NEVER invent operators - use ONLY the 11 official ODRL operators listed above
-2. NEVER invent leftOperands - use ONLY standard ODRL terms or keep user's original term
-3. Keep user's original wording in rightOperand (don't translate "user" to something else)
-4. If unsure about a constraint, use the closest matching leftOperand and operator
-5. For temporal constraints about expiration, use odrl:dateTime with odrl:lteq
+## CORE PRINCIPLE:
+Be a faithful extractor, not an interpreter. When in doubt, preserve the user's exact wording.
 
-CRITICAL GUARANTEE:
-Do not alter or reinterpret user intent. If something cannot be confidently mapped to an ODRL term, preserve the original text in the output (e.g., under actions or constraints as raw strings).
-
-## YOUR TASK:
-Parse the following text and return valid JSON matching the schema above.
-
-Input: {text}
+Parse this text:
+{text}
 
 {format_instructions}
 """

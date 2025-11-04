@@ -44,7 +44,7 @@ class Generator:
         self.llm = LLMFactory.create_llm(
             model=model,
             temperature=temperature,
-            custom_config=custom_config  # ✅ PASS IT HERE
+            custom_config=custom_config  # 
         )
         
         # STEP 2: Create prompt
