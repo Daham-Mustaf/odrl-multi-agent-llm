@@ -97,30 +97,30 @@ const DebugPanel = ({
   };
 
   // Toggle button (when hidden)
-  if (!showDebug) {
-    return (
-      <button
-        onClick={() => setShowDebug(true)}
-        className={`fixed bottom-4 right-4 p-3 rounded-full shadow-lg z-40 transition-all transform hover:scale-110 ${
-          darkMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-purple-500 hover:bg-purple-600'
-        } text-white group`}
-        title="Open Debug Console (Ctrl + D)"
-      >
-        <Bug className="w-5 h-5" />
-        <span className="absolute bottom-full right-0 mb-2 px-2 py-1 text-xs bg-gray-800 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-          Debug Panel (Ctrl+D)
-        </span>
-      </button>
-    );
-  }
-
+if (!showDebug) {
   return (
-    <div
-      className={`fixed bottom-4 right-4 w-96 max-h-[600px] rounded-lg shadow-2xl z-40 border transition-all duration-300 transform ${
-        showDebug ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-      } ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
-      style={{ display: showDebug ? 'block' : 'none' }}
+    <button
+      onClick={() => setShowDebug(true)}
+      className={`fixed top-24 right-4 p-3 rounded-full shadow-lg z-40 transition-all transform hover:scale-110 ${
+        darkMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-purple-500 hover:bg-purple-600'
+      } text-white group`}
+      title="Open Debug Console (Ctrl + D)"
     >
+      <Bug className="w-5 h-5" />
+      <span className="absolute bottom-full right-0 mb-2 px-2 py-1 text-xs bg-gray-800 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+        Debug Panel (Ctrl+D)
+      </span>
+    </button>
+  );
+}
+
+return (
+  <div
+    className={`fixed top-24 right-4 w-96 max-h-[calc(100vh-120px)] rounded-lg shadow-2xl z-40 border transition-all duration-300 transform ${
+      showDebug ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+    } ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+    style={{ display: showDebug ? 'block' : 'none' }}
+  >
       {/* Header */}
       <div
         className={`sticky top-0 flex items-center justify-between px-4 py-3 border-b ${

@@ -13,6 +13,11 @@ import time
 import json
 import logging
 from fastapi import UploadFile, File
+from fastapi import FastAPI, HTTPException, Request  
+from fastapi.responses import JSONResponse 
+
+# Add this import
+from utils.request_utils import run_with_disconnect_check
 
 # Load environment first
 from dotenv import load_dotenv
@@ -65,7 +70,7 @@ except ImportError as e:
     FILE_PARSER_AVAILABLE = False
 
 # ============================================
-# CUSTOM MODELS STORAGE (NOW IN config/)
+# CUSTOM MODELS STORAGE (IN config/)
 # ============================================
 
 def load_custom_models_from_file():
@@ -259,19 +264,19 @@ async def parse_file(file: UploadFile = File(...)):
             detail="File parser not available. Install: pip install pypdf python-docx"
         )
     
-    logger.info(f"📁 File upload: {file.filename} (Content-Type: {file.content_type})")
+    logger.info(f"File upload: {file.filename} (Content-Type: {file.content_type})")
     
     try:
         result = await parse_uploaded_file(file)
         
-        logger.info(f"✅ Parsed successfully: {result['characters']} characters")
+        logger.info(f"Parsed successfully: {result['characters']} characters")
         return result
         
     except HTTPException:
         # Re-raise HTTP exceptions (validation errors)
         raise
     except Exception as e:
-        logger.error(f"❌ Unexpected error: {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, 
             detail=f"Unexpected error: {str(e)}"
@@ -337,7 +342,7 @@ async def add_custom_model(model: CustomModelRequest):
         
         # Save to file
         if save_custom_models_to_file(models):
-            logger.info(f"✅ Custom model {action}: {model.name}")
+            logger.info(f"Custom model {action}: {model.name}")
             return {
                 "success": True,
                 "action": action,
@@ -369,7 +374,7 @@ async def delete_custom_model(model_value: str):
         
         # Save updated list
         if save_custom_models_to_file(models):
-            logger.info(f"🗑️  Deleted custom model: {model_value}")
+            logger.info(f" Deleted custom model: {model_value}")
             return {
                 "success": True,
                 "message": "Model deleted successfully",
@@ -426,7 +431,7 @@ async def import_custom_models(data: Dict[str, Any]):
         
         # Save to file
         if save_custom_models_to_file(existing_models):
-            logger.info(f"📥 Imported models: {added} added, {updated} updated")
+            logger.info(f"Imported models: {added} added, {updated} updated")
             return {
                 "success": True,
                 "added": added,
@@ -443,148 +448,194 @@ async def import_custom_models(data: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# AGENT ENDPOINTS - ✅ VERIFIED CORRECT
+# AGENT ENDPOINTS
 # ============================================
-
 @app.post("/api/parse")
-async def parse_text(request: ParseRequest):
-    """Agent 1: Parse text - Extract entities from natural language"""
+async def parse_text(request: Request, data: ParseRequest): 
+    """Agent 1: Parse text with disconnect detection"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"📝 Parse request: model={request.model}")
+    if await request.is_disconnected():
+        logger.warning("⚠️  Client disconnected before parsing started")
+        return JSONResponse(
+            status_code=499,  # Client Closed Request
+            content={"detail": "Request cancelled by client"}
+        )
+    
+    logger.info(f"Parse request: model={data.model}")
     start = time.time()
     
     try:
-        # Handle custom model
-        if request.custom_model:
-            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+        # Create parser
+        if data.custom_model:
+            logger.info(f"Using custom model: {data.custom_model.get('provider_type')} - {data.custom_model.get('model_id')}")
             parser = TextParser(
-                model=request.model,
-                temperature=request.temperature,
-                custom_config=request.custom_model
+                model=data.model,
+                temperature=data.temperature,
+                custom_config=data.custom_model
             )
         else:
-            parser = TextParser(model=request.model, temperature=request.temperature)
+            parser = TextParser(model=data.model, temperature=data.temperature)
         
-        result = parser.parse(request.text)
+        result = await run_with_disconnect_check(
+            parser.parse,
+            request,
+            data.text
+        )
+        
+        if result is None:
+            logger.warning("⚠️  Parsing cancelled by client")
+            return JSONResponse(
+                status_code=499,
+                content={"detail": "Request cancelled by client"}
+            )
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL
+        result['model_used'] = data.model or DEFAULT_MODEL
         
         logger.info(f"Parse complete: {elapsed_ms}ms")
         return result
         
     except Exception as e:
-        logger.error(f"❌ Parse error: {e}")
+        logger.error(f"Parse error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/reason")
-async def reason(request: ReasonRequest):
-    """Agent 2: Reason - Analyze parsed data and determine ODRL structure"""
+async def reason(request: Request, data: ReasonRequest): 
+    """Agent 2: Reason with disconnect detection"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"🧠 Reason request: model={request.model}")
+    if await request.is_disconnected():
+        logger.warning("⚠️  Client disconnected before reasoning")
+        return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
+    
+    logger.info(f"Reason request: model={data.model}")
     start = time.time()
     
     try:
-        # Handle custom model
-        if request.custom_model:
-            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+        if data.custom_model:
             reasoner = Reasoner(
-                model=request.model,
-                temperature=request.temperature,
-                custom_config=request.custom_model
+                model=data.model,
+                temperature=data.temperature,
+                custom_config=data.custom_model
             )
         else:
-            reasoner = Reasoner(model=request.model, temperature=request.temperature)
+            reasoner = Reasoner(model=data.model, temperature=data.temperature)
         
-        # ✅ Pass the entire parsed_data object
-        result = reasoner.reason(request.parsed_data)
+        result = await run_with_disconnect_check(
+            reasoner.reason,
+            request,
+            data.parsed_data
+        )
+        
+        if result is None:
+            return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL
+        result['model_used'] = data.model or DEFAULT_MODEL
         
-        logger.info(f"✅ Reason complete: {elapsed_ms}ms")
+        logger.info(f"Reason complete: {elapsed_ms}ms")
         return result
         
     except Exception as e:
-        logger.error(f"❌ Reason error: {e}")
+        logger.error(f"Reason error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/generate")
-async def generate_odrl(request: GenerateRequest):
-    """Agent 3: Generate - Create ODRL JSON-LD policy"""
+async def generate_odrl(request: Request, data: GenerateRequest): 
+    """Agent 3: Generate with disconnect detection"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"⚙️  Generate request: model={request.model}")
+    if await request.is_disconnected():
+        logger.warning("⚠️  Client disconnected before generation")
+        return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
+    
+    logger.info(f" Generate request: model={data.model}")
     start = time.time()
     
     try:
-        # Handle custom model
-        if request.custom_model:
-            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+        if data.custom_model:
             generator = Generator(
-                model=request.model,
-                temperature=request.temperature,
-                custom_config=request.custom_model
+                model=data.model,
+                temperature=data.temperature,
+                custom_config=data.custom_model
             )
         else:
-            generator = Generator(model=request.model, temperature=request.temperature)
+            generator = Generator(model=data.model, temperature=data.temperature)
         
-        # ✅ Pass the entire reasoning_result object
-        odrl_policy = generator.generate(request.reasoning_result)
+        odrl_policy = await run_with_disconnect_check(
+            generator.generate,
+            request,
+            data.reasoning_result
+        )
+        
+        if odrl_policy is None:
+            return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
         
         elapsed_ms = int((time.time() - start) * 1000)
         
-        logger.info(f"✅ Generate complete: {elapsed_ms}ms")
+        logger.info(f"Generate complete: {elapsed_ms}ms")
         return {
-            'odrl_policy': odrl_policy,  # ✅ Returns as odrl_policy
+            'odrl_policy': odrl_policy,
             'processing_time_ms': elapsed_ms,
-            'model_used': request.model or DEFAULT_MODEL
+            'model_used': data.model or DEFAULT_MODEL
         }
         
     except Exception as e:
-        logger.error(f"❌ Generate error: {e}")
+        logger.error(f"Generate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/validate")
-async def validate_odrl(request: ValidateRequest):
-    """Agent 4: Validate - Check ODRL policy compliance"""
+async def validate_odrl(request: Request, data: ValidateRequest): 
+    """Agent 4: Validate with disconnect detection"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
-    logger.info(f"🛡️  Validate request: model={request.model}")
+    if await request.is_disconnected():
+        logger.warning("⚠️  Client disconnected before validation")
+        return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
+    
+    logger.info(f"Validate request: model={data.model}")
     start = time.time()
     
     try:
-        # Handle custom model
-        if request.custom_model:
-            logger.info(f"🔧 Using custom model: {request.custom_model.get('provider_type')} - {request.custom_model.get('model_id')}")
+        if data.custom_model:
             validator = SHACLValidator(
-                model=request.model,
-                temperature=request.temperature,
-                custom_config=request.custom_model
+                model=data.model,
+                temperature=data.temperature,
+                custom_config=data.custom_model
             )
         else:
-            validator = SHACLValidator(model=request.model, temperature=request.temperature)
+            validator = SHACLValidator(model=data.model, temperature=data.temperature)
         
-        result = validator.validate(request.odrl_policy)
+        result = await run_with_disconnect_check(
+            validator.validate,
+            request,
+            data.odrl_policy
+        )
+        
+        if result is None:
+            return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
         
         elapsed_ms = int((time.time() - start) * 1000)
         result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = request.model or DEFAULT_MODEL
+        result['model_used'] = data.model or DEFAULT_MODEL
         
-        logger.info(f"✅ Validate complete: {elapsed_ms}ms - Valid: {result.get('is_valid', False)}")
+        logger.info(f"Validate complete: {elapsed_ms}ms")
         return result
         
     except Exception as e:
-        logger.error(f"❌ Validate error: {e}")
+        logger.error(f"Validate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============================================
 # STARTUP

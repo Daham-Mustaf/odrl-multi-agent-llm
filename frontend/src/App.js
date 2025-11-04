@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { encodingForModel } from 'js-tiktoken';
 import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import DebugPanel from './DebugPanel'; 
+import { useAbortController } from './hooks/useAbortController';
+import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
+import { ChatHistory } from './components/ChatHistory';
+import { StopButton } from './components/StopButton';
 
 
 // ============================================
@@ -84,7 +88,16 @@ const ODRLDemo = () => {
     generator: null,
     validator: null
   });
-  
+  const [viewMode, setViewMode] = useState('visual'); // Add this with other useState declarations
+  const {
+  history,
+  addToHistory,
+  clearHistory
+  } = useChatHistory(50);
+  const [currentHistoryId, setCurrentHistoryId] = useState(null);
+  const [completedStages, setCompletedStages] = useState([]);
+  const { getSignal, abort } = useAbortController();
+
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [backendConnected, setBackendConnected] = useState(false);
@@ -370,28 +383,42 @@ const ODRLDemo = () => {
     }
   };
 
-  const callAPI = async (endpoint, body) => {
-    const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+  const callAPI = async (endpoint, body, signal = null) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal  
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
+      if (response.status === 499) {
+        throw new Error('Request cancelled by user');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+      
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request cancelled by user');
+      }
+      
+      if (error.message === 'Failed to fetch') {
+        throw new Error('Network error - check if backend is running');
+      }
+      
+      throw error;
     }
-
-    return response.json();
   };
 
   const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
-
-// Fixed handleProcess function for your React component
-// Replace your existing handleProcess function with this one
-
 const handleProcess = async () => {
   if (!inputText.trim()) {
     setError('Please enter a policy description');
@@ -408,7 +435,19 @@ const handleProcess = async () => {
   setGeneratedODRL(null);
   setValidationResult(null);
 
-  const startTimes = { parse: Date.now(), reason: 0, generate: 0, validate: 0 };
+  const startTimes = { 
+    total: Date.now(),
+    parse: Date.now(), 
+    reason: 0, 
+    generate: 0, 
+    validate: 0 
+  };
+
+  //Get abort signal for cancellation support
+  const signal = getSignal();
+  
+  //Track completed stages for history
+  const completedStages = [];
 
   // Helper function to get custom model config if it's a custom model
   const getModelConfig = (modelValue) => {
@@ -431,7 +470,9 @@ const handleProcess = async () => {
   };
 
   try {
-    // PARSE
+    // ============================================
+    // STAGE 1: PARSE
+    // ============================================
     updateAgentState('parser', 'processing');
     setProcessingStage('Parsing policy text...');
     setProcessingProgress(10);
@@ -443,19 +484,22 @@ const handleProcess = async () => {
       text: inputText,
       model: parserModel,
       temperature,
-      custom_model: parserCustomConfig  // Pass custom config if it exists
-    });
+      custom_model: parserCustomConfig
+    }, signal);  
     
     setParsedData(parseResult);
     setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
     updateAgentState('parser', 'completed');
+    completedStages.push('parser');  
     setProcessingProgress(25);
     showToast('Policy parsed successfully!', 'success');
 
     if (autoProgress) setActiveTab('reasoner');
     startTimes.reason = Date.now();
 
-    // REASON
+    // ============================================
+    // STAGE 2: REASON
+    // ============================================
     updateAgentState('reasoner', 'processing');
     setProcessingStage('Reasoning about policy...');
     setProcessingProgress(30);
@@ -467,19 +511,22 @@ const handleProcess = async () => {
       parsed_data: parseResult,
       model: reasonerModel,
       temperature,
-      custom_model: reasonerCustomConfig  // Pass custom config if it exists
-    });
+      custom_model: reasonerCustomConfig
+    }, signal);  
     
     setReasoningResult(reasonResult);
     setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
     updateAgentState('reasoner', 'completed');
+    completedStages.push('reasoner');  
     setProcessingProgress(50);
     showToast('Reasoning completed!', 'success');
 
     if (autoProgress) setActiveTab('generator');
     startTimes.generate = Date.now();
 
-    // GENERATE
+    // ============================================
+    // STAGE 3: GENERATE
+    // ============================================
     updateAgentState('generator', 'processing');
     setProcessingStage('Generating ODRL policy...');
     setProcessingProgress(55);
@@ -491,19 +538,22 @@ const handleProcess = async () => {
       reasoning_result: reasonResult,
       model: generatorModel,
       temperature,
-      custom_model: generatorCustomConfig  // Pass custom config if it exists
-    });
+      custom_model: generatorCustomConfig
+    }, signal); 
     
     setGeneratedODRL(genResult);
     setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
     updateAgentState('generator', 'completed');
+    completedStages.push('generator'); 
     setProcessingProgress(75);
     showToast('ODRL policy generated!', 'success');
 
     if (autoProgress) setActiveTab('validator');
     startTimes.validate = Date.now();
 
-    // VALIDATE
+    // ============================================
+    // STAGE 4: VALIDATE
+    // ============================================
     updateAgentState('validator', 'processing');
     setProcessingStage('Validating ODRL policy...');
     setProcessingProgress(80);
@@ -515,28 +565,158 @@ const handleProcess = async () => {
       odrl_policy: genResult.odrl_policy,
       model: validatorModel,
       temperature,
-      custom_model: validatorCustomConfig  // Pass custom config if it exists
-    });
+      custom_model: validatorCustomConfig
+    }, signal);  
     
     setValidationResult(valResult);
     setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
     updateAgentState('validator', 'completed');
+    completedStages.push('validator');  
     setProcessingProgress(100);
     showToast('Validation complete!', 'success');
 
+    // ============================================
+    // SAVE TO HISTORY (Success)
+    // ============================================
+    const totalTime = Date.now() - startTimes.total;
+    const historyItem = createHistoryItem({
+      inputText,
+      selectedModel,
+      temperature,
+      completedStages,
+      parsedData: parseResult,
+      reasoningResult: reasonResult,
+      generatedODRL: genResult,
+      validationResult: valResult,
+      totalTime,
+      metrics: {
+        parseTime: Date.now() - startTimes.parse,
+        reasonTime: Date.now() - startTimes.reason,
+        generateTime: Date.now() - startTimes.generate,
+        validateTime: Date.now() - startTimes.validate
+      },
+      status: 'completed'
+    });
+    
+    const historyId = addToHistory(historyItem);
+    setCurrentHistoryId(historyId);
+    console.log('Session saved to history:', historyId);
+
   } catch (err) {
-    setError(err.message);
-    showToast(`Error: ${err.message}`, 'error');
+  const errorMessage = 
+    (err instanceof Error ? err.message : null) ||
+    (typeof err === 'string' ? err : null) ||
+    err?.message ||
+    err?.detail ||
+    'An error occurred';
+  
+  console.log('Final message:', errorMessage);
+  
+  if (errorMessage === 'Request cancelled by user') {
+    setError(null); 
+    showToast('Processing cancelled', 'warning');
+    
+    Object.keys(agentStates).forEach(agent => {
+      if (agentStates[agent] === 'processing') {
+        updateAgentState(agent, 'cancelled');
+      }
+    });
+  } else {
+    setError(errorMessage);
+    showToast(`Error: ${errorMessage}`, 'error');
+    
     Object.keys(agentStates).forEach(agent => {
       if (agentStates[agent] === 'processing') {
         updateAgentState(agent, 'error');
       }
     });
+  }
+  
+  // Save to history
+  const historyItem = createHistoryItem({
+    inputText,
+    selectedModel,
+    temperature,
+    completedStages,
+    error: errorMessage,
+    status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
+    totalTime: Date.now() - startTimes.total,
+    metrics
+  });
+  addToHistory(historyItem);
+    
   } finally {
     setLoading(false);
     setProcessingProgress(0);
     setProcessingStage('');
   }
+};
+
+// ============================================
+// handleStop Function
+// ============================================
+const handleStop = () => {
+  console.log('Stop button clicked - cancelling operations');
+  
+  // Abort all ongoing API calls
+  abort();
+  
+  // Reset loading state
+  setLoading(false);
+  setProcessingProgress(0);
+  setProcessingStage('');
+  
+  // Mark processing agents as cancelled
+  Object.keys(agentStates).forEach(agent => {
+    if (agentStates[agent] === 'processing') {
+      updateAgentState(agent, 'cancelled');
+    }
+  });
+  
+  showToast('Processing stopped', 'info'); 
+};
+
+// ============================================
+// handleLoadHistory Function
+// ============================================
+const handleLoadHistory = (historyItem) => {
+  console.log('Loading history item:', historyItem.id);
+
+  // Restore input
+  setInputText(historyItem.inputText);
+  setSelectedModel(historyItem.model || selectedModel);
+  setTemperature(historyItem.temperature || 0.3);
+
+  // Restore results if available
+  if (historyItem.parsedData) {
+    setParsedData(historyItem.parsedData);
+    updateAgentState('parser', 'completed');
+  }
+  if (historyItem.reasoningResult) {
+    setReasoningResult(historyItem.reasoningResult);
+    updateAgentState('reasoner', 'completed');
+  }
+  if (historyItem.generatedODRL) {
+    setGeneratedODRL(historyItem.generatedODRL);
+    updateAgentState('generator', 'completed');
+  }
+  if (historyItem.validationResult) {
+    setValidationResult(historyItem.validationResult);
+    updateAgentState('validator', 'completed');
+  }
+
+  // Restore metrics
+  if (historyItem.metrics) {
+    setMetrics(historyItem.metrics);
+  }
+
+  // Set active tab to first completed stage or parser
+  if (historyItem.completedStages && historyItem.completedStages.length > 0) {
+    setActiveTab(historyItem.completedStages[0]);
+  }
+
+  setCurrentHistoryId(historyItem.id);
+  showToast('History loaded successfully', 'success');
 };
 
   const handleFileUpload = async (file) => {
@@ -1110,39 +1290,211 @@ Or drag and drop a .txt, .md, or .json file here"
                 </div>
               </div>
             </div>
-    {parsedData && (
-      <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-            <FileText className="w-6 h-6" />
-            Parsed Results
-          </h2>
-          <div className="flex gap-2">
+ {parsedData && (
+  <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden animate-fade-in`}>
+    {/* Header */}
+    <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div className="flex items-center justify-between">
+        <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
+          <FileText className="w-6 h-6" />
+          Parsed Results
+        </h2>
+        <div className="flex gap-2">
+          {/* View Toggle */}
+          <div className={`flex items-center gap-1 p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <button
-              onClick={() => copyToClipboard(JSON.stringify(parsedData, null, 2))}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              onClick={() => setViewMode('visual')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition ${
+                viewMode === 'visual'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied!' : 'Copy'}
+              👁️ Visual
             </button>
             <button
-              onClick={() => downloadJSON(parsedData, 'parsed-data.json')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              onClick={() => setViewMode('json')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition ${
+                viewMode === 'json'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
-              <Download className="w-4 h-4" />
-              Download
+              {} JSON
             </button>
           </div>
+          
+          <button
+            onClick={() => copyToClipboard(JSON.stringify(parsedData, null, 2))}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+              darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            onClick={() => downloadJSON(parsedData, 'parsed-data.json')}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            <Download className="w-4 h-4" />
+            Download
+          </button>
         </div>
+      </div>
+    </div>
+
+    {/* Content Area */}
+    <div className="p-6">
+      {viewMode === 'json' ? (
+        // JSON View
         <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
           <pre className={`text-sm ${textClass}`}>
             {JSON.stringify(parsedData, null, 2)}
           </pre>
         </div>
-      </div>
-    )}
+      ) : (
+        // Visual View
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className={`p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <Info className="w-5 h-5 text-blue-500" />
+              <span className={`font-semibold ${textClass}`}>Summary</span>
+            </div>
+            <p className={`text-sm ${mutedTextClass}`}>
+              Found <strong className={textClass}>{parsedData.total_policies || 1}</strong> {parsedData.total_policies === 1 ? 'policy' : 'policies'} in the input text
+            </p>
+          </div>
+
+          {/* Policies */}
+          {(parsedData.policies || [parsedData]).map((policy, idx) => {
+            const ruleColors = {
+              permission: { bg: 'bg-green-500', text: 'text-green-600 dark:text-green-400', light: darkMode ? 'bg-green-900/20' : 'bg-green-50', icon: '✓' },
+              prohibition: { bg: 'bg-red-500', text: 'text-red-600 dark:text-red-400', light: darkMode ? 'bg-red-900/20' : 'bg-red-50', icon: '✗' },
+              duty: { bg: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400', light: darkMode ? 'bg-blue-900/20' : 'bg-blue-50', icon: '!' }
+            };
+            const colors = ruleColors[policy.rule_type] || ruleColors.permission;
+
+            return (
+              <div key={idx} className={`border-2 rounded-xl p-5 ${colors.light} ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                {/* Policy Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-10 h-10 rounded-lg ${colors.bg} flex items-center justify-center text-white text-xl font-bold shadow-lg`}>
+                    {colors.icon}
+                  </div>
+                  <div className="flex-1">
+                    <div className={`text-lg font-bold ${colors.text} uppercase`}>
+                      {policy.rule_type}
+                    </div>
+                    <div className={`text-xs ${mutedTextClass}`}>
+                      Policy ID: {policy.policy_id}
+                    </div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                    {policy.policy_type}
+                  </div>
+                </div>
+
+                {/* Original Text */}
+                <div className={`mb-4 p-3 rounded-lg ${darkMode ? 'bg-gray-800/50' : 'bg-white/70'}`}>
+                  <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>📝 Original Text:</div>
+                  <p className={`text-sm italic ${textClass}`}>"{policy.source_text}"</p>
+                </div>
+
+                {/* Details Grid */}
+                <div className="space-y-3">
+                  {/* Actors */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>👤 Assigner:</div>
+                      <div className={`px-3 py-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                        <span className={`text-sm font-medium ${textClass}`}>{policy.assigner}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>👥 Assignee:</div>
+                      <div className={`px-3 py-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                        <span className={`text-sm font-medium ${textClass}`}>
+                          {Array.isArray(policy.assignee) ? policy.assignee.join(', ') : policy.assignee}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  {policy.actions && policy.actions.length > 0 && (
+                    <div>
+                      <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>⚡ Actions:</div>
+                      <div className="flex flex-wrap gap-2">
+                        {policy.actions.map((action, i) => (
+                          <span key={i} className={`px-3 py-1 rounded-full text-sm font-medium ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>
+                            {action}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Targets */}
+                  {policy.targets && policy.targets.length > 0 && (
+                    <div>
+                      <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>🎯 Targets:</div>
+                      <div className="flex flex-wrap gap-2">
+                        {policy.targets.map((target, i) => (
+                          <span key={i} className={`px-3 py-1 rounded-full text-sm font-medium ${darkMode ? 'bg-orange-900/30 text-orange-400' : 'bg-orange-100 text-orange-700'}`}>
+                            {target}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Constraints */}
+                  {policy.constraints && policy.constraints.length > 0 && (
+                    <div>
+                      <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>🔒 Constraints:</div>
+                      <div className="space-y-2">
+                        {policy.constraints.map((constraint, i) => (
+                          <div key={i} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <code className={`text-xs ${textClass}`}>
+                              {constraint.leftOperand} {constraint.operator} {constraint.rightOperand}
+                            </code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Duties */}
+                  {policy.duties && policy.duties.length > 0 && (
+                    <div>
+                      <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>✅ Duties:</div>
+                      <div className="space-y-2">
+                        {policy.duties.map((duty, i) => (
+                          <div key={i} className={`p-3 rounded-lg ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>
+                            <div className={`text-sm font-medium ${textClass}`}>{duty.action}</div>
+                            {duty.constraints && duty.constraints.length > 0 && (
+                              <div className={`text-xs ${mutedTextClass} mt-1`}>
+                                {duty.constraints.map((c, j) => (
+                                  <div key={j}>{c.leftOperand} {c.operator} {c.rightOperand}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {/* Model Info Footer */}
             <div className={`flex items-center justify-between ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -1175,9 +1527,6 @@ Or drag and drop a .txt, .md, or .json file here"
           </div>
         )}
 
-        {/* [KEEP ALL OTHER TABS - reasoner, generator, validator - EXACTLY AS THEY ARE IN THE ORIGINAL CODE] */}
-        {/* For brevity, I'm not repeating the entire code for other tabs, but they should remain unchanged */}
-        
         {activeTab === 'reasoner' && reasoningResult && (
           <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
             <div className="flex items-center justify-between mb-4">
@@ -1287,7 +1636,7 @@ Or drag and drop a .txt, .md, or .json file here"
         )}
       </div>
 
-      {/* SETTINGS MODAL - Keep all existing settings modal code unchanged */}
+      {/* SETTINGS MODAL*/}
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto`}>
@@ -1592,7 +1941,7 @@ Or drag and drop a .txt, .md, or .json file here"
           </div>
         </div>
       )}
-      
+
       {/* DebugPanel*/}
         <DebugPanel 
           darkMode={darkMode}
@@ -1602,6 +1951,19 @@ Or drag and drop a .txt, .md, or .json file here"
           advancedMode={advancedMode}
           temperature={temperature}
         />
+        <StopButton
+        isProcessing={loading}
+        onStop={handleStop}
+        currentStage={processingStage}
+        darkMode={darkMode}
+      />
+
+      <ChatHistory
+        history={history}
+        onLoadHistory={handleLoadHistory}
+        onClearHistory={clearHistory}
+        darkMode={darkMode}
+      />
 
 
 

@@ -64,3 +64,6 @@ coverage/
 # Temporary files
 *.tmp
 *.swp
+
+Archit.md
+App.test.js

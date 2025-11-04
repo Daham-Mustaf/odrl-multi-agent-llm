@@ -1,84 +1,7 @@
-# """
-# How LLMs Are Actually Used Inside Each Agent
-# ==============================================
-
-# This shows the exact pattern of how self.llm is used in each agent.
-# All agents follow the same pattern:
-
-# 1. Initialize LLM in __init__ using factory
-# 2. Create a ChatPromptTemplate
-# 3. Build a chain: prompt | self.llm | parser
-# 4. Invoke the chain with input data
-# """
-
-# from typing import Dict, Any, List
-# from langchain.prompts import ChatPromptTemplate
-# from langchain.output_parsers import PydanticOutputParser
-# from langchain_core.output_parsers import JsonOutputParser
-# from pydantic import BaseModel, Field
-# from utils.llm_factory import LLMFactory
-# import os
-
-# # ============================================
-# # AGENT 1: TEXT PARSER
-# # ============================================
-
-# class PolicyAction(BaseModel):
-#     action: str
-#     sentence: str
-
-# class ParsedPolicy(BaseModel):
-#     permissions: List[PolicyAction]
-#     prohibitions: List[PolicyAction]
-#     summary: str
-
-# class TextParser:
-#     """Agent 1: Shows how LLM is used for parsing"""
-    
-#     def __init__(self, model: str = None, temperature: float = None):
-#         # STEP 1: Create LLM using factory
-#         llm_temp = temperature if temperature is not None else float(
-#             os.getenv("LLM_TEMPERATURE_PRECISE", "0.3")
-#         )
-        
-#         print(f"[TextParser] Creating LLM: model={model}, temp={llm_temp}")
-#         self.llm = LLMFactory.create_llm(model=model, temperature=llm_temp)
-        
-#         # STEP 2: Create prompt template
-#         self.parse_prompt = ChatPromptTemplate.from_messages([
-#             ("system", "You are a policy parsing expert. Extract permissions and prohibitions."),
-#             ("human", "Parse this policy:\n\n{text}\n\n{format_instructions}")
-#         ])
-        
-#         # STEP 3: Create parser
-#         self.parser = PydanticOutputParser(pydantic_object=ParsedPolicy)
-    
-#     def parse(self, text: str) -> Dict[str, Any]:
-#         """Shows how LLM is invoked"""
-#         print(f"[TextParser] Parsing with LLM: {type(self.llm).__name__}")
-        
-#         # STEP 4: Build chain - THIS IS WHERE LLM IS USED
-#         chain = self.parse_prompt | self.llm | self.parser
-#         #       ↑ Prompt        ↑ LLM     ↑ Output Parser
-        
-#         # STEP 5: Invoke the chain
-#         result = chain.invoke({
-#             "text": text,
-#             "format_instructions": self.parser.get_format_instructions()
-#         })
-        
-#         # What happens internally:
-#         # 1. Prompt template formats the input
-#         # 2. self.llm.invoke() sends to LLM (Groq/Ollama/OpenAI/Anthropic)
-#         # 3. Parser extracts structured data from LLM response
-        
-#         return result.dict()
-
 """
 Agent 1: ODRL Parser
-Extracts structured information from user text with full tracing
+Extracts structured ODRL-aligned information from user text
 """
-
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -86,339 +9,297 @@ from datetime import datetime
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from utils.llm_factory import LLMFactory
-import os
+
 
 # ===== ENUMS =====
-
 class PolicyType(str, Enum):
-    SET = "Set"
-    OFFER = "Offer"
-    AGREEMENT = "Agreement"
+    SET = "odrl:Set"
+    OFFER = "odrl:Offer"
+    AGREEMENT = "odrl:Agreement"
+
 
 class RuleType(str, Enum):
     PERMISSION = "permission"
     PROHIBITION = "prohibition"
     DUTY = "duty"
 
-class CompletenessStatus(str, Enum):
-    COMPLETE = "complete"
-    INCOMPLETE = "incomplete"
-    NEEDS_INFERENCE = "needs_inference"
 
 # ===== MODELS =====
+class Constraint(BaseModel):
+    """ODRL Constraint"""
+    leftOperand: str = Field(description="ODRL leftOperand URI")
+    operator: str = Field(description="ODRL operator URI")
+    rightOperand: str = Field(description="Value")
 
-class ExtractionIssue(BaseModel):
-    """Track extraction problems"""
-    category: str
-    severity: str  # critical, high, medium, low
-    description: str
-    field: str
-    user_text: Optional[str] = None
-    suggestion: Optional[str] = None
 
-class AssetExtraction(BaseModel):
-    """Asset with trace"""
-    identifier: str
-    asset_type: Optional[str] = None
-    source_text: str
-    is_vague: bool = False
-    is_collection: bool = False
-    confidence: float = 0.8
-    notes: str = ""
+class Duty(BaseModel):
+    """ODRL Duty (obligation attached to permission)"""
+    action: str = Field(description="ODRL action URI")
+    constraints: List[Constraint] = Field(default_factory=list)
 
-class ActionExtraction(BaseModel):
-    """Action with trace"""
-    rule_type: RuleType
-    action_raw: str
-    action_mapped: Optional[str] = None
-    source_sentence: str
-    is_standard_odrl: bool = True
-    mapping_confidence: float = 0.8
-    alternative_mappings: List[str] = []
-    notes: str = ""
 
-class ConstraintExtraction(BaseModel):
-    """Constraint with full trace"""
-    constraint_type: str
-    user_text: str
-    
-    # ODRL mapping
-    left_operand: Optional[str] = None
-    operator: Optional[str] = None
-    right_operand: Optional[str] = None
-    unit: Optional[str] = None
-    data_type: Optional[str] = None
-    
-    # Completeness
-    status: CompletenessStatus
-    missing_components: List[str] = []
-    missing_info: str = ""
-    extraction_reasoning: str = ""
-    confidence: float = 0.8
+class Metadata(BaseModel):
+    """Metadata about parsing"""
+    sentence_index: int = 0
+    parser_version: str = "1.0.0"
+    timestamp: str = ""
+
 
 class ParsedPolicy(BaseModel):
-    """Complete parser output"""
+    """Single ODRL Policy"""
     
-    # Original
-    raw_text: str
-    
-    # Policy type
+    policy_id: str
     policy_type: PolicyType
-    policy_type_confidence: float
-    policy_type_reasoning: str
-    
-    # Entities
-    assigner: Optional[str] = None
-    assigner_type: Optional[str] = None
-    assigner_source_text: Optional[str] = None
-    
-    assignee: Optional[str] = None
-    assignee_type: Optional[str] = None
-    assignee_source_text: Optional[str] = None
-    
-    # Assets
-    assets: List[AssetExtraction] = []
-    
-    # Actions
-    actions: List[ActionExtraction] = []
-    
-    # Constraints
-    constraints: List[ConstraintExtraction] = []
-    
-    # Issues (for Agent 2)
-    issues: List[ExtractionIssue] = []
-    
-    # Quality
-    overall_confidence: float
-    extraction_notes: str = ""
-    
-    # Metadata
-    extracted_at: str = ""
-    model_used: str = ""
+    assigner: str
+    assignee: List[str]
+    rule_type: RuleType
+    actions: List[str] = Field(description="ODRL action URIs")
+    targets: List[str]
+    constraints: List[Constraint] = Field(default_factory=list)
+    duties: List[Duty] = Field(default_factory=list)
+    source_text: str
+    metadata: Metadata
 
-# ===== PROMPT =====
-PARSER_PROMPT = """You are an ODRL policy parser. Extract ALL information AND explain your extraction process.
 
-## YOUR TASK:
-1. Extract structured data (policy type, entities, assets, actions, constraints)
-2. Keep traces of WHERE you found each piece
-3. Flag issues and missing information
-4. Explain your reasoning
+# ✅ NEW: Wrapper for multiple policies
+class ParsedPolicies(BaseModel):
+    """Parser output - can contain multiple policies"""
+    policies: List[ParsedPolicy]
+    raw_text: str
+    total_policies: int
 
-## WHAT TO EXTRACT:
 
-### 1. POLICY TYPE
-- **Set**: Generic rules ("Users can...")
-- **Offer**: From specific party ("Netflix offers...")
-- **Agreement**: Between two parties ("Netflix grants User123...")
+PARSER_PROMPT = """You are an ODRL policy parser. Extract structured ODRL-compliant information from user text.
 
-### 2. ENTITIES
-- **Assigner**: Who grants rights (extract name, type, source_text)
-- **Assignee**: Who receives rights (extract name, type, source_text)
+## IMPORTANT: MULTI-POLICY SUPPORT
+- If the input contains MULTIPLE rules (e.g., "can do X but cannot do Y"), extract them as SEPARATE policies
+- Each permission, prohibition, or duty should be its own policy object
+- Use the same source_text for related policies but give each a unique policy_id
 
-### 3. ASSETS
-For each asset extract:
-- identifier, asset_type, source_text
-- is_vague (if unclear like "content", "materials")
-- is_collection (if multiple items)
-- confidence, notes
+## OUTPUT SCHEMA:
+Return a JSON object with:
+- **policies**: Array of policy objects
+- **raw_text**: Original input
+- **total_policies**: Count of extracted policies
 
-### 4. ACTIONS
-For each action extract:
-- rule_type (permission/prohibition/duty)
-- action_raw (user's word), action_mapped (ODRL term)
-- source_sentence, is_standard_odrl
-- mapping_confidence, notes
+Each policy object must have:
+1. **policy_id**: Unique ID (e.g., "p1", "p2")
+2. **policy_type**: One of: "odrl:Set", "odrl:Offer", "odrl:Agreement"
+3. **assigner**: Entity granting the permission/obligation
+4. **assignee**: List of entities receiving the permission/obligation
+5. **rule_type**: "permission", "prohibition", or "duty"
+6. **actions**: List of ODRL action URIs
+7. **targets**: List of resources affected
+8. **constraints**: List of constraint objects
+9. **duties**: List of duty objects
+10. **source_text**: Original input text
+11. **metadata**: Parsing metadata
 
-**Mappings**: stream→play, download→reproduce, share→distribute, show→display
+## ODRL ACTION MAPPINGS:
+- "read" → "odrl:read"
+- "print" → "odrl:print"
+- "modify" → "odrl:modify"
+- "distribute" → "odrl:distribute"
+- "collect" → "odrl:reproduce"
+- "store" → "odrl:archive"
+- "use" → "odrl:use"
+- "share" → "odrl:distribute"
+- "delete" → "odrl:delete"
+- "access" → "odrl:read"
+- "stream" → "odrl:play"
+- "download" → "odrl:reproduce"
 
-### 5. CONSTRAINTS
-For each constraint extract:
-- constraint_type (temporal/spatial/count/purpose)
-- user_text (original)
-- ODRL: leftOperand, operator, rightOperand, unit, dataType
-- status (complete/incomplete/needs_inference)
-- missing_components, missing_info
-- extraction_reasoning, confidence
+## ODRL CONSTRAINT STRUCTURE:
+Each constraint must have EXACTLY these three fields:
+- **leftOperand**: The property being constrained (see valid options below)
+- **operator**: MUST be one of the official ODRL operators (see list below)
+- **rightOperand**: The value
 
-**Examples:**
-- "for 30 days" → temporal, elapsedTime, lteq, 30, day (INCOMPLETE: missing start)
-- "in Germany" → spatial, spatial, eq, Germany (COMPLETE)
-- "5 times" → count, count, lteq, 5 (INCOMPLETE: scope unclear)
-- "for research" → purpose, purpose, eq, research (COMPLETE)
+### VALID ODRL OPERATORS (from spec):
+You MUST use ONLY these operators:
+- **odrl:eq** - equals
+- **odrl:gt** - greater than
+- **odrl:gteq** - greater than or equal
+- **odrl:lt** - less than
+- **odrl:lteq** - less than or equal
+- **odrl:neq** - not equal
+- **odrl:isA** - is a member of class
+- **odrl:hasPart** - has part
+- **odrl:isPartOf** - is part of
+- **odrl:isAllOf** - is all of (requires all values)
+- **odrl:isAnyOf** - is any of (matches any value)
 
-### 6. ISSUES
-Track problems for Agent 2:
-- category, severity, description, field
-- user_text, suggestion
+### VALID LEFT OPERANDS (Common ODRL Terms):
+- **odrl:dateTime** - specific date/time (format: YYYY-MM-DD or ISO 8601)
+- **odrl:delayPeriod** - duration (format: ISO 8601 duration like P30D for 30 days)
+- **odrl:elapsedTime** - time elapsed since some event
+- **odrl:purpose** - purpose of use (e.g., "research", "commercial")
+- **odrl:spatial** - geographic location
+- **odrl:count** - number of uses
+- **odrl:event** - specific event trigger
+- **odrl:industry** - industry sector
+- **odrl:language** - language code
+- **odrl:recipient** - recipient party
+- **odrl:product** - product type
+- **odrl:absolutePosition** - position in sequence
+- **odrl:relativePosition** - relative position
+- **odrl:absoluteSize** - absolute size constraint
+- **odrl:relativeSize** - relative size constraint
 
-## EXAMPLE:
+## CONSTRAINT EXAMPLES:
+### Temporal Constraints:
+- "expires on December 31, 2025" → 
+  {{"leftOperand": "odrl:dateTime", "operator": "odrl:lteq", "rightOperand": "2025-12-31"}}
 
-Input: "Users can stream movies for 30 days"
+- "valid for 30 days" → 
+  {{"leftOperand": "odrl:delayPeriod", "operator": "odrl:eq", "rightOperand": "P30D"}}
+
+- "after 90 days" → 
+  {{"leftOperand": "odrl:elapsedTime", "operator": "odrl:gteq", "rightOperand": "P90D"}}
+
+### Purpose Constraints:
+- "for research purposes" → 
+  {{"leftOperand": "odrl:purpose", "operator": "odrl:eq", "rightOperand": "research"}}
+
+- "for commercial or educational use" → 
+  {{"leftOperand": "odrl:purpose", "operator": "odrl:isAnyOf", "rightOperand": "commercial,educational"}}
+
+### Location Constraints:
+- "in Germany" → 
+  {{"leftOperand": "odrl:spatial", "operator": "odrl:eq", "rightOperand": "Germany"}}
+
+- "within EU countries" → 
+  {{"leftOperand": "odrl:spatial", "operator": "odrl:isPartOf", "rightOperand": "EU"}}
+
+### Count Constraints:
+- "up to 5 times" → 
+  {{"leftOperand": "odrl:count", "operator": "odrl:lteq", "rightOperand": "5"}}
+
+## EXAMPLE (MULTI-POLICY WITH CONSTRAINTS):
+Input: "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025."
 
 Output:
-```json
 {{
-  "raw_text": "Users can stream movies for 30 days",
-  "policy_type": "Set",
-  "policy_type_confidence": 1.0,
-  "policy_type_reasoning": "Generic statement with no specific assigner",
-  "assigner": null,
-  "assignee": "users",
-  "assignee_type": "person",
-  "assignee_source_text": "Users",
-  "assets": [{{
-    "identifier": "movies",
-    "asset_type": "video",
-    "source_text": "movies",
-    "is_vague": false,
-    "is_collection": true,
-    "confidence": 0.9,
-    "notes": ""
-  }}],
-  "actions": [{{
-    "rule_type": "permission",
-    "action_raw": "stream",
-    "action_mapped": "play",
-    "source_sentence": "Users can stream movies",
-    "is_standard_odrl": true,
-    "mapping_confidence": 0.95,
-    "alternative_mappings": [],
-    "notes": ""
-  }}],
-  "constraints": [{{
-    "constraint_type": "temporal",
-    "user_text": "for 30 days",
-    "left_operand": "elapsedTime",
-    "operator": "lteq",
-    "right_operand": "30",
-    "unit": "day",
-    "data_type": "xsd:integer",
-    "status": "incomplete",
-    "missing_components": ["start_date"],
-    "missing_info": "Duration specified but start date not mentioned",
-    "extraction_reasoning": "The phrase 'for 30 days' indicates duration using elapsedTime",
-    "confidence": 0.9
-  }}],
-  "issues": [{{
-    "category": "incomplete_constraint",
-    "severity": "medium",
-    "description": "Temporal constraint missing start date",
-    "field": "constraints[0]",
-    "user_text": "for 30 days",
-    "suggestion": "Agent 2 should infer start date as 'from agreement date'"
-  }}],
-  "overall_confidence": 0.88,
-  "extraction_notes": "Temporal constraint needs start date",
-  "extracted_at": "",
-  "model_used": ""
+  "policies": [
+    {{
+      "policy_id": "p1",
+      "policy_type": "odrl:Set",
+      "assigner": "system",
+      "assignee": ["user"],
+      "rule_type": "permission",
+      "actions": ["odrl:read", "odrl:print"],
+      "targets": ["document"],
+      "constraints": [
+        {{
+          "leftOperand": "odrl:dateTime",
+          "operator": "odrl:lteq",
+          "rightOperand": "2025-12-31"
+        }}
+      ],
+      "duties": [],
+      "source_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
+      "metadata": {{
+        "sentence_index": 0,
+        "parser_version": "1.0.0",
+        "timestamp": ""
+      }}
+    }},
+    {{
+      "policy_id": "p2",
+      "policy_type": "odrl:Set",
+      "assigner": "system",
+      "assignee": ["user"],
+      "rule_type": "prohibition",
+      "actions": ["odrl:modify", "odrl:distribute"],
+      "targets": ["document"],
+      "constraints": [
+        {{
+          "leftOperand": "odrl:dateTime",
+          "operator": "odrl:lteq",
+          "rightOperand": "2025-12-31"
+        }}
+      ],
+      "duties": [],
+      "source_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
+      "metadata": {{
+        "sentence_index": 0,
+        "parser_version": "1.0.0",
+        "timestamp": ""
+      }}
+    }}
+  ],
+  "raw_text": "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
+  "total_policies": 2
 }}
-```
 
-Now extract from: {{text}}
+## CRITICAL RULES:
+1. NEVER invent operators - use ONLY the 11 official ODRL operators listed above
+2. NEVER invent leftOperands - use ONLY standard ODRL terms or keep user's original term
+3. Keep user's original wording in rightOperand (don't translate "user" to something else)
+4. If unsure about a constraint, use the closest matching leftOperand and operator
+5. For temporal constraints about expiration, use odrl:dateTime with odrl:lteq
 
-{{format_instructions}}
+CRITICAL GUARANTEE:
+Do not alter or reinterpret user intent. If something cannot be confidently mapped to an ODRL term, preserve the original text in the output (e.g., under actions or constraints as raw strings).
+
+## YOUR TASK:
+Parse the following text and return valid JSON matching the schema above.
+
+Input: {text}
+
+{format_instructions}
 """
 
 # ===== PARSER CLASS =====
-
 class TextParser:
-    """Agent 1: Parse user text with full tracing"""
+    """Agent 1: Parse user text into ODRL-aligned structure"""
     
     def __init__(self, model=None, temperature=None, custom_config=None):
-        """
-        Initialize TextParser
-        
-        Args:
-            model: Model identifier (e.g., "groq:llama-3.1-70b")
-            temperature: Temperature setting
-            custom_config: Custom model configuration dict
-        """
         self.model = model
         self.temperature = temperature
         self.custom_config = custom_config
         
-        # Create LLM with custom config if provided
         self.llm = LLMFactory.create_llm(
             model=model,
             temperature=temperature,
-            custom_config=custom_config  # ✅ PASS IT HERE
+            custom_config=custom_config
         )
         
     def parse(self, text: str) -> dict:
-        """Parse user text - ONE LLM CALL"""
+        """Parse user text - ONE LLM CALL, returns multiple policies"""
         
         print(f"[Parser] Starting extraction...")
         print(f"[Parser] Input: {text[:100]}...")
         
         try:
-            # Create parser
-            parser = PydanticOutputParser(pydantic_object=ParsedPolicy)
+            # Use ParsedPolicies (plural) as output model
+            parser = PydanticOutputParser(pydantic_object=ParsedPolicies)
             
-            # Create prompt
             prompt = ChatPromptTemplate.from_messages([
                 ("system", PARSER_PROMPT),
                 ("human", "{text}\n\n{format_instructions}")
             ])
             
-            # Build chain - ONE LLM CALL
             chain = prompt | self.llm | parser
             
-            # Invoke
             result = chain.invoke({
                 "text": text,
                 "format_instructions": parser.get_format_instructions()
             })
             
-            # Add metadata
-            result.extracted_at = datetime.utcnow().isoformat() + "Z"
-            result.model_used = self.model
-            
-            # Set requirement flags
-            result = self._set_requirement_flags(result)
+            # Add timestamps to each policy
+            timestamp = datetime.utcnow().isoformat() + "Z"
+            for policy in result.policies:
+                policy.metadata.timestamp = timestamp
             
             print(f"[Parser] ✓ Extraction complete")
-            print(f"[Parser] Policy type: {result.policy_type}")
-            print(f"[Parser] Found: {len(result.assets)} assets, {len(result.actions)} actions, {len(result.constraints)} constraints")
-            print(f"[Parser] Issues: {len(result.issues)}")
-            print(f"[Parser] Confidence: {result.overall_confidence:.2f}")
+            print(f"[Parser] Found {result.total_policies} policies:")
+            
+            for i, policy in enumerate(result.policies, 1):
+                print(f"  [{i}] {policy.rule_type}: {', '.join(policy.actions)}")
             
             return result.dict()
             
         except Exception as e:
             print(f"[Parser] ✗ Error: {e}")
             raise
-    
-    def _set_requirement_flags(self, parsed: ParsedPolicy) -> ParsedPolicy:
-        """Add requirement flags based on policy type"""
-        
-        if parsed.policy_type == PolicyType.OFFER:
-            if not parsed.assigner:
-                parsed.issues.append(ExtractionIssue(
-                    category="missing_required_assigner",
-                    severity="critical",
-                    description="Offer policy requires an assigner but none was found",
-                    field="assigner",
-                    suggestion="Agent 2 must reject or ask user to specify assigner"
-                ))
-        
-        elif parsed.policy_type == PolicyType.AGREEMENT:
-            if not parsed.assigner:
-                parsed.issues.append(ExtractionIssue(
-                    category="missing_required_assigner",
-                    severity="critical",
-                    description="Agreement policy requires an assigner but none was found",
-                    field="assigner",
-                    suggestion="Agent 2 must reject or ask user to specify assigner"
-                ))
-            
-            if not parsed.assignee:
-                parsed.issues.append(ExtractionIssue(
-                    category="missing_required_assignee",
-                    severity="critical",
-                    description="Agreement policy requires an assignee but none was found",
-                    field="assignee",
-                    suggestion="Agent 2 must reject or ask user to specify assignee"
-                ))
-        
-        return parsed
