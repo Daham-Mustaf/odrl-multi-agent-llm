@@ -17,3 +17,9 @@ A demo project showcasing a **multi-agent LLM framework** for **ODRL policy gene
 ```bash
 git clone https://github.com/Daham-Mustaf/odrl-multi-agent-llm.git
 cd odrl-multi-agent-llm
+
+
+## Version
+Current version: **v2.1.0**
+
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for details.
