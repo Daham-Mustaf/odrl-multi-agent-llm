@@ -457,7 +457,7 @@ async def parse_text(request: Request, data: ParseRequest):
         raise HTTPException(status_code=503, detail="Agents not available")
     
     if await request.is_disconnected():
-        logger.warning("⚠️  Client disconnected before parsing started")
+        logger.warning("Client disconnected before parsing started")
         return JSONResponse(
             status_code=499,  # Client Closed Request
             content={"detail": "Request cancelled by client"}
@@ -485,7 +485,7 @@ async def parse_text(request: Request, data: ParseRequest):
         )
         
         if result is None:
-            logger.warning("⚠️  Parsing cancelled by client")
+            logger.warning("Parsing cancelled by client")
             return JSONResponse(
                 status_code=499,
                 content={"detail": "Request cancelled by client"}
@@ -554,7 +554,7 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         raise HTTPException(status_code=503, detail="Agents not available")
     
     if await request.is_disconnected():
-        logger.warning("⚠️  Client disconnected before generation")
+        logger.warning("Client disconnected before generation")
         return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
     
     logger.info(f" Generate request: model={data.model}")
@@ -600,7 +600,7 @@ async def validate_odrl(request: Request, data: ValidateRequest):
         raise HTTPException(status_code=503, detail="Agents not available")
     
     if await request.is_disconnected():
-        logger.warning("⚠️  Client disconnected before validation")
+        logger.warning("Client disconnected before validation")
         return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
     
     logger.info(f"Validate request: model={data.model}")
