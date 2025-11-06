@@ -101,22 +101,3 @@ docker-compose logs -f
 | Port already in use   | Stop conflicting process (`netstat -ano           | findstr :8000`) |
 | React build error     | Run `npm run build` locally to verify code health |                 |
 
----
-
-✅ **That’s it!**
-Your project is now fully containerized and documented.
-
-````
-
----
-
-## 🪶 Step 3. Update your `README.md` (top level)
-
-Add this snippet near the bottom:
-
-```markdown
-## 🐳 Docker Usage
-See detailed Docker setup instructions here:
-➡️ [docs/docker-setup.md](docs/docker-setup.md)
-````
-
