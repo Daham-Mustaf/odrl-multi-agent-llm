@@ -10,6 +10,7 @@ import { ParserTab } from './components/tabs/ParserTab';
 import { ReasonerTab } from './components/tabs/ReasonerTab';
 import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
+import { ValidatorTab } from './components/tabs/ValidatorTab';
 
 
 // ============================================
@@ -156,7 +157,7 @@ const ODRLDemo = () => {
   const [reasonerLoading, setReasonerLoading] = useState(false);
 
 
-  const API_BASE_URL = 'http://localhost:8000/api';
+  const API_BASE_URL = `${process.env.REACT_APP_API_URL}/api`;
 
   // ============================================
   // TOAST NOTIFICATION HELPER
@@ -400,6 +401,7 @@ const ODRLDemo = () => {
   const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
+  
 
 const handleProcess = async () => {
   if (!inputText.trim()) {
@@ -420,7 +422,9 @@ const handleProcess = async () => {
   const startTimes = { 
     total: Date.now(),
     parse: Date.now(), 
-    reason: 0
+    reason: 0,
+    generate: 0,
+    validate: 0
   };
 
   const signal = getSignal();
@@ -448,7 +452,7 @@ const handleProcess = async () => {
     // ============================================
     updateAgentState('parser', 'processing');
     setProcessingStage('Parsing policy text...');
-    setProcessingProgress(25);
+    setProcessingProgress(10);
     
     const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
     const parserCustomConfig = getModelConfig(parserModel);
@@ -464,17 +468,17 @@ const handleProcess = async () => {
     setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
     updateAgentState('parser', 'completed');
     completedStages.push('parser');  
-    setProcessingProgress(50);
+    setProcessingProgress(25);
     showToast('Policy parsed successfully!', 'success');
 
     startTimes.reason = Date.now();
 
     // ============================================
-    // STAGE 2: REASON (AUTO-RUN)
+    // STAGE 2: REASON
     // ============================================
     updateAgentState('reasoner', 'processing');
     setProcessingStage('Analyzing policy...');
-    setProcessingProgress(75);
+    setProcessingProgress(35);
     
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
     const reasonerCustomConfig = getModelConfig(reasonerModel);
@@ -490,13 +494,97 @@ const handleProcess = async () => {
     setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
     updateAgentState('reasoner', 'completed');
     completedStages.push('reasoner');  
-    setProcessingProgress(100);
+    setProcessingProgress(50);
     showToast('Analysis complete!', 'success');
 
-    // Auto-switch to reasoner tab to show results
-    setActiveTab('reasoner');
+    // Check if auto-progress is ON
+    if (!autoProgress) {
+      // Manual mode - stop here and show reasoner tab
+      setActiveTab('reasoner');
+      const totalTime = Date.now() - startTimes.total;
+      const historyItem = createHistoryItem({
+        inputText,
+        selectedModel,
+        temperature,
+        completedStages,
+        parsedData: parseResult,
+        reasoningResult: reasonResult,
+        totalTime,
+        metrics: {
+          parseTime: Date.now() - startTimes.parse,
+          reasonTime: Date.now() - startTimes.reason
+        },
+        status: 'completed'
+      });
+      addToHistory(historyItem);
+      setCurrentHistoryId(historyItem.id);
+      return; // Stop here - user must click Continue
+    }
 
-    // Save to history
+    // Auto-progress mode - continue to generation
+    startTimes.generate = Date.now();
+
+    // ============================================
+    // STAGE 3: GENERATE (Auto if auto-progress ON)
+    // ============================================
+    updateAgentState('generator', 'processing');
+    setProcessingStage('Generating ODRL policy...');
+    setProcessingProgress(65);
+    
+    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const generatorCustomConfig = getModelConfig(generatorModel);
+    
+    const genResult = await callAPI('generate', {
+      reasoning_result: reasonResult,
+      model: generatorModel,
+      temperature,
+      custom_model: generatorCustomConfig
+    }, signal);
+    
+    setGeneratedODRL(genResult);
+    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
+    updateAgentState('generator', 'completed');
+    completedStages.push('generator');
+    setProcessingProgress(80);
+    showToast('ODRL policy generated!', 'success');
+
+    startTimes.validate = Date.now();
+
+    // ============================================
+    // STAGE 4: VALIDATE (Auto if auto-progress ON)
+    // ============================================
+    updateAgentState('validator', 'processing');
+    setProcessingStage('Validating with SHACL...');
+    setProcessingProgress(90);
+    
+    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validatorCustomConfig = getModelConfig(validatorModel);
+    
+    const odrlPolicy = genResult.odrl_policy || genResult.odrl || genResult;
+    
+    const valResult = await callAPI('validate', {
+      odrl_policy: odrlPolicy,
+      model: validatorModel,
+      temperature,
+      custom_model: validatorCustomConfig
+    }, signal);
+    
+    setValidationResult(valResult);
+    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
+    updateAgentState('validator', 'completed');
+    completedStages.push('validator');
+    setProcessingProgress(100);
+    
+    if (valResult.is_valid) {
+      showToast('Complete! All validations passed!', 'success');
+    } else {
+      showToast(`Complete! ${valResult.issues?.length || 0} SHACL violations found`, 'warning');
+    }
+
+    // Auto-switch to validator tab to show final results
+    setActiveTab('validator');
+
+    // Save complete workflow to history
     const totalTime = Date.now() - startTimes.total;
     const historyItem = createHistoryItem({
       inputText,
@@ -505,10 +593,14 @@ const handleProcess = async () => {
       completedStages,
       parsedData: parseResult,
       reasoningResult: reasonResult,
+      generatedODRL: genResult,
+      validationResult: valResult,
       totalTime,
       metrics: {
         parseTime: Date.now() - startTimes.parse,
-        reasonTime: Date.now() - startTimes.reason
+        reasonTime: Date.now() - startTimes.reason,
+        generateTime: Date.now() - startTimes.generate,
+        validateTime: Date.now() - startTimes.validate
       },
       status: 'completed'
     });
@@ -674,6 +766,9 @@ const handleValidate = async () => {
     setValidationResult(valResult);
     setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
     updateAgentState('validator', 'completed');
+    
+    // Switch to validator tab to show results
+    setActiveTab('validator');
     
     if (valResult.is_valid) {
       showToast('SHACL validation passed!', 'success');
@@ -1363,70 +1458,37 @@ Or drag and drop a .txt, .md, or .json file here"
 {activeTab === 'generator' && (
   <GeneratorTab
     generatedODRL={generatedODRL}
-    validationResult={validationResult}
     darkMode={darkMode}
     onCopy={copyToClipboard}
     onDownload={downloadJSON}
     onValidate={handleValidate}
     isValidating={validating}
+  />
+)}
+
+{/* Validator Tab */}
+{activeTab === 'validator' && (
+  <ValidatorTab
+    validationResult={validationResult}
+    generatedODRL={generatedODRL}
+    darkMode={darkMode}
+    onCopy={copyToClipboard}
+    onDownload={downloadJSON}
     onRegenerate={() => {
-      console.log('[App] Regenerating ODRL');
+      console.log('[App] Regenerating ODRL from validator');
       setValidationResult(null);
+      setActiveTab('generator');
       handleGenerate();
     }}
     onEditInput={() => {
-      console.log('[App] Editing input');
+      console.log('[App] Editing input from validator');
       setActiveTab('parser');
       showToast('Edit your input and re-process', 'info');
     }}
   />
 )}
 
-        {activeTab === 'validator' && validationResult && (
-          <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-                <Shield className="w-6 h-6" />
-                Validation Results
-              </h2>
-              <div className={`px-4 py-2 rounded-lg font-semibold ${
-                validationResult.is_valid
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-              }`}>
-                {validationResult.is_valid ? '✓ Valid' : '✗ Invalid'}
-              </div>
-            </div>
-            <div className="space-y-4">
-              {validationResult.issues && validationResult.issues.length > 0 && (
-                <div>
-                  <h3 className={`font-semibold mb-2 ${textClass}`}>Issues Found:</h3>
-                  <ul className="space-y-2">
-                    {validationResult.issues.map((issue, idx) => (
-                      <li key={idx} className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
-                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                        <span className={`text-sm ${darkMode ? 'text-red-300' : 'text-red-700'}`}>{issue}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {validationResult.suggestions && validationResult.suggestions.length > 0 && (
-                <div>
-                  <h3 className={`font-semibold mb-2 ${textClass}`}>Suggestions:</h3>
-                  <ul className="space-y-2">
-                    {validationResult.suggestions.map((suggestion, idx) => (
-                      <li key={idx} className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
-                        <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                        <span className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{suggestion}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        
       </div>
 
       {/* SETTINGS MODAL*/}
