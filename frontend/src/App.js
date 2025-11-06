@@ -7,6 +7,9 @@ import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
 import { ChatHistory } from './components/ChatHistory';
 import { StopButton } from './components/StopButton';
 import { ParserTab } from './components/tabs/ParserTab';
+import { ReasonerTab } from './components/tabs/ReasonerTab';
+import ExamplePolicies from './components/ExamplePolicies';
+import { GeneratorTab } from './components/tabs/GeneratorTab';
 
 
 // ============================================
@@ -98,6 +101,7 @@ const ODRLDemo = () => {
   const [completedStages, setCompletedStages] = useState([]);
   const { getSignal, abort } = useAbortController();
 
+
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [backendConnected, setBackendConnected] = useState(false);
@@ -108,7 +112,9 @@ const ODRLDemo = () => {
   
   const [darkMode, setDarkMode] = useState(false);
   const [showMetrics, setShowMetrics] = useState(true);
-  const [autoProgress, setAutoProgress] = useState(true);
+  const [autoProgress, setAutoProgress] = useState(false);
+
+  const [validating, setValidating] = useState(false);
   
   const [metrics, setMetrics] = useState({
     parseTime: 0,
@@ -141,12 +147,13 @@ const ODRLDemo = () => {
   const [fileName, setFileName] = useState('');
   const [showExamples, setShowExamples] = useState(false);
 
-  // NEW: Toast notification state
+  // Toast notification state
   const [toasts, setToasts] = useState([]);
   
-  // NEW: Processing progress state
+  // Processing progress state
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingStage, setProcessingStage] = useState('');
+  const [reasonerLoading, setReasonerLoading] = useState(false);
 
 
   const API_BASE_URL = 'http://localhost:8000/api';
@@ -169,32 +176,6 @@ const ODRLDemo = () => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
-
-
-  const examples = [
-    { 
-      title: "Document Policy", 
-      text: "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
-      icon: "📄"
-    },
-    { 
-      title: "Academic Dataset", 
-      text: "Researchers can download and analyze the dataset for non-commercial research purposes. Attribution is required. Commercial use is prohibited.",
-      icon: "🎓"
-    },
-    { 
-      title: "Software License", 
-      text: "Users can use, copy, and modify the software. Distribution requires attribution and must use the same license.",
-      icon: "💻"
-    },
-    { 
-      title: "Photo Rights", 
-      text: "The photographer grants rights to use the photo on social media with attribution. Print publication requires additional permission.",
-      icon: "📸"
-    }
-  ];
-
-  // [Keep all the existing functions from the original code - unchanged]
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -226,7 +207,7 @@ const ODRLDemo = () => {
       }
     } catch (err) {
       console.error('Provider detection failed:', err);
-      setError('⚠️ Backend not connected. Start: cd backend && uvicorn main:app --reload');
+      setError('Backend not connected. Start: cd backend && uvicorn main:app --reload');
       setBackendConnected(false);
       showToast('Backend connection failed', 'error');
     }
@@ -243,7 +224,7 @@ const ODRLDemo = () => {
           if (response.ok) {
             const data = await response.json();
             backendModels = data.models || [];
-            console.log(`📥 Loaded ${backendModels.length} models from backend`);
+            console.log(`Loaded ${backendModels.length} models from backend`);
           }
         } catch (err) {
           console.log('Backend custom models not available, using localStorage only');
@@ -263,7 +244,7 @@ const ODRLDemo = () => {
       const saved = localStorage.getItem('customModels');
       if (saved) {
         const models = JSON.parse(saved);
-        console.log(`💾 Loaded ${models.length} models from localStorage`);
+        console.log(`Loaded ${models.length} models from localStorage`);
         return models;
       }
     } catch (err) {
@@ -275,7 +256,7 @@ const ODRLDemo = () => {
   const saveToLocalStorage = (models) => {
     try {
       localStorage.setItem('customModels', JSON.stringify(models));
-      console.log(`💾 Saved ${models.length} models to localStorage`);
+      console.log(`Saved ${models.length} models to localStorage`);
     } catch (err) {
       console.error('Error saving to localStorage:', err);
     }
@@ -283,7 +264,7 @@ const ODRLDemo = () => {
 
   const saveToBackend = async (model) => {
     if (!backendConnected) {
-      console.log('⚠️ Backend not connected, skipping backend save');
+      console.log('Backend not connected, skipping backend save');
       return false;
     }
 
@@ -295,7 +276,7 @@ const ODRLDemo = () => {
       });
       
       if (response.ok) {
-        console.log('✅ Model saved to backend');
+        console.log('Model saved to backend');
         return true;
       } else {
         console.error('Failed to save model to backend');
@@ -419,6 +400,7 @@ const ODRLDemo = () => {
   const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
+
 const handleProcess = async () => {
   if (!inputText.trim()) {
     setError('Please enter a policy description');
@@ -438,25 +420,16 @@ const handleProcess = async () => {
   const startTimes = { 
     total: Date.now(),
     parse: Date.now(), 
-    reason: 0, 
-    generate: 0, 
-    validate: 0 
+    reason: 0
   };
 
-  //Get abort signal for cancellation support
   const signal = getSignal();
-  
-  //Track completed stages for history
   const completedStages = [];
 
-  // Helper function to get custom model config if it's a custom model
   const getModelConfig = (modelValue) => {
     if (!modelValue) return null;
-    
-    // Check if this is a custom model
     const customModel = customModels.find(m => m.value === modelValue);
     if (customModel) {
-      // Return the custom model configuration
       return {
         provider_type: customModel.provider_type,
         base_url: customModel.base_url,
@@ -475,7 +448,7 @@ const handleProcess = async () => {
     // ============================================
     updateAgentState('parser', 'processing');
     setProcessingStage('Parsing policy text...');
-    setProcessingProgress(10);
+    setProcessingProgress(25);
     
     const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
     const parserCustomConfig = getModelConfig(parserModel);
@@ -491,18 +464,17 @@ const handleProcess = async () => {
     setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
     updateAgentState('parser', 'completed');
     completedStages.push('parser');  
-    setProcessingProgress(25);
+    setProcessingProgress(50);
     showToast('Policy parsed successfully!', 'success');
 
-    if (autoProgress) setActiveTab('reasoner');
     startTimes.reason = Date.now();
 
     // ============================================
-    // STAGE 2: REASON
+    // STAGE 2: REASON (AUTO-RUN)
     // ============================================
     updateAgentState('reasoner', 'processing');
-    setProcessingStage('Reasoning about policy...');
-    setProcessingProgress(30);
+    setProcessingStage('Analyzing policy...');
+    setProcessingProgress(75);
     
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
     const reasonerCustomConfig = getModelConfig(reasonerModel);
@@ -518,66 +490,13 @@ const handleProcess = async () => {
     setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
     updateAgentState('reasoner', 'completed');
     completedStages.push('reasoner');  
-    setProcessingProgress(50);
-    showToast('Reasoning completed!', 'success');
-
-    if (autoProgress) setActiveTab('generator');
-    startTimes.generate = Date.now();
-
-    // ============================================
-    // STAGE 3: GENERATE
-    // ============================================
-    updateAgentState('generator', 'processing');
-    setProcessingStage('Generating ODRL policy...');
-    setProcessingProgress(55);
-    
-    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-    const generatorCustomConfig = getModelConfig(generatorModel);
-    
-    const genResult = await callAPI('generate', {
-      reasoning_result: reasonResult,
-      model: generatorModel,
-      temperature,
-      custom_model: generatorCustomConfig
-    }, signal); 
-    
-    setGeneratedODRL(genResult);
-    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
-    updateAgentState('generator', 'completed');
-    completedStages.push('generator'); 
-    setProcessingProgress(75);
-    showToast('ODRL policy generated!', 'success');
-
-    if (autoProgress) setActiveTab('validator');
-    startTimes.validate = Date.now();
-
-    // ============================================
-    // STAGE 4: VALIDATE
-    // ============================================
-    updateAgentState('validator', 'processing');
-    setProcessingStage('Validating ODRL policy...');
-    setProcessingProgress(80);
-    
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-    const validatorCustomConfig = getModelConfig(validatorModel);
-    
-    const valResult = await callAPI('validate', {
-      odrl_policy: genResult.odrl_policy,
-      model: validatorModel,
-      temperature,
-      custom_model: validatorCustomConfig
-    }, signal);  
-    
-    setValidationResult(valResult);
-    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
-    updateAgentState('validator', 'completed');
-    completedStages.push('validator');  
     setProcessingProgress(100);
-    showToast('Validation complete!', 'success');
+    showToast('Analysis complete!', 'success');
 
-    // ============================================
-    // SAVE TO HISTORY (Success)
-    // ============================================
+    // Auto-switch to reasoner tab to show results
+    setActiveTab('reasoner');
+
+    // Save to history
     const totalTime = Date.now() - startTimes.total;
     const historyItem = createHistoryItem({
       inputText,
@@ -586,69 +505,188 @@ const handleProcess = async () => {
       completedStages,
       parsedData: parseResult,
       reasoningResult: reasonResult,
-      generatedODRL: genResult,
-      validationResult: valResult,
       totalTime,
       metrics: {
         parseTime: Date.now() - startTimes.parse,
-        reasonTime: Date.now() - startTimes.reason,
-        generateTime: Date.now() - startTimes.generate,
-        validateTime: Date.now() - startTimes.validate
+        reasonTime: Date.now() - startTimes.reason
       },
       status: 'completed'
     });
     
     const historyId = addToHistory(historyItem);
     setCurrentHistoryId(historyId);
-    console.log('Session saved to history:', historyId);
 
   } catch (err) {
-  const errorMessage = 
-    (err instanceof Error ? err.message : null) ||
-    (typeof err === 'string' ? err : null) ||
-    err?.message ||
-    err?.detail ||
-    'An error occurred';
-  
-  console.log('Final message:', errorMessage);
-  
-  if (errorMessage === 'Request cancelled by user') {
-    setError(null); 
-    showToast('Processing cancelled', 'warning');
+    const errorMessage = 
+      (err instanceof Error ? err.message : null) ||
+      (typeof err === 'string' ? err : null) ||
+      err?.message ||
+      err?.detail ||
+      'An error occurred';
     
-    Object.keys(agentStates).forEach(agent => {
-      if (agentStates[agent] === 'processing') {
-        updateAgentState(agent, 'cancelled');
-      }
+    if (errorMessage === 'Request cancelled by user') {
+      setError(null); 
+      showToast('Processing cancelled', 'warning');
+      
+      Object.keys(agentStates).forEach(agent => {
+        if (agentStates[agent] === 'processing') {
+          updateAgentState(agent, 'cancelled');
+        }
+      });
+    } else {
+      setError(errorMessage);
+      showToast(`Error: ${errorMessage}`, 'error');
+      
+      Object.keys(agentStates).forEach(agent => {
+        if (agentStates[agent] === 'processing') {
+          updateAgentState(agent, 'error');
+        }
+      });
+    }
+    
+    const historyItem = createHistoryItem({
+      inputText,
+      selectedModel,
+      temperature,
+      completedStages,
+      error: errorMessage,
+      status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
+      totalTime: Date.now() - startTimes.total
     });
-  } else {
-    setError(errorMessage);
-    showToast(`Error: ${errorMessage}`, 'error');
-    
-    Object.keys(agentStates).forEach(agent => {
-      if (agentStates[agent] === 'processing') {
-        updateAgentState(agent, 'error');
-      }
-    });
-  }
-  
-  // Save to history
-  const historyItem = createHistoryItem({
-    inputText,
-    selectedModel,
-    temperature,
-    completedStages,
-    error: errorMessage,
-    status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
-    totalTime: Date.now() - startTimes.total,
-    metrics
-  });
-  addToHistory(historyItem);
-    
+    addToHistory(historyItem);
+      
   } finally {
     setLoading(false);
     setProcessingProgress(0);
     setProcessingStage('');
+  }
+};
+
+
+// ============================================
+// handleGenerate Function
+// ============================================
+const handleGenerate = async () => {
+  if (!reasoningResult) {
+    showToast('Please run analysis first!', 'warning');
+    return;
+  }
+
+  setLoading(true);
+  setProcessingStage('Generating ODRL policy...');
+  setProcessingProgress(50);
+
+  const startTime = Date.now();
+  const signal = getSignal();
+
+  const getModelConfig = (modelValue) => {
+    if (!modelValue) return null;
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (customModel) {
+      return {
+        provider_type: customModel.provider_type,
+        base_url: customModel.base_url,
+        model_id: customModel.model_id,
+        api_key: customModel.api_key,
+        context_length: customModel.context_length,
+        temperature_default: customModel.temperature_default
+      };
+    }
+    return null;
+  };
+
+  try {
+    updateAgentState('generator', 'processing');
+    
+    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const generatorCustomConfig = getModelConfig(generatorModel);
+    
+    const genResult = await callAPI('generate', {
+      reasoning_result: reasoningResult,
+      model: generatorModel,
+      temperature,
+      custom_model: generatorCustomConfig
+    }, signal);
+    
+    setGeneratedODRL(genResult);
+    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTime }));
+    updateAgentState('generator', 'completed');
+    setProcessingProgress(100);
+    showToast('ODRL policy generated!', 'success');
+    
+    setActiveTab('generator');
+
+  } catch (error) {
+    console.error('[Generator] Error:', error);
+    showToast('Generation failed: ' + error.message, 'error');
+    updateAgentState('generator', 'error');
+  } finally {
+    setLoading(false);
+    setProcessingProgress(0);
+    setProcessingStage('');
+  }
+};
+
+// ============================================
+// handleValidate Function
+// ============================================
+const handleValidate = async () => {
+  if (!generatedODRL) {
+    showToast('Please generate ODRL first!', 'warning');
+    return;
+  }
+
+  setValidating(true);
+  const startTime = Date.now();
+  const signal = getSignal();
+
+  const getModelConfig = (modelValue) => {
+    if (!modelValue) return null;
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (customModel) {
+      return {
+        provider_type: customModel.provider_type,
+        base_url: customModel.base_url,
+        model_id: customModel.model_id,
+        api_key: customModel.api_key,
+        context_length: customModel.context_length,
+        temperature_default: customModel.temperature_default
+      };
+    }
+    return null;
+  };
+
+  try {
+    updateAgentState('validator', 'processing');
+    
+    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validatorCustomConfig = getModelConfig(validatorModel);
+    
+    const odrlPolicy = generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL;
+    
+    const valResult = await callAPI('validate', {
+      odrl_policy: odrlPolicy,
+      model: validatorModel,
+      temperature,
+      custom_model: validatorCustomConfig
+    }, signal);
+    
+    setValidationResult(valResult);
+    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
+    updateAgentState('validator', 'completed');
+    
+    if (valResult.is_valid) {
+      showToast('SHACL validation passed!', 'success');
+    } else {
+      showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'error');
+    }
+
+  } catch (error) {
+    console.error('[Validator] Error:', error);
+    showToast('Validation failed: ' + error.message, 'error');
+    updateAgentState('validator', 'error');
+  } finally {
+    setValidating(false);
   }
 };
 
@@ -817,14 +855,6 @@ const handleLoadHistory = (historyItem) => {
     return icons[agent] || FileText;
   };
 
-  const getStateColor = (state) => {
-    switch (state) {
-      case 'processing': return 'text-blue-500';
-      case 'completed': return 'text-green-500';
-      case 'error': return 'text-red-500';
-      default: return darkMode ? 'text-gray-500' : 'text-gray-400';
-    }
-  };
 
   // ============================================
   // RENDER UI
@@ -1042,58 +1072,16 @@ const handleLoadHistory = (historyItem) => {
                 </h2>
               </div>
 
-              
-
-
-              <div className="p-6 space-y-4">
-                {/* Example Cards - Collapsible */}
-                {!inputText && (
-                  <div className={`rounded-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <button
-                      onClick={() => setShowExamples(!showExamples)}
-                      aria-label="Toggle example policies"
-                      className={`w-full px-4 py-3 flex items-center justify-between transition ${
-                        darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-yellow-500" />
-                        <span className={`text-sm font-medium ${textClass}`}>Quick Start Examples</span>
-                      </div>
-                      {showExamples ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-
-                    {showExamples && (
-                      <div className={`px-4 pb-4 pt-2 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} animate-fade-in`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {examples.map((example, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                setInputText(example.text);
-                                setShowExamples(false);
-                              }}
-                              className={`p-4 rounded-lg border-2 text-left transition hover:scale-105 ${
-                                darkMode 
-                                  ? 'bg-gray-700 border-gray-600 hover:border-blue-500' 
-                                  : 'bg-white border-gray-200 hover:border-blue-500'
-                              }`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <span className="text-2xl">{example.icon}</span>
-                                <div className="flex-1">
-                                  <div className={`font-semibold text-sm mb-1 ${textClass}`}>{example.title}</div>
-                                  <div className={`text-xs ${mutedTextClass} line-clamp-2`}>{example.text}</div>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
+                <div className="p-6 space-y-4">
+                  {/* Example Cards - Using Component */}
+                  {!inputText && (
+                    <ExamplePolicies
+                      onSelectExample={(text) => setInputText(text)}
+                      darkMode={darkMode}
+                      textClass={textClass}
+                      mutedTextClass={mutedTextClass}
+                    />
+                  )}
                 {/* Drag and Drop Text Area */}
                 <div
                   onDragEnter={handleDrag}
@@ -1321,67 +1309,78 @@ Or drag and drop a .txt, .md, or .json file here"
           </div>
         )}
 
-        {activeTab === 'reasoner' && reasoningResult && (
-          <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-                <Brain className="w-6 h-6" />
-                Reasoning Results
-              </h2>
-              <button
-                onClick={() => copyToClipboard(JSON.stringify(reasoningResult, null, 2))}
-                aria-label="Copy to clipboard"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
-            <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-              <pre className={`text-sm ${textClass}`}>
-                {JSON.stringify(reasoningResult, null, 2)}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'generator' && generatedODRL && (
-        <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-              <Code className="w-6 h-6" />
-              Generated ODRL Policy
-            </h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => copyToClipboard(JSON.stringify(generatedODRL.odrl_policy || generatedODRL.odrl, null, 2))}  // ✅ Fixed
-                aria-label="Copy to clipboard"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                }`}
-              >
-                {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-              <button
-                onClick={() => downloadJSON(generatedODRL.odrl_policy || generatedODRL.odrl, 'odrl-policy.json')}  // ✅ Fixed
-                aria-label="Download JSON"
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </button>
-            </div>
-          </div>
-          <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-            <pre className={`text-sm ${textClass}`}>
-              {JSON.stringify(generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL, null, 2)}  // ✅ Fixed
-            </pre>
-          </div>
+   {/* Reasoner Tab - Shows results automatically after parsing */}
+{activeTab === 'reasoner' && (
+  <div className="space-y-6 animate-fade-in">
+    
+    {!reasoningResult ? (
+      // No results yet - show placeholder
+      <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+        <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <h2 className={`text-xl font-bold ${textClass}`}>Step 2: Policy Analysis</h2>
+          <p className={`text-sm ${mutedTextClass} mt-1`}>
+            Review policy validation results
+          </p>
         </div>
-      )}
+        <div className={`p-12 text-center ${mutedTextClass}`}>
+          <Brain className="w-16 h-16 mx-auto mb-4 opacity-50" />
+          <p>Please parse text first</p>
+          <p className="text-sm mt-2">Go to Parser tab and click "Start Processing"</p>
+        </div>
+      </div>
+    ) : (
+      // Show reasoning results
+      <>
+        <ReasonerTab
+          reasoningResult={reasoningResult}
+          darkMode={darkMode}
+          onCopy={copyToClipboard}
+          onDownload={downloadJSON}
+          onContinue={() => {
+            console.log('[App] User approved - continuing to Generator');
+            handleGenerate();
+          }}
+          onEdit={() => {
+            console.log('[App] User wants to edit - returning to Parser');
+            setActiveTab('parser');
+            showToast('Edit your policy text and click "Start Processing" again', 'info');
+          }}
+        />
+
+        {/* Footer */}
+        <div className={`flex items-center justify-between text-sm ${mutedTextClass}`}>
+          <span>Reasoner: Validation & Conflict Detection</span>
+          <span>
+            {reasoningResult.processing_time_ms}ms • {reasoningResult.model_used}
+          </span>
+        </div>
+      </>
+    )}
+  </div>
+)}
+
+        {/* Generator Tab */}
+{activeTab === 'generator' && (
+  <GeneratorTab
+    generatedODRL={generatedODRL}
+    validationResult={validationResult}
+    darkMode={darkMode}
+    onCopy={copyToClipboard}
+    onDownload={downloadJSON}
+    onValidate={handleValidate}
+    isValidating={validating}
+    onRegenerate={() => {
+      console.log('[App] Regenerating ODRL');
+      setValidationResult(null);
+      handleGenerate();
+    }}
+    onEditInput={() => {
+      console.log('[App] Editing input');
+      setActiveTab('parser');
+      showToast('Edit your input and re-process', 'info');
+    }}
+  />
+)}
 
         {activeTab === 'validator' && validationResult && (
           <div className={`${cardClass} border rounded-xl shadow-sm p-6 animate-fade-in`}>
@@ -1494,6 +1493,7 @@ Or drag and drop a .txt, .md, or .json file here"
                   Lower = more focused, Higher = more creative
                 </p>
               </div>
+              
 
               {/* Storage Mode */}
               <div>
@@ -1758,6 +1758,7 @@ Or drag and drop a .txt, .md, or .json file here"
         onClearHistory={clearHistory}
         darkMode={darkMode}
       />
+      
 
       {activeTab === 'parser' && parsedData && (
   <ParserTab

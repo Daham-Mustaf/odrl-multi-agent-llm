@@ -19,7 +19,7 @@ export const useChatHistory = (maxItems = 50) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         setHistory(parsed);
-        console.log(`📚 Loaded ${parsed.length} history items`);
+        console.log(`Loaded ${parsed.length} history items`);
       }
     } catch (error) {
       console.error('Failed to load history:', error);
@@ -54,7 +54,7 @@ export const useChatHistory = (maxItems = 50) => {
       return updated.slice(0, maxItems);
     });
 
-    console.log('✅ Added to history:', historyItem.id);
+    console.log('Added to history:', historyItem.id);
     return historyItem.id;
   }, [maxItems]);
 
@@ -71,7 +71,7 @@ export const useChatHistory = (maxItems = 50) => {
           : item
       )
     );
-    console.log('📝 Updated history item:', id);
+    console.log('Updated history item:', id);
   }, []);
 
   /**
@@ -80,7 +80,7 @@ export const useChatHistory = (maxItems = 50) => {
    */
   const removeFromHistory = useCallback((id) => {
     setHistory(prev => prev.filter(item => item.id !== id));
-    console.log('🗑️  Removed from history:', id);
+    console.log('Removed from history:', id);
   }, []);
 
   /**
@@ -89,7 +89,7 @@ export const useChatHistory = (maxItems = 50) => {
   const clearHistory = useCallback(() => {
     setHistory([]);
     localStorage.removeItem(STORAGE_KEY);
-    console.log('🗑️  Cleared all history');
+    console.log('Cleared all history');
   }, []);
 
   /**
@@ -169,7 +169,7 @@ export const useChatHistory = (maxItems = 50) => {
         setHistory(imported.slice(0, maxItems));
       }
 
-      console.log(`📥 Imported ${imported.length} history items`);
+      console.log(`Imported ${imported.length} history items`);
       return true;
     } catch (error) {
       console.error('Failed to import history:', error);
