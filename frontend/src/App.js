@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { encodingForModel } from 'js-tiktoken';
 import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import DebugPanel from './DebugPanel'; 
+import DebugPanel from './components/DebugPanel'; 
 import { useAbortController } from './hooks/useAbortController';
 import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
 import { ChatHistory } from './components/ChatHistory';

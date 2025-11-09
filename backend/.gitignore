@@ -68,3 +68,5 @@ Thumbs.db
 coverage/
 *.cover
 htmlcov/
+
+odrl-architecture.excalidraw
