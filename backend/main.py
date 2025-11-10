@@ -131,13 +131,16 @@ class ParseRequest(BaseModel):
     custom_model: Optional[Dict[str, Any]] = None
 
 class ReasonRequest(BaseModel):
-    parsed_data: Dict[str, Any]  #
+    parsed_data: Dict[str, Any]
+    original_text: str  # ✅ Should have this
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
-
+    
 class GenerateRequest(BaseModel):
-    reasoning_result: Dict[str, Any]  
+    parsed_data: Dict[str, Any]  # ✅ Should have this
+    original_text: str            # ✅ Should have this
+    reasoning: Optional[Dict[str, Any]] = None  # ✅ Should be optional
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
@@ -505,7 +508,7 @@ async def parse_text(request: Request, data: ParseRequest):
 
 @app.post("/api/reason")
 async def reason(request: Request, data: ReasonRequest): 
-    """Agent 2: Reason with disconnect detection"""
+    """Agent 2: Reason with disconnect detection - Pure analysis, no data modification"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
@@ -529,7 +532,8 @@ async def reason(request: Request, data: ReasonRequest):
         result = await run_with_disconnect_check(
             reasoner.reason,
             request,
-            data.parsed_data
+            data.parsed_data,      
+            data.original_text     
         )
         
         if result is None:
@@ -549,7 +553,7 @@ async def reason(request: Request, data: ReasonRequest):
 
 @app.post("/api/generate")
 async def generate_odrl(request: Request, data: GenerateRequest): 
-    """Agent 3: Generate with disconnect detection"""
+    """Agent 3: Generate ODRL from parsed data with optional reasoning context"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
@@ -557,7 +561,7 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         logger.warning("Client disconnected before generation")
         return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
     
-    logger.info(f" Generate request: model={data.model}")
+    logger.info(f"Generate request: model={data.model}")
     start = time.time()
     
     try:
@@ -573,7 +577,9 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         odrl_policy = await run_with_disconnect_check(
             generator.generate,
             request,
-            data.reasoning_result
+            data.parsed_data,     
+            data.original_text,   
+            data.reasoning         
         )
         
         if odrl_policy is None:

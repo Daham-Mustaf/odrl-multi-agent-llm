@@ -1,85 +1,89 @@
 """
-How LLMs Are Actually Used Inside Each Agent
-==============================================
-
-This shows the exact pattern of how self.llm is used in each agent.
-All agents follow the same pattern:
-
-1. Initialize LLM in __init__ using factory
-2. Create a ChatPromptTemplate
-3. Build a chain: prompt | self.llm | parser
-4. Invoke the chain with input data
+Agent 3: ODRL Generator
+Generates ODRL JSON-LD from parsed data + original text + optional reasoning
 """
-
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional
 from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
 from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 from utils.llm_factory import LLMFactory
-import os
+import uuid
+from datetime import datetime
 
-
-# ============================================
-# AGENT 3: GENERATOR
-# ============================================
 
 class Generator:
-    """Agent 3: Shows how LLM is used for generation"""
+    """Agent 3: Generate ODRL from parsed data"""
     
     def __init__(self, model=None, temperature=None, custom_config=None):
-        """
-        Initialize Generator
-        
-        Args:
-            model: Model identifier
-            temperature: Temperature setting
-            custom_config: Custom model configuration dict
-        """
         self.model = model
         self.temperature = temperature
         self.custom_config = custom_config
         
-        # Create LLM with custom config if provided
         self.llm = LLMFactory.create_llm(
             model=model,
             temperature=temperature,
-            custom_config=custom_config  # 
+            custom_config=custom_config
         )
-        
-        # STEP 2: Create prompt
-        self.generate_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an ODRL policy generation expert. Generate valid JSON-LD policies."),
-            ("human", """Generate ODRL policy from:
-            
-Policy Type: {policy_type}
-Risk Level: {risk_level}
-Parsed Data: {parsed_data}
-Inferred Permissions: {inferred_permissions}
-
-Return ONLY valid JSON.""")
-        ])
     
-    def generate(self, reasoning_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Shows how LLM generates ODRL policy"""
-        print(f"[Generator] Generating with LLM: {type(self.llm).__name__}")
+    def generate(
+        self, 
+        parsed_data: Dict[str, Any],
+        original_text: str,
+        reasoning: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate ODRL from parsed data
         
-        # Build chain with JSON parser
-        chain = self.generate_prompt | self.llm | JsonOutputParser()
+        Args:
+            parsed_data: Parser output (required)
+            original_text: User's input (required)
+            reasoning: Reasoner analysis (optional)
+            
+        Returns:
+            Valid ODRL JSON-LD
+        """
         
-        # Invoke
-        odrl_policy = chain.invoke({
-            "policy_type": reasoning_result.get("policy_type", "unknown"),
-            "risk_level": reasoning_result.get("risk_level", "unknown"),
-            "parsed_data": str(reasoning_result.get("original_parsed_data", {})),
-            "inferred_permissions": str(reasoning_result.get("inferred_permissions", []))
-        })
+        print(f"[Generator] 🎨 Starting ODRL generation...")
+        print(f"[Generator] 📝 Original: {original_text[:50]}...")
+        print(f"[Generator] 📊 Policies: {parsed_data.get('total_policies', 0)}")
         
-        # The LLM generates:
-        # 1. Complete ODRL JSON-LD structure
-        # 2. Proper action URIs
-        # 3. Constraints in ODRL format
-        # 4. Metadata and identifiers
+        if reasoning:
+            print(f"[Generator] 🧠 Has reasoning context: {reasoning.get('decision', 'unknown')}")
         
-        return odrl_policy
+        try:
+            # Simple template-based generation for now
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are an ODRL policy generator. Create valid ODRL JSON-LD.
 
+Rules:
+1. Use @context: http://www.w3.org/ns/odrl.jsonld
+2. Generate unique uid with http://example.com/policy: prefix
+3. Map rule_type to permission/prohibition/obligation
+4. Use ODRL action URIs (odrl:read, odrl:write, etc)
+5. Create proper constraint structure with leftOperand, operator, rightOperand
+6. Add @type based on policy_type from parsed data
+
+Return ONLY valid JSON-LD, no markdown, no code blocks."""),
+                ("human", """Generate ODRL policy from:
+
+PARSED DATA: {parsed_data}
+
+ORIGINAL TEXT: {original_text}
+
+Return valid ODRL JSON-LD only.""")
+            ])
+            
+            chain = prompt | self.llm | JsonOutputParser()
+            
+            odrl_policy = chain.invoke({
+                "parsed_data": str(parsed_data),
+                "original_text": original_text
+            })
+            
+            print(f"[Generator] ✅ Generation complete")
+            print(f"[Generator] 📋 Policy type: {odrl_policy.get('@type', 'unknown')}")
+            
+            return odrl_policy
+            
+        except Exception as e:
+            print(f"[Generator] ❌ Error: {e}")
+            raise

@@ -1,7 +1,8 @@
 """
-Agent 2: ODRL Reasoner
-Pure validation layer: completeness, consistency, conflicts, enforceability
-Binary decision: can_generate = true/false (no suggestions, no inference)
+Agent 2: ODRL Reasoner (SIMPLIFIED - Pure Analysis)
+Analyzes parsed policies for completeness, consistency, conflicts.
+Returns: Binary decision (approve/reject/needs_input) + Issues + Recommendations
+Does NOT modify data - just judges if it's good enough to generate ODRL.
 """
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -13,6 +14,12 @@ from utils.llm_factory import LLMFactory
 
 
 # ===== ENUMS =====
+class ReasonerDecision(str, Enum):
+    APPROVE = "approve"
+    REJECT = "reject"
+    NEEDS_INPUT = "needs_input"
+
+
 class IssueSeverity(str, Enum):
     CRITICAL = "critical"
     HIGH = "high"
@@ -28,6 +35,7 @@ class IssueCategory(str, Enum):
     CONFLICT = "conflict"
     INCOMPLETE_CONSTRAINT = "incomplete_constraint"
     EXPIRED_POLICY = "expired_policy"
+    UNENFORCEABLE = "unenforceable"
 
 
 # ===== MODELS =====
@@ -36,210 +44,85 @@ class Issue(BaseModel):
     category: IssueCategory
     severity: IssueSeverity
     field: str
-    description: str
+    policy_id: Optional[str] = None
+    message: str
     suggestion: Optional[str] = None
 
 
-class Inference(BaseModel):
-    """Inferred missing information"""
-    field: str
-    inferred_value: str
-    reasoning: str
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
-class Conflict(BaseModel):
-    """Policy conflict detection"""
-    policy_ids: List[str]
-    conflict_type: str
-    description: str
-    severity: IssueSeverity
-
-
-class ReasonedPolicy(BaseModel):
-    """Single policy after reasoning"""
-    policy_id: str
-    issues: List[Issue] = Field(default_factory=list)
-    inferences: List[Inference] = Field(default_factory=list)
-    is_valid: bool
-    is_complete: bool
-    needs_user_input: bool
-
-
 class ReasoningResult(BaseModel):
-    """Complete reasoning output"""
-    policies: List[ReasonedPolicy]
-    global_conflicts: List[Conflict] = Field(default_factory=list)
-    overall_status: str  # "valid", "invalid", "needs_clarification"
-    risk_assessment: str  # "low", "medium", "high"
-    summary: str
+    """Pure analysis output - NO data modification"""
+    decision: ReasonerDecision
+    confidence: float = Field(ge=0.0, le=1.0)
+    issues: List[Issue] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
+    reasoning: str
+    risk_level: str
+    policies_analyzed: int
 
 
-# ===== PROMPT =====
+# ===== SIMPLIFIED PROMPT (No JSON examples to avoid escaping issues) =====
 def get_reasoner_prompt(current_date: str) -> str:
-    return f"""You are an ODRL policy reasoning expert. Analyze parsed policies for completeness, validity, and conflicts.
+    return f"""You are an ODRL policy analyzer. Decide if parsed data can generate valid ODRL.
 
 CURRENT DATE: {current_date}
-Use this date to validate temporal constraints (check for expired policies).
 
-## YOUR JOB:
-1. Validate - Check if policies are complete and well-formed
-2. Detect Issues - Flag missing fields, vague terms, ambiguities, expired policies
-3. Infer - Suggest reasonable defaults for missing information (but do not modify original)
-4. Find Conflicts - Detect contradictions between policies
-5. Assess Risk - Evaluate overall policy risk level
+YOUR DECISIONS:
+- approve: Data is good enough to generate ODRL (minor issues acceptable)
+- reject: Critical issues prevent generation
+- needs_input: User must clarify ambiguities
 
-## ANALYSIS RULES:
+WHAT TO CHECK:
 
-### 1. CHECK FOR MISSING/VAGUE FIELDS:
+1. CRITICAL ISSUES (→ reject or needs_input):
+   - Empty actions list
+   - Vague actions: "everything", "something", "do", "things"
+   - Missing assigner in Offer/Agreement policies
+   - Missing assignee in Agreement policies
+   - Expired policies (date before {current_date})
+   - Direct conflicts: same action both permitted and prohibited
 
-**Critical Issues (must be fixed):**
-- assigner: "not_specified" in Offer/Agreement policies
-- assignee: "not_specified" in Agreement policies
-- Empty actions list: actions: []
-- Vague actions: "everything", "something", "do", "things"
-- Vague targets: "not_specified", "everything"
-- Expired policies: expiration date in the past (compare with current date above)
+2. HIGH ISSUES (→ needs_input):
+   - Vague targets: "not_specified", "everything", "documents"
+   - Actions without odrl: prefix
+   - Ambiguous constraints: "soon", "later", "usually"
+   - Generic assignee: "everyone", "anyone"
 
-**Medium Issues (should clarify):**
-- Generic assignee: "everyone", "anyone", "all"
-- Ambiguous actions not mapped to ODRL (actions without odrl: prefix)
-- Missing constraints where expected (e.g., temporal limits on permissions)
+3. MEDIUM ISSUES (→ approve with warnings):
+   - Missing temporal constraints
+   - No duties on permissions
+   - Broad permissions without restrictions
 
-**Low Issues (informational):**
-- No duties attached to permission
-- No constraints specified
+4. LOW ISSUES (→ approve, just note):
+   - No constraints specified
+   - Simple policy structure
+   - Missing optional metadata
 
-### 2. INFER MISSING INFORMATION (suggest, do not change):
+RISK LEVELS:
+- low: All specified, restrictive actions, has constraints, not expired
+- medium: Some vague terms, broad permissions, minor issues
+- high: Critical missing fields, conflicts, overly permissive, expired
 
-For missing fields, suggest reasonable defaults:
-- assigner: "not_specified" → Infer: "system" or "policy_owner"
-- Vague action "everything" → Suggest: List specific ODRL actions user might mean
-- Missing temporal constraint → Suggest: Add expiration date
+DECISION LOGIC:
+- Any CRITICAL issue → reject (confidence 0.1-0.3)
+- Multiple HIGH issues → needs_input (confidence 0.4-0.6)
+- Has conflicts → needs_input (confidence 0.5-0.7)
+- Only MEDIUM/LOW issues → approve (confidence 0.7-0.95)
+- Perfect policy → approve (confidence 0.95-1.0)
 
-### 3. DETECT CONFLICTS:
+OUTPUT: Return valid JSON with these fields:
+- decision: string (approve/reject/needs_input)
+- confidence: number (0.0 to 1.0)
+- issues: array of objects with category, severity, field, policy_id, message, suggestion
+- recommendations: array of strings
+- reasoning: string (1-3 sentences explaining decision)
+- risk_level: string (low/medium/high)
+- policies_analyzed: number
 
-**Direct conflicts:**
-- Same action both permitted and prohibited for same assignee/target
-- Overlapping permissions with contradictory constraints
+Analyze this parsed data and original text:
 
-**Logical conflicts:**
-- Permission duration longer than target resource availability
-- Duty that contradicts the permission
-
-### 4. ASSESS VALIDITY:
-
-**Policy is VALID if:**
-- All required fields present (assigner for Offer/Agreement, assignee for Agreement)
-- Actions are specific (mapped to ODRL or clearly defined)
-- No critical issues
-- No conflicts
-- Not expired
-
-**Policy is INCOMPLETE if:**
-- Has vague/ambiguous terms
-- Missing optional but important fields
-- Needs user clarification
-
-**Policy NEEDS USER INPUT if:**
-- Critical fields missing
-- Actions are completely vague
-- Has conflicts that cannot be auto-resolved
-- Policy has expired
-
-### 5. RISK ASSESSMENT:
-
-**Low Risk:**
-- All fields specified
-- Actions are restrictive (read-only)
-- Temporal/spatial constraints present
-- No conflicts
-- Not expired
-
-**Medium Risk:**
-- Some vague terms
-- Broad permissions without constraints
-- Minor conflicts
-
-**High Risk:**
-- Critical missing fields
-- Overly permissive (e.g., "everyone can do everything")
-- No constraints on sensitive actions
-- Major conflicts
-- Policy expired
-
-## INPUT FORMAT:
-{{{{
-  "policies": [
-    {{{{
-      "policy_id": "p1",
-      "policy_type": "odrl:Set",
-      "assigner": "string or not_specified",
-      "assignee": ["string"],
-      "rule_type": "permission|prohibition|duty",
-      "actions": ["odrl:action or vague_term"],
-      "targets": ["string or not_specified"],
-      "constraints": [...],
-      "duties": [...],
-      "source_text": "..."
-    }}}}
-  ],
-  "raw_text": "...",
-  "total_policies": 1
-}}}}
-
-## OUTPUT FORMAT:
-{{{{
-  "policies": [
-    {{{{
-      "policy_id": "p1",
-      "issues": [
-        {{{{
-          "category": "vague_term",
-          "severity": "high",
-          "field": "actions",
-          "description": "Action 'everything' is too vague and cannot be enforced",
-          "suggestion": "Specify concrete actions like: odrl:read, odrl:write, odrl:modify"
-        }}}},
-        {{{{
-          "category": "expired_policy",
-          "severity": "critical",
-          "field": "constraints",
-          "description": "Policy has already expired (expiration date 2020-01-01 is before current date {current_date})",
-          "suggestion": "Update expiration date to a future date or remove temporal constraint"
-        }}}}
-      ],
-      "inferences": [
-        {{{{
-          "field": "assigner",
-          "inferred_value": "system",
-          "reasoning": "No assigner specified in generic policy, defaulting to system",
-          "confidence": 0.7
-        }}}}
-      ],
-      "is_valid": false,
-      "is_complete": false,
-      "needs_user_input": true
-    }}}}
-  ],
-  "global_conflicts": [],
-  "overall_status": "needs_clarification",
-  "risk_assessment": "high",
-  "summary": "Policy has critical issues that require user clarification before it can be enforced.",
-  "recommendations": [
-    "Replace vague action 'everything' with specific ODRL actions",
-    "Update expired policy dates",
-    "Add temporal constraints to limit permission duration",
-    "Specify concrete target resources"
-  ]
-}}}}
-
-## CORE PRINCIPLE:
-Be thorough but practical. Flag real issues that would prevent policy enforcement. Suggest helpful inferences but never modify the original parsed data.
-
-Analyze these policies:
 {{parsed_data}}
+
+{{original_text}}
 
 {{format_instructions}}
 """
@@ -247,7 +130,7 @@ Analyze these policies:
 
 # ===== REASONER CLASS =====
 class Reasoner:
-    """Agent 2: Validate and analyze parsed policies"""
+    """Agent 2: Pure policy analysis - no data modification"""
     
     def __init__(self, model=None, temperature=None, custom_config=None):
         self.model = model
@@ -260,47 +143,57 @@ class Reasoner:
             custom_config=custom_config
         )
     
-    def reason(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze parsed policies - ONE LLM CALL"""
+    def reason(self, parsed_data: Dict[str, Any], original_text: str) -> Dict[str, Any]:
+        """
+        Analyze parsed policies - Pure judgment, no modification
         
-        # Get current date for temporal validation
+        Args:
+            parsed_data: Parser output
+            original_text: User's original input text
+            
+        Returns:
+            ReasoningResult with decision, issues, recommendations
+        """
+        
         current_date = datetime.utcnow().strftime("%Y-%m-%d")
         
-        print(f"[Reasoner] Starting analysis...")
-        print(f"[Reasoner] Current date: {current_date}")
-        print(f"[Reasoner] Analyzing {parsed_data.get('total_policies', 1)} policies...")
+        print(f"[Reasoner] 🧠 Starting pure analysis...")
+        print(f"[Reasoner] 📅 Current date: {current_date}")
+        print(f"[Reasoner] 📊 Analyzing {parsed_data.get('total_policies', 1)} policies...")
+        print(f"[Reasoner] 📝 Original text: {original_text[:50]}...")
         
         try:
-            # Create parser
             parser = PydanticOutputParser(pydantic_object=ReasoningResult)
-            
-            # Get prompt with current date
             prompt_text = get_reasoner_prompt(current_date)
             
-            # Create prompt
             prompt = ChatPromptTemplate.from_messages([
                 ("system", prompt_text),
-                ("human", "{parsed_data}\n\n{format_instructions}")
+                ("human", "{parsed_data}\n\n{original_text}\n\n{format_instructions}")
             ])
             
-            # Build chain
             chain = prompt | self.llm | parser
             
-            # Invoke
             result = chain.invoke({
                 "parsed_data": str(parsed_data),
+                "original_text": original_text,
                 "format_instructions": parser.get_format_instructions()
             })
             
-            print(f"[Reasoner] Analysis complete")
-            print(f"[Reasoner] Overall status: {result.overall_status}")
-            print(f"[Reasoner] Risk assessment: {result.risk_assessment}")
+            print(f"[Reasoner] ✅ Analysis complete")
+            print(f"[Reasoner] 🎯 Decision: {result.decision.upper()}")
+            print(f"[Reasoner] 📊 Confidence: {result.confidence:.0%}")
+            print(f"[Reasoner] ⚠️  Issues: {len(result.issues)}")
+            print(f"[Reasoner] 💡 Recommendations: {len(result.recommendations)}")
+            print(f"[Reasoner] 🛡️  Risk: {result.risk_level.upper()}")
             
-            total_issues = sum(len(p.issues) for p in result.policies)
-            print(f"[Reasoner] Found {total_issues} issues across all policies")
+            critical_issues = [i for i in result.issues if i.severity == IssueSeverity.CRITICAL]
+            if critical_issues:
+                print(f"[Reasoner] 🚨 CRITICAL ISSUES:")
+                for issue in critical_issues:
+                    print(f"[Reasoner]    - {issue.field}: {issue.message}")
             
             return result.dict()
             
         except Exception as e:
-            print(f"[Reasoner] Error: {e}")
+            print(f"[Reasoner] ❌ Error: {e}")
             raise

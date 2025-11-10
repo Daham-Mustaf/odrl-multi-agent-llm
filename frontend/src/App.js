@@ -402,7 +402,6 @@ const ODRLDemo = () => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
   
-
 const handleProcess = async () => {
   if (!inputText.trim()) {
     setError('Please enter a policy description');
@@ -485,6 +484,7 @@ const handleProcess = async () => {
     
     const reasonResult = await callAPI('reason', {
       parsed_data: parseResult,
+      original_text: inputText,  // ✅ NEW
       model: reasonerModel,
       temperature,
       custom_model: reasonerCustomConfig
@@ -499,7 +499,6 @@ const handleProcess = async () => {
 
     // Check if auto-progress is ON
     if (!autoProgress) {
-      // Manual mode - stop here and show reasoner tab
       setActiveTab('reasoner');
       const totalTime = Date.now() - startTimes.total;
       const historyItem = createHistoryItem({
@@ -518,14 +517,14 @@ const handleProcess = async () => {
       });
       addToHistory(historyItem);
       setCurrentHistoryId(historyItem.id);
-      return; // Stop here - user must click Continue
+      return;
     }
 
     // Auto-progress mode - continue to generation
     startTimes.generate = Date.now();
 
     // ============================================
-    // STAGE 3: GENERATE (Auto if auto-progress ON)
+    // STAGE 3: GENERATE
     // ============================================
     updateAgentState('generator', 'processing');
     setProcessingStage('Generating ODRL policy...');
@@ -535,7 +534,9 @@ const handleProcess = async () => {
     const generatorCustomConfig = getModelConfig(generatorModel);
     
     const genResult = await callAPI('generate', {
-      reasoning_result: reasonResult,
+      parsed_data: parseResult,    // ✅ NEW
+      original_text: inputText,    // ✅ NEW
+      reasoning: reasonResult,     // ✅ CHANGED
       model: generatorModel,
       temperature,
       custom_model: generatorCustomConfig
@@ -551,7 +552,7 @@ const handleProcess = async () => {
     startTimes.validate = Date.now();
 
     // ============================================
-    // STAGE 4: VALIDATE (Auto if auto-progress ON)
+    // STAGE 4: VALIDATE
     // ============================================
     updateAgentState('validator', 'processing');
     setProcessingStage('Validating with SHACL...');
@@ -581,10 +582,8 @@ const handleProcess = async () => {
       showToast(`Complete! ${valResult.issues?.length || 0} SHACL violations found`, 'warning');
     }
 
-    // Auto-switch to validator tab to show final results
     setActiveTab('validator');
 
-    // Save complete workflow to history
     const totalTime = Date.now() - startTimes.total;
     const historyItem = createHistoryItem({
       inputText,
@@ -664,6 +663,12 @@ const handleGenerate = async () => {
     return;
   }
 
+  // Need parsed data - should be saved from handleProcess
+  if (!parsedData) {
+    showToast('Parser data missing - please run parsing again', 'error');
+    return;
+  }
+
   setLoading(true);
   setProcessingStage('Generating ODRL policy...');
   setProcessingProgress(50);
@@ -694,8 +699,9 @@ const handleGenerate = async () => {
     const generatorCustomConfig = getModelConfig(generatorModel);
     
     const genResult = await callAPI('generate', {
-      reasoning_result: reasoningResult,
-      model: generatorModel,
+      parsed_data: parsedData,        
+      original_text: inputText,      
+      reasoning: reasoningResult,     
       temperature,
       custom_model: generatorCustomConfig
     }, signal);
