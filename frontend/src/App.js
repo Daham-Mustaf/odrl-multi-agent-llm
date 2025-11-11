@@ -11,6 +11,7 @@ import { ReasonerTab } from './components/tabs/ReasonerTab';
 import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
+import MetricsBar from './components/MetricsBar';
 
 
 // ============================================
@@ -116,6 +117,8 @@ const ODRLDemo = () => {
   const [autoProgress, setAutoProgress] = useState(false);
 
   const [validating, setValidating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [attemptNumber, setAttemptNumber] = useState(1);
   
   const [metrics, setMetrics] = useState({
     parseTime: 0,
@@ -411,6 +414,7 @@ const handleProcess = async () => {
 
   setLoading(true);
   setError(null);
+  setAttemptNumber(1);
   setProcessingProgress(0);
   setProcessingStage('Starting process...');
   setParsedData(null);
@@ -789,6 +793,137 @@ const handleValidate = async () => {
   } finally {
     setValidating(false);
   }
+};
+
+// ============================================
+// handleRegenerate Function (NEW)
+// ============================================
+const handleRegenerate = async () => {
+  if (!validationResult || validationResult.is_valid) {
+    showToast('No validation errors to fix', 'info');
+    return;
+  }
+
+  if (!parsedData || !generatedODRL) {
+    showToast('Missing data for regeneration', 'error');
+    return;
+  }
+
+  console.log('[App] 🔧 Starting regeneration...');
+  
+  setRegenerating(true);
+  setProcessingStage(`Regenerating (attempt ${attemptNumber + 1}/3)...`);
+  setProcessingProgress(50);
+
+  const startTime = Date.now();
+  const signal = getSignal();
+  const newAttemptNumber = attemptNumber + 1;
+
+  // Check max attempts
+  if (newAttemptNumber > 3) {
+    showToast('Maximum regeneration attempts (3) reached', 'error');
+    setRegenerating(false);
+    setProcessingProgress(0);
+    setProcessingStage('');
+    return;
+  }
+
+  const getModelConfig = (modelValue) => {
+    if (!modelValue) return null;
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (customModel) {
+      return {
+        provider_type: customModel.provider_type,
+        base_url: customModel.base_url,
+        model_id: customModel.model_id,
+        api_key: customModel.api_key,
+        context_length: customModel.context_length,
+        temperature_default: customModel.temperature_default
+      };
+    }
+    return null;
+  };
+
+  try {
+    updateAgentState('generator', 'processing');
+    
+    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const generatorCustomConfig = getModelConfig(generatorModel);
+
+    console.log('[App] Sending SHACL errors to Generator:', validationResult.issues);
+    
+    // Call generator with validation errors
+    const genResult = await callAPI('generate', {
+      parsed_data: parsedData,
+      original_text: inputText,
+      reasoning: reasoningResult,
+      validation_errors: {                   
+        issues: validationResult.issues || []
+      },
+      previous_odrl: generatedODRL.odrl_policy || generatedODRL, 
+      attempt_number: newAttemptNumber,     
+      model: generatorModel,
+      temperature,
+      custom_model: generatorCustomConfig
+    }, signal);
+    
+    setGeneratedODRL(genResult);
+    setAttemptNumber(newAttemptNumber);
+    updateAgentState('generator', 'completed');
+    setProcessingProgress(75);
+    showToast(`Regeneration complete (attempt ${newAttemptNumber})`, 'success');
+
+    console.log('[App] Auto-revalidating regenerated policy...');
+
+    // Auto-revalidate the regenerated policy
+    updateAgentState('validator', 'processing');
+    setProcessingProgress(85);
+
+    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validatorCustomConfig = getModelConfig(validatorModel);
+
+    const valResult = await callAPI('validate', {
+      odrl_policy: genResult.odrl_policy || genResult,
+      model: validatorModel,
+      temperature,
+      custom_model: validatorCustomConfig
+    }, signal);
+    
+    setValidationResult(valResult);
+    updateAgentState('validator', 'completed');
+    setProcessingProgress(100);
+
+    if (valResult.is_valid) {
+      showToast('Success! SHACL validation passed!', 'success');
+      setAttemptNumber(1); // Reset for next policy
+    } else {
+      const remainingIssues = valResult.issues?.length || 0;
+      showToast(`Still ${remainingIssues} issue${remainingIssues !== 1 ? 's' : ''} remaining`, 'warning');
+      
+      if (newAttemptNumber >= 3) {
+        showToast('Maximum attempts reached. Please edit input manually.', 'error');
+      }
+    }
+
+  } catch (error) {
+    console.error('[App] Regeneration error:', error);
+    showToast('Regeneration failed: ' + error.message, 'error');
+    updateAgentState('generator', 'error');
+  } finally {
+    setRegenerating(false);
+    setProcessingProgress(0);
+    setProcessingStage('');
+  }
+};
+
+// ============================================
+// handleEditFromValidator Function (NEW)
+// ============================================
+const handleEditFromValidator = () => {
+  console.log('[App] User wants to edit input from validator');
+  setActiveTab('parser');
+  setAttemptNumber(1); // Reset attempt counter
+  showToast('Edit your input and click "Start Processing" to regenerate', 'info');
 };
 
 // ============================================
@@ -1480,17 +1615,9 @@ Or drag and drop a .txt, .md, or .json file here"
     darkMode={darkMode}
     onCopy={copyToClipboard}
     onDownload={downloadJSON}
-    onRegenerate={() => {
-      console.log('[App] Regenerating ODRL from validator');
-      setValidationResult(null);
-      setActiveTab('generator');
-      handleGenerate();
-    }}
-    onEditInput={() => {
-      console.log('[App] Editing input from validator');
-      setActiveTab('parser');
-      showToast('Edit your input and re-process', 'info');
-    }}
+    onRegenerate={handleRegenerate}        
+    onEditInput={handleEditFromValidator}   
+    isRegenerating={regenerating}           
   />
 )}
 

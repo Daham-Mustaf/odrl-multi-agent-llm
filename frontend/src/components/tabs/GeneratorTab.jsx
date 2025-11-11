@@ -1,5 +1,4 @@
 // components/tabs/GeneratorTab.jsx
-// components/tabs/GeneratorTab.jsx
 import React, { useState } from 'react';
 import { 
   Code, 
@@ -12,14 +11,14 @@ import {
 } from 'lucide-react';
 
 /**
- * Generator Tab - Shows ODRL + Validation
+ * Generator Tab - Shows Generated ODRL
  */
 export const GeneratorTab = ({ 
   generatedODRL,
   darkMode = false,
   onCopy = () => {},
   onDownload = () => {},
-  onValidate = () => {},  // This triggers validator tab
+  onValidate = () => {},
   isValidating = false
 }) => {
   const [copied, setCopied] = useState(false);

@@ -132,15 +132,18 @@ class ParseRequest(BaseModel):
 
 class ReasonRequest(BaseModel):
     parsed_data: Dict[str, Any]
-    original_text: str  # ✅ Should have this
+    original_text: str  
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
     
 class GenerateRequest(BaseModel):
-    parsed_data: Dict[str, Any]  # ✅ Should have this
-    original_text: str            # ✅ Should have this
-    reasoning: Optional[Dict[str, Any]] = None  # ✅ Should be optional
+    parsed_data: Dict[str, Any]
+    original_text: str
+    reasoning: Optional[Dict[str, Any]] = None
+    validation_errors: Optional[Dict[str, Any]] = None  
+    previous_odrl: Optional[Dict[str, Any]] = None      
+    attempt_number: Optional[int] = 1                    
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_model: Optional[Dict[str, Any]] = None
@@ -553,7 +556,7 @@ async def reason(request: Request, data: ReasonRequest):
 
 @app.post("/api/generate")
 async def generate_odrl(request: Request, data: GenerateRequest): 
-    """Agent 3: Generate ODRL from parsed data with optional reasoning context"""
+    """Agent 3: Generate or regenerate ODRL with optional SHACL error fixes"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
     
@@ -561,7 +564,13 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         logger.warning("Client disconnected before generation")
         return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
     
-    logger.info(f"Generate request: model={data.model}")
+    # Log whether this is first generation or regeneration
+    if data.validation_errors and data.previous_odrl:
+        logger.info(f"Regenerate request (attempt #{data.attempt_number}): model={data.model}")
+        logger.info(f"   Fixing {len(data.validation_errors.get('issues', []))} SHACL issues")
+    else:
+        logger.info(f"Generate request: model={data.model}")
+    
     start = time.time()
     
     try:
@@ -577,9 +586,12 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         odrl_policy = await run_with_disconnect_check(
             generator.generate,
             request,
-            data.parsed_data,     
-            data.original_text,   
-            data.reasoning         
+            data.parsed_data,
+            data.original_text,
+            data.reasoning,
+            data.validation_errors,  
+            data.previous_odrl,     
+            data.attempt_number or 1 
         )
         
         if odrl_policy is None:
@@ -591,11 +603,12 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         return {
             'odrl_policy': odrl_policy,
             'processing_time_ms': elapsed_ms,
-            'model_used': data.model or DEFAULT_MODEL
+            'model_used': data.model or DEFAULT_MODEL,
+            'attempt_number': data.attempt_number or 1  
         }
         
     except Exception as e:
-        logger.error(f"Generate error: {e}")
+        logger.error(f" Generate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
