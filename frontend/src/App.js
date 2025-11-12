@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { encodingForModel } from 'js-tiktoken';
 import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import DebugPanel from './components/DebugPanel'; 
@@ -12,6 +12,10 @@ import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
 import MetricsBar from './components/MetricsBar';
+
+// API Configuration
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = `${API_URL}/api`;
 
 
 // ============================================
@@ -86,7 +90,15 @@ const ODRLDemo = () => {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
-
+  // Store generation context for regeneration
+  const [generationContext, setGenerationContext] = useState(null);
+  const { getSignal, abort } = useAbortController();
+  // Create abort controller ref for cancellation
+  const abortControllerRef = useRef(new AbortController());
+  // Reset abort controller when needed
+  const resetAbortController = () => {
+    abortControllerRef.current = new AbortController();
+  };
   const [advancedMode, setAdvancedMode] = useState(false);
   const [agentModels, setAgentModels] = useState({
     parser: null,      
@@ -101,9 +113,6 @@ const ODRLDemo = () => {
   } = useChatHistory(50);
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
   const [completedStages, setCompletedStages] = useState([]);
-  const { getSignal, abort } = useAbortController();
-
-
   const [providers, setProviders] = useState([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [backendConnected, setBackendConnected] = useState(false);
@@ -158,9 +167,6 @@ const ODRLDemo = () => {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingStage, setProcessingStage] = useState('');
   const [reasonerLoading, setReasonerLoading] = useState(false);
-
-
-  const API_BASE_URL = `${process.env.REACT_APP_API_URL}/api`;
 
   // ============================================
   // TOAST NOTIFICATION HELPER
@@ -674,10 +680,11 @@ const handleGenerate = async () => {
   setLoading(true);
   setProcessingStage('Generating ODRL policy...');
   setProcessingProgress(50);
+  setGeneratedODRL(null);
+  setValidationResult(null);
 
   const startTime = Date.now();
-  const signal = getSignal();
-
+  const signal = abortControllerRef.current.signal;
   const getModelConfig = (modelValue) => {
     if (!modelValue) return null;
     const customModel = customModels.find(m => m.value === modelValue);
@@ -700,24 +707,44 @@ const handleGenerate = async () => {
       ? agentModels.generator
       : selectedModel;
 
-    const generatorCustomConfig = getModelConfig(generatorModel);
+    const generatorCustomConfig = getModelConfig(generatorModel?.value);
 
     // Call backend API
-    const genResult = await callAPI('generate', {
-      parsed_data: parsedData,
-      original_text: inputText,
-      reasoning: reasoningResult,
-      temperature,
-      custom_model: generatorCustomConfig
-    }, signal);
+    console.log('[Generator] Sending generate request...');
+    const response = await fetch(`${API_BASE_URL}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parsed_data: parsedData,
+        original_text: inputText,
+        reasoning: reasoningResult,
+        attempt_number: 1,
+        model: generatorModel?.id || null,
+        temperature,
+        custom_config: generatorCustomConfig
+      }),
+      signal
+    });
 
-    // Save result to state
+    if (!response.ok) {
+      throw new Error(`Generation failed: ${response.status}`);
+    }
+
+    const genResult = await response.json();
+    console.log('[Generator] Generation complete');
+
+    // Save generated ODRL
     setGeneratedODRL(genResult);
 
-    // Update metrics
-    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTime }));
+    // Store context for regeneration
+    setGenerationContext({
+      parsed_data: parsedData,
+      original_text: inputText,
+      reasoning: reasoningResult
+    });
 
-    // Update generator agent state to completed
+    // Update metrics & agent state
+    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTime }));
     updateAgentState('generator', 'completed');
 
     // Update progress & notify
@@ -728,9 +755,14 @@ const handleGenerate = async () => {
     setActiveTab('generator');
 
   } catch (error) {
-    console.error('[Generator] Error:', error);
-    showToast('Generation failed: ' + error.message, 'error');
-    updateAgentState('generator', 'error');
+    if (error.name === 'AbortError') {
+      console.log('[Generator] Generation cancelled');
+      showToast('Generation cancelled', 'info');
+    } else {
+      console.error('[Generator] Error:', error);
+      showToast('Generation failed: ' + error.message, 'error');
+      updateAgentState('generator', 'error');
+    }
   } finally {
     setLoading(false);
     setProcessingProgress(0);
@@ -808,119 +840,71 @@ const handleValidate = async () => {
 };
 
 // ============================================
-// handleRegenerate Function (NEW)
+// handleRegenerate Function
 // ============================================
 const handleRegenerate = async () => {
-  if (!validationResult || validationResult.is_valid) {
-    showToast('No validation errors to fix', 'info');
+  if (!validationResult || !generatedODRL || !generationContext) {
+    showToast('Missing context for regeneration', 'error');
     return;
   }
 
-  if (!parsedData || !generatedODRL) {
-    showToast('Missing data for regeneration', 'error');
-    return;
-  }
-
-  console.log('[App] 🔧 Starting regeneration...');
-  
   setRegenerating(true);
-  setProcessingStage(`Regenerating (attempt ${attemptNumber + 1}/3)...`);
+  setValidationResult(null);
+  setProcessingStage(`Regenerating ODRL (attempt ${(generatedODRL.attempt_number || 1) + 1})...`);
   setProcessingProgress(50);
 
-  const startTime = Date.now();
-  const signal = getSignal();
-  const newAttemptNumber = attemptNumber + 1;
-
-  // Check max attempts
-  if (newAttemptNumber > 3) {
-    showToast('Maximum regeneration attempts (3) reached', 'error');
-    setRegenerating(false);
-    setProcessingProgress(0);
-    setProcessingStage('');
-    return;
-  }
-
-  const getModelConfig = (modelValue) => {
-    if (!modelValue) return null;
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (customModel) {
-      return {
-        provider_type: customModel.provider_type,
-        base_url: customModel.base_url,
-        model_id: customModel.model_id,
-        api_key: customModel.api_key,
-        context_length: customModel.context_length,
-        temperature_default: customModel.temperature_default
-      };
-    }
-    return null;
-  };
-
   try {
-    updateAgentState('generator', 'processing');
-    
-    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-    const generatorCustomConfig = getModelConfig(generatorModel);
+    console.log('[Generator] Regenerating ODRL with validation fixes...');
+    console.log('[Generator] Context preview:', {
+      original_text: generationContext.original_text?.substring(0, 50) + '...',
+      has_parsed_data: !!generationContext.parsed_data,
+      has_reasoning: !!generationContext.reasoning,
+      validation_issues: validationResult.issues?.length
+    });
 
-    console.log('[App] Sending SHACL errors to Generator:', validationResult.issues);
-    
-    // Call generator with validation errors
-    const genResult = await callAPI('generate', {
-      parsed_data: parsedData,
-      original_text: inputText,
-      reasoning: reasoningResult,
-      validation_errors: {                   
-        issues: validationResult.issues || []
-      },
-      previous_odrl: generatedODRL.odrl_policy || generatedODRL, 
-      attempt_number: newAttemptNumber,     
-      model: generatorModel,
-      temperature,
-      custom_model: generatorCustomConfig
-    }, signal);
-    
-    setGeneratedODRL(genResult);
-    setAttemptNumber(newAttemptNumber);
-    updateAgentState('generator', 'completed');
-    setProcessingProgress(75);
-    showToast(`Regeneration complete (attempt ${newAttemptNumber})`, 'success');
+    const response = await fetch(`${API_BASE_URL}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        // Original generation context
+        parsed_data: generationContext.parsed_data,
+        original_text: generationContext.original_text,
+        reasoning: generationContext.reasoning,
 
-    console.log('[App] Auto-revalidating regenerated policy...');
+        // Regeneration-specific info
+        validation_errors: validationResult,
+        previous_odrl: generatedODRL.odrl_turtle,
+        attempt_number: (generatedODRL.attempt_number || 1) + 1,
 
-    // Auto-revalidate the regenerated policy
-    updateAgentState('validator', 'processing');
-    setProcessingProgress(85);
+        // Model configuration
+        model: selectedModel?.id,
+        temperature: selectedModel?.temperature,
+        custom_config: selectedModel?.custom_config
+      }),
+      signal: abortControllerRef.current.signal
+    });
 
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-    const validatorCustomConfig = getModelConfig(validatorModel);
-
-    const valResult = await callAPI('validate', {
-      odrl_policy: genResult.odrl_policy || genResult,
-      model: validatorModel,
-      temperature,
-      custom_model: validatorCustomConfig
-    }, signal);
-    
-    setValidationResult(valResult);
-    updateAgentState('validator', 'completed');
-    setProcessingProgress(100);
-
-    if (valResult.is_valid) {
-      showToast('Success! SHACL validation passed!', 'success');
-      setAttemptNumber(1); // Reset for next policy
-    } else {
-      const remainingIssues = valResult.issues?.length || 0;
-      showToast(`Still ${remainingIssues} issue${remainingIssues !== 1 ? 's' : ''} remaining`, 'warning');
-      
-      if (newAttemptNumber >= 3) {
-        showToast('Maximum attempts reached. Please edit input manually.', 'error');
-      }
+    if (!response.ok) {
+      throw new Error(`Regeneration failed: ${response.status}`);
     }
+
+    const data = await response.json();
+    console.log('[Generator] Regeneration complete');
+    console.log('[Generator] Attempt number:', data.attempt_number);
+
+    // Update state
+    setGeneratedODRL(data);
+    setActiveTab('generator');
+    showToast(`Regenerated ODRL (attempt ${data.attempt_number})`, 'success');
 
   } catch (error) {
-    console.error('[App] Regeneration error:', error);
-    showToast('Regeneration failed: ' + error.message, 'error');
-    updateAgentState('generator', 'error');
+    if (error.name === 'AbortError') {
+      console.log('[Generator] Regeneration cancelled');
+      showToast('Regeneration cancelled', 'info');
+    } else {
+      console.error('[Generator] Regeneration error:', error);
+      showToast('Regeneration failed: ' + error.message, 'error');
+    }
   } finally {
     setRegenerating(false);
     setProcessingProgress(0);
@@ -944,8 +928,10 @@ const handleEditFromValidator = () => {
 const handleStop = () => {
   console.log('Stop button clicked - cancelling operations');
   
-  // Abort all ongoing API calls
-  abort();
+  // Abort current request
+  abortControllerRef.current.abort();
+  // Create new controller for next request
+  resetAbortController();
   
   // Reset loading state
   setLoading(false);
@@ -1657,7 +1643,9 @@ Or drag and drop a .txt, .md, or .json file here"
     onDownload={downloadJSON}
     onRegenerate={handleRegenerate}        
     onEditInput={handleEditFromValidator}   
-    isRegenerating={regenerating}           
+    isRegenerating={regenerating}  
+    originalText={inputText}  // ✅ Pass original user input
+         
   />
 )}
 

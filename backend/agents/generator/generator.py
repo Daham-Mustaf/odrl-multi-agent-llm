@@ -60,8 +60,8 @@ class Generator:
         # REGENERATION MODE: Fix SHACL validation errors
         # ============================================
         if validation_errors and previous_odrl:
-            print(f"[Generator] 🔧 REGENERATION MODE")
-            print(f"[Generator] 🐛 Fixing {len(validation_errors.get('issues', []))} SHACL issues")
+            print(f"[Generator] REGENERATION MODE")
+            print(f"[Generator] Fixing {len(validation_errors.get('issues', []))} SHACL issues")
             
             odrl_turtle = self._regenerate_with_fixes(
                 parsed_data,
@@ -170,12 +170,12 @@ Return ONLY valid Turtle syntax.""")
             odrl_turtle = self._clean_turtle(odrl_turtle)
             
             print(f"[Generator] ✅ Fresh generation complete")
-            print(f"[Generator] 📋 Turtle length: {len(odrl_turtle)} chars")
+            print(f"[Generator] 📋Turtle length: {len(odrl_turtle)} chars")
             
             return odrl_turtle
             
         except Exception as e:
-            print(f"[Generator] ❌ Error in fresh generation: {e}")
+            print(f"[Generator]  Error in fresh generation: {e}")
             raise
     
     def _regenerate_with_fixes(
@@ -189,61 +189,86 @@ Return ONLY valid Turtle syntax.""")
         """Regenerate ODRL Turtle by fixing SHACL validation errors"""
         
         try:
-            # Extract issues
+            # Extract issues with full details
             issues = validation_errors.get('issues', [])
+            
+            # Build detailed issue description
             issues_text = "\n".join([
-                f"- [{issue.get('severity', 'error')}] {issue.get('field', 'unknown')}: {issue.get('message', 'No message')}"
-                for issue in issues
+                f"""Issue {i+1}: {issue.get('type', 'Unknown')}
+    - Field: {issue.get('field', 'unknown')}
+    - Problem: {issue.get('message', 'No message')}
+    - Current Value: {issue.get('actual_value', 'N/A')}
+    - Location: {issue.get('focus_node', 'N/A')}
+    - Severity: {issue.get('severity', 'Error')}"""
+                for i, issue in enumerate(issues)
             ])
             
-            print(f"[Generator] 🔍 Issues to fix:\n{issues_text}")
+            print(f"[Generator] Issues to fix:\n{issues_text}\n")
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", """You are an ODRL expert fixing SHACL validation errors in Turtle format.
 
-CRITICAL RULES:
-1. DO NOT change the policy meaning or intent
+CRITICAL RULES FOR FIXING:
+1. DO NOT change the policy meaning or intent from the original user request
 2. ONLY fix technical SHACL violations
 3. Keep all actions, constraints, parties, and targets the same
-4. Just correct formatting, URIs, operators, and structure
+4. Correct ONLY formatting, URIs, operators, and structure issues
 
-COMMON FIXES:
+COMMON ODRL FIXES:
 - Missing odrl:uid → Add: odrl:uid ex:policyX ;
-- Wrong operator "lte" → Change to odrl:lteq
-- Wrong operator "gte" → Change to odrl:gteq
-- Missing odrl: prefix in leftOperand → Add odrl:dateTime, odrl:spatial, etc.
-- Invalid property names → Use correct ODRL vocabulary
+- Wrong operator "lte" → Change to "odrl:lteq"
+- Wrong operator "gte" → Change to "odrl:gteq"  
+- Wrong operator "lt" → Keep "odrl:lt" (already correct)
+- Wrong operator "gt" → Keep "odrl:gt" (already correct)
+- Missing "odrl:" prefix in leftOperand → Add "odrl:dateTime", "odrl:count", "odrl:spatial", etc.
+- Invalid leftOperand → Use only: dateTime, count, elapsedTime, payAmount, percentage, spatial, purpose, recipient
 - Missing constraint type → Add: a odrl:Constraint ;
-- Wrong datatype → Use xsd:date, xsd:integer, etc.
+- Wrong datatype → Use ^^xsd:date, ^^xsd:integer, ^^xsd:decimal
+- Incompatible operator-operand pair → Check ODRL spec compatibility matrix
 
-PRESERVE:
+VALID ODRL OPERATORS:
+- Comparison: odrl:eq, odrl:lt, odrl:gt, odrl:lteq, odrl:gteq, odrl:neq
+- Set: odrl:isA, odrl:hasPart, odrl:isPartOf, odrl:isAllOf, odrl:isAnyOf, odrl:isNoneOf
+
+PRESERVE FROM ORIGINAL:
 - All policy rules (permissions, prohibitions)
-- All actions (odrl:read, odrl:write, etc.)
-- All constraints and their values
-- The policy intent
+- All actions (odrl:read, odrl:write, odrl:print, odrl:modify, odrl:distribute, etc.)
+- All constraint values and their semantic meaning
+- The complete policy intent from the user's original request
 
-Return ONLY the corrected Turtle. No markdown, no explanations."""),
-                
-                ("human", """Fix these SHACL validation errors:
+Return ONLY the corrected Turtle. No markdown, no explanations, no code blocks."""),
+            
+            ("human", """Fix the SHACL validation errors while preserving the original policy intent.
 
-VALIDATION ERRORS:
-{validation_errors}
+ORIGINAL USER REQUEST:
+{original_text}
 
-CURRENT TURTLE (has errors):
-{previous_odrl}
-
-ORIGINAL PARSED DATA (for reference):
+PARSED POLICY STRUCTURE:
 {parsed_data}
 
-Return the CORRECTED Turtle only.""")
+CURRENT TURTLE (with SHACL violations):
+{previous_odrl}
+
+SHACL VALIDATION ERRORS TO FIX:
+{validation_errors}
+
+INSTRUCTIONS:
+1. Read the original user request to understand the intended policy
+2. Look at the current Turtle to see what was generated
+3. Fix ONLY the specific SHACL violations listed above
+4. Ensure the fixed policy still matches the user's original intent
+5. Return ONLY the corrected Turtle
+
+Return the CORRECTED Turtle only (no markdown, no explanations).""")
             ])
             
             chain = prompt | self.llm | StrOutputParser()
             
             odrl_turtle = chain.invoke({
-                "validation_errors": issues_text,
+                "original_text": original_text,
+                "parsed_data": str(parsed_data),
                 "previous_odrl": previous_odrl,
-                "parsed_data": str(parsed_data)
+                "validation_errors": issues_text
             })
             
             # Clean up potential markdown wrapping
@@ -251,13 +276,14 @@ Return the CORRECTED Turtle only.""")
             
             print(f"[Generator] ✅ Regeneration complete (attempt #{attempt_number})")
             print(f"[Generator] 🔧 Fixed Turtle returned")
+            print(f"[Generator] 📏 Length: {len(odrl_turtle)} chars")
             
             return odrl_turtle
             
         except Exception as e:
             print(f"[Generator] ❌ Error in regeneration: {e}")
             raise
-    
+        
     def _clean_turtle(self, turtle_str: str) -> str:
         """Remove markdown code blocks and extra whitespace"""
         # Remove markdown code blocks

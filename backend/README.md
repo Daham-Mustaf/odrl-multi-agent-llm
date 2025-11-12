@@ -120,7 +120,7 @@ Attribution is required. Commercial use is prohibited.
 # backend/.env
 ENABLE_GROQ=true
 GROQ_API_KEY=gsk_your_key_here
-DEFAULT_MODEL=groq:llama-3.1-70b-versatile
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
 ### Option 2: Local Ollama

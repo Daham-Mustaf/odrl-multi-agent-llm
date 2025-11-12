@@ -103,7 +103,7 @@ uvicorn main:app --reload
 # backend/.env
 ENABLE_GROQ=true
 GROQ_API_KEY=gsk_your_key_here
-DEFAULT_MODEL=groq:llama-3.1-70b-versatile
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
 **Pros:**
@@ -242,7 +242,7 @@ DEFAULT_MODEL=anthropic:claude-3-sonnet-20240229
 ```bash
 ENABLE_GROQ=true
 GROQ_API_KEY=gsk_xxxxxxxxxxxx
-DEFAULT_MODEL=groq:llama-3.1-70b-versatile
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
 ### Complete `.env` (All Options)
@@ -285,7 +285,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
 # ============================================
 # DEFAULT MODEL
 # ============================================
-DEFAULT_MODEL=groq:llama-3.1-70b-versatile
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
 ---
@@ -544,7 +544,7 @@ ENABLE_GROQ=true
 # Use FREE Groq
 ENABLE_GROQ=true
 GROQ_API_KEY=gsk_xxx
-DEFAULT_MODEL=groq:llama-3.1-70b-versatile
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 **Why:** Free, fast, no installation
 

@@ -156,12 +156,19 @@ class ReasonRequest(BaseModel):
     custom_model: Optional[Dict[str, Any]] = None
     
 class GenerateRequest(BaseModel):
+    # Required for first generation
     parsed_data: dict
     original_text: str
+    
+    # Optional for first generation
     reasoning: Optional[dict] = None
+    
+    # Required for regeneration
     validation_errors: Optional[dict] = None
-    previous_odrl: Optional[str] = None  # a string (Turtle)
+    previous_odrl: Optional[str] = None
     attempt_number: int = 1
+    
+    # Model config
     model: Optional[str] = None
     temperature: Optional[float] = None
     custom_config: Optional[dict] = None
@@ -236,7 +243,7 @@ async def get_available_providers():
                 "id": "groq",
                 "name": "Groq Cloud",
                 "models": [
-                    {"value": "groq:llama-3.1-70b-versatile", "label": "Llama 3.1 70B"}
+                    {"value": "groq:llama-3.3-70b-versatile", "label": "Llama 3.1 70B"}
                 ]
             })
         
@@ -579,7 +586,11 @@ async def generate_odrl(request: GenerateRequest):
     start_time = time.time()
     
     try:
-        log_request("Generate", request.model)
+        logger.info(f"Generate request: model={request.model}")
+        logger.info(f"   Attempt #{request.attempt_number}")
+        
+        if request.validation_errors:
+            logger.info(f"   Fixing {len(request.validation_errors.get('issues', []))} SHACL issues")
         
         if not AGENTS_AVAILABLE:
             raise HTTPException(status_code=503, detail="Agents not available")
@@ -597,19 +608,25 @@ async def generate_odrl(request: GenerateRequest):
             original_text=request.original_text,
             reasoning=request.reasoning,
             validation_errors=request.validation_errors,
-            previous_odrl=request.previous_odrl,  # A Turtle string
+            previous_odrl=request.previous_odrl,
             attempt_number=request.attempt_number
         )
         
         processing_time = int((time.time() - start_time) * 1000)
-        logger.info(f" Generate complete: {processing_time}ms")
+        logger.info(f"Generate complete: {processing_time}ms")
         
         return {
             "odrl_turtle": result['odrl_turtle'],
             "format": "turtle",
             "processing_time_ms": processing_time,
             "model_used": request.model or "default",
-            "attempt_number": result.get('attempt_number', 1)
+            "attempt_number": result.get('attempt_number', 1),
+            # Return context for next regeneration
+            "context": {
+                "parsed_data": request.parsed_data,
+                "original_text": request.original_text,
+                "reasoning": request.reasoning
+            }
         }
         
     except Exception as e:

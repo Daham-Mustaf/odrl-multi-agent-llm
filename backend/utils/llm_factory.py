@@ -9,7 +9,7 @@ This factory creates the appropriate LLM instance based on:
 4. Automatic retry and fallback strategies
 
 Agents remain completely LLM-agnostic - they just call:
-    llm = LLMFactory.create_llm(model="groq:llama-3.1-70b-versatile")
+    llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
 
 Author: Your Name
 Updated: 2025
@@ -76,7 +76,7 @@ class LLMFactory:
         llm = LLMFactory.create_llm()
         
         # Specify model explicitly
-        llm = LLMFactory.create_llm(model="groq:llama-3.1-70b-versatile")
+        llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
         
         # With custom parameters
         llm = LLMFactory.create_llm(
@@ -152,7 +152,7 @@ class LLMFactory:
         
         Examples:
             "ollama:llama3.1:70b" -> ("ollama", "llama3.1:70b")
-            "groq:llama-3.1-70b-versatile" -> ("groq", "llama-3.1-70b-versatile")
+            "groq:llama-3.3-70b-versatile" -> ("groq", "llama-3.3-70b-versatile")
             "gpt-4" -> ("openai", "gpt-4")
             "auto" -> Auto-select best free provider
             "auto:quality" -> Auto-select best quality provider
@@ -240,7 +240,7 @@ class LLMFactory:
 
         # Use default model if none specified
         if not model:
-            model = os.getenv("DEFAULT_MODEL", "groq:llama-3.1-70b-versatile")
+            model = os.getenv("DEFAULT_MODEL", "groq:llama-3.3-70b-versatile")
 
         if not temperature:
             temperature = float(os.getenv("LLM_TEMPERATURE_PRECISE", "0.3"))
@@ -370,7 +370,7 @@ class LLMFactory:
         """Get default model for a provider"""
         defaults = {
             "ollama": "llama3.1:70b",
-            "groq": "llama-3.1-70b-versatile",
+            "groq": "llama-3.3-70b-versatile",
             "openai": "gpt-3.5-turbo",
             "anthropic": "claude-3-sonnet-20240229"
         }
@@ -733,7 +733,7 @@ def create_llm(model: Optional[str] = None, temperature: float = 0.3, **kwargs) 
     Usage:
         from utils.llm_factory import create_llm
         
-        llm = create_llm("groq:llama-3.1-70b-versatile")
+        llm = create_llm("groq:llama-3.3-70b-versatile")
     """
     return LLMFactory.create_llm(model, temperature, **kwargs)
 
@@ -781,7 +781,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     test_models = [
         "ollama:llama3.1:70b",
-        "groq:llama-3.1-70b-versatile",
+        "groq:llama-3.3-70b-versatile",
         "openai:gpt-4"
     ]
     

@@ -114,7 +114,7 @@
     
 #     try:
 #         providers = LLMFactory.get_available_providers()
-#         default_model = os.getenv("DEFAULT_MODEL", "groq:llama-3.1-70b-versatile")
+#         default_model = os.getenv("DEFAULT_MODEL", "groq:llama-3.3-70b-versatile")
         
 #         # Return basic provider info
 #         provider_list = []
@@ -123,7 +123,7 @@
 #                 "id": "groq",
 #                 "name": "Groq Cloud",
 #                 "models": [
-#                     {"value": "groq:llama-3.1-70b-versatile", "label": "Llama 3.1 70B"}
+#                     {"value": "groq:llama-3.3-70b-versatile", "label": "Llama 3.1 70B"}
 #                 ]
 #             })
         

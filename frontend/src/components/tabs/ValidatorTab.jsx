@@ -1,24 +1,31 @@
 // components/tabs/ValidatorTab.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Shield, 
-  CheckCircle, 
   AlertCircle, 
+  CheckCircle, 
   Info,
-  RefreshCw,
-  Edit3,
-  AlertTriangle
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Code,
+  Loader2
 } from 'lucide-react';
 
-export const ValidatorTab = ({
+/**
+ * Enhanced Validator Tab - Collapsible sections + regeneration state
+ */
+export const ValidatorTab = ({ 
   validationResult,
-  generatedODRL,
   darkMode = false,
-  onCopy = () => {},
-  onDownload = () => {},
-  onRegenerate = () => {},
-  onEditInput = () => {}
+  generatedODRL = null,
+  onRegenerate = null,
+  isRegenerating = false,
+  originalText = null  // ✅ NEW: Original user input
 }) => {
+  const [showPolicy, setShowPolicy] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -29,186 +36,257 @@ export const ValidatorTab = ({
         <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <h2 className={`text-xl font-bold ${textClass}`}>Step 4: SHACL Validation</h2>
           <p className={`text-sm ${mutedTextClass} mt-1`}>
-            Validate ODRL compliance using SHACL constraints
+            Validate ODRL policy against official specification
           </p>
         </div>
         <div className={`p-12 text-center ${mutedTextClass}`}>
           <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p>No validation results yet</p>
-          <p className="text-sm mt-2">Generate ODRL policy first, then click "Validate with SHACL"</p>
+          <p className="text-sm mt-2">Generate ODRL first, then validate</p>
         </div>
       </div>
     );
   }
 
+  const { is_valid, issues = [], summary, llm_explanation } = validationResult;
+
   return (
     <div className="space-y-4 animate-fade-in">
       
-      {/* Validation Header */}
-      <div className={`${cardClass} border-2 rounded-xl shadow-sm overflow-hidden ${
-        validationResult.is_valid 
-          ? darkMode ? 'border-green-700' : 'border-green-300'
-          : darkMode ? 'border-red-700' : 'border-red-300'
-      }`}>
-        
-        <div className={`px-6 py-5 ${
-          validationResult.is_valid
-            ? darkMode ? 'bg-green-900/20' : 'bg-green-50'
-            : darkMode ? 'bg-red-900/20' : 'bg-red-50'
-        }`}>
-          <div className="flex items-center gap-4">
-            <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg ${
-              validationResult.is_valid ? 'bg-green-500' : 'bg-red-500'
-            }`}>
-              {validationResult.is_valid ? (
-                <CheckCircle className="w-10 h-10 text-white" />
+      {/* Regeneration Loading Overlay */}
+      {isRegenerating && (
+        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+          <div className="px-6 py-8 text-center">
+            <Loader2 className={`w-12 h-12 mx-auto mb-4 animate-spin ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+            <h3 className={`text-lg font-bold ${textClass} mb-2`}>
+              Regenerating Policy with Fixes...
+            </h3>
+            <p className={`text-sm ${mutedTextClass}`}>
+              Analyzing validation errors and generating corrected ODRL policy
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validation Status */}
+      {!isRegenerating && (
+        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+          
+          {/* Header with Status */}
+          <div className={`px-6 py-4 border-b ${
+            is_valid 
+              ? darkMode ? 'border-green-800 bg-gradient-to-r from-green-900/30 to-emerald-900/30' : 'border-green-200 bg-gradient-to-r from-green-50 to-emerald-50'
+              : darkMode ? 'border-red-800 bg-gradient-to-r from-red-900/30 to-orange-900/30' : 'border-red-200 bg-gradient-to-r from-red-50 to-orange-50'
+          }`}>
+            <div className="flex items-center gap-3">
+              {is_valid ? (
+                <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
               ) : (
-                <AlertTriangle className="w-10 h-10 text-white" />
+                <AlertCircle className="w-8 h-8 text-red-500 flex-shrink-0" />
+              )}
+              <div className="flex-1">
+                <h2 className={`text-xl font-bold ${textClass}`}>
+                  {is_valid ? 'SHACL Validation Passed ✓' : 'SHACL Validation Failed ✗'}
+                </h2>
+                <p className={`text-sm ${mutedTextClass} mt-1`}>
+                  {is_valid 
+                    ? 'Generated ODRL policy conforms to the official specification'
+                    : `Found ${issues.length} violation${issues.length !== 1 ? 's' : ''} in the generated policy`
+                  }
+                </p>
+              </div>
+              
+              {/* Regenerate Button */}
+              {!is_valid && onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  disabled={isRegenerating}
+                  className="px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white shadow-lg"
+                >
+                  🔄 Regenerate with Fixes
+                </button>
               )}
             </div>
-            <div className="flex-1">
-              <h2 className={`text-2xl font-bold ${
-                validationResult.is_valid ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {validationResult.is_valid ? 'SHACL Validation Passed ✓' : 'SHACL Validation Failed ✗'}
-              </h2>
-              <p className={`text-sm ${mutedTextClass} mt-1`}>
-                {validationResult.is_valid 
-                  ? 'Generated ODRL policy conforms to the official specification'
-                  : `Found ${validationResult.issues?.length || 0} violation${validationResult.issues?.length !== 1 ? 's' : ''} in the generated policy`
-                }
-              </p>
-            </div>
           </div>
-        </div>
 
-        {/* What is SHACL? */}
-        <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700 bg-blue-900/10' : 'border-gray-200 bg-blue-50/50'}`}>
-          <div className="flex items-start gap-2">
-            <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
-            <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-              <strong>SHACL (Shapes Constraint Language)</strong> validates the generated ODRL against official constraints including required properties, data types, allowed values, and relationships defined in the ODRL specification.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Validation Results */}
-      <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-        <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h3 className={`text-lg font-bold ${textClass}`}>Validation Details</h3>
-        </div>
-
-        <div className="p-6 space-y-4">
-          
-          {/* Issues */}
-          {validationResult.issues && validationResult.issues.length > 0 ? (
-            <div>
-              <h4 className={`font-semibold mb-3 ${textClass} flex items-center gap-2`}>
-                <AlertCircle className="w-5 h-5 text-red-500" />
-                SHACL Violations ({validationResult.issues.length})
-              </h4>
-              <div className="space-y-2">
-                {validationResult.issues.map((issue, idx) => (
+          {/* Violations List */}
+          {!is_valid && issues.length > 0 && (
+            <div className="px-6 py-4">
+              <h3 className={`font-semibold mb-4 ${textClass}`}>Violations:</h3>
+              
+              <div className="space-y-4">
+                {issues.map((issue, index) => (
                   <div 
-                    key={idx} 
-                    className={`p-4 rounded-lg border-l-4 border-red-500 ${
-                      darkMode ? 'bg-gray-700' : 'bg-red-50'
+                    key={index}
+                    className={`p-4 rounded-lg border ${
+                      issue.severity === 'Warning'
+                        ? darkMode ? 'bg-yellow-900/10 border-yellow-800' : 'bg-yellow-50 border-yellow-200'
+                        : darkMode ? 'bg-red-900/10 border-red-800' : 'bg-red-50 border-red-200'
                     }`}
                   >
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-start gap-3">
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${
-                          darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-200 text-red-800'
-                        }`}>
-                          #{idx + 1}
-                        </span>
-                        <p className={`text-sm flex-1 ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
-                          {issue.message || issue}
-                        </p>
+                    {/* Issue Number and Type */}
+                    <div className="flex items-start gap-2 mb-2">
+                      <span className={`font-bold ${
+                        issue.severity === 'Warning' 
+                          ? 'text-yellow-600 dark:text-yellow-400' 
+                          : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {index + 1}.
+                      </span>
+                      <div className="flex-1">
+                        <h4 className={`font-semibold ${textClass}`}>
+                          {issue.type || 'Validation Error'}
+                        </h4>
                       </div>
+                    </div>
 
-                      {/* Display actual value if present */}
-                      {issue.actual_value && (
-                        <div className={`text-xs mt-1 px-3 py-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
-                          <strong>Actual value:</strong> <code>{issue.actual_value}</code>
-                        </div>
+                    {/* Issue Details */}
+                    <div className={`space-y-1 ml-6 text-sm ${mutedTextClass}`}>
+                      {/* Field */}
+                      {issue.field && issue.field !== 'unknown' && (
+                        <p>
+                          <span className="font-medium">Field:</span>{' '}
+                          <code className={`${darkMode ? 'bg-black/20' : 'bg-white/50'} px-1.5 py-0.5 rounded`}>
+                            {issue.field}
+                          </code>
+                        </p>
+                      )}
+
+                      {/* Issue Message */}
+                      {issue.message && (
+                        <p>
+                          <span className="font-medium">Issue:</span>{' '}
+                          {issue.message}
+                        </p>
+                      )}
+
+                      {/* Actual Value */}
+                      {issue.actual_value && issue.actual_value !== 'N/A' && issue.actual_value !== 'not specified' && (
+                        <p>
+                          <span className="font-medium">Actual Value:</span>{' '}
+                          <code className={`${darkMode ? 'bg-black/20' : 'bg-white/50'} px-1.5 py-0.5 rounded`}>
+                            {issue.actual_value}
+                          </code>
+                        </p>
+                      )}
+
+                      {/* Location/Focus Node */}
+                      {issue.focus_node && issue.focus_node !== 'N/A' && (
+                        <p>
+                          <span className="font-medium">Location:</span>{' '}
+                          <code className={`${darkMode ? 'bg-black/20' : 'bg-white/50'} px-1.5 py-0.5 rounded text-xs`}>
+                            {issue.focus_node}
+                          </code>
+                        </p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          ) : (
-            <div className={`p-4 rounded-lg ${darkMode ? 'bg-green-900/20 border border-green-800' : 'bg-green-50 border border-green-200'}`}>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <p className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
-                  No violations found. All SHACL constraints are satisfied.
+          )}
+
+          {/* Success Message */}
+          {is_valid && (
+            <div className="px-6 py-4">
+              <div className={`rounded-lg p-4 ${darkMode ? 'bg-green-900/20 border border-green-800' : 'bg-green-50 border border-green-200'}`}>
+                <p className={`text-sm ${mutedTextClass}`}>
+                  ✅ No violations found. All SHACL constraints are satisfied.
+                </p>
+                <p className={`text-sm ${mutedTextClass} mt-2`}>
+                  Your ODRL policy is valid and ready for deployment!
                 </p>
               </div>
             </div>
           )}
 
-          {/* Suggestions */}
-          {validationResult.suggestions && validationResult.suggestions.length > 0 && (
-            <div>
-              <h4 className={`font-semibold mb-3 ${textClass}`}>How to Fix:</h4>
-              <div className="space-y-2">
-                {validationResult.suggestions.map((suggestion, idx) => (
-                  <div 
-                    key={idx} 
-                    className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}
-                  >
-                    <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                      💡 {suggestion}
-                    </p>
-                  </div>
-                ))}
+          {/* LLM Explanation (Optional) */}
+          {llm_explanation && (
+            <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <h4 className={`text-sm font-semibold mb-2 ${textClass}`}>💡 AI Suggestion:</h4>
+              <p className={`text-sm ${mutedTextClass} whitespace-pre-wrap`}>
+                {llm_explanation}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ✅ NEW: Collapsible Original Statement */}
+      {!isRegenerating && originalText && (
+        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+          <button
+            onClick={() => setShowOriginal(!showOriginal)}
+            className={`w-full px-6 py-4 flex items-center justify-between transition ${
+              darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <FileText className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+              <h3 className={`text-lg font-bold ${textClass}`}>
+                Original Policy Statement
+              </h3>
+            </div>
+            {showOriginal ? (
+              <ChevronUp className={`w-5 h-5 ${mutedTextClass}`} />
+            ) : (
+              <ChevronDown className={`w-5 h-5 ${mutedTextClass}`} />
+            )}
+          </button>
+          
+          {showOriginal && (
+            <div className="px-6 pb-6">
+              <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4`}>
+                <p className={`text-sm ${textClass}`}>
+                  {originalText}
+                </p>
               </div>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Actions */}
-      {!validationResult.is_valid && (
-        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-          <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <h3 className={`text-lg font-bold ${textClass}`}>Next Steps</h3>
-          </div>
-          <div className="p-6">
-            <p className={`text-sm ${mutedTextClass} mb-4`}>
-              The generated ODRL has validation errors. You can regenerate the policy or edit the original input to fix the issues.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={onRegenerate}
-                className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium flex items-center justify-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Regenerate Policy
-              </button>
-              <button
-                onClick={onEditInput}
-                className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium flex items-center justify-center gap-2"
-              >
-                <Edit3 className="w-4 h-4" />
-                Edit Original Input
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
-      {/* Success Actions */}
-      {validationResult.is_valid && (
+      {/* ✅ NEW: Collapsible Generated Policy */}
+      {!isRegenerating && generatedODRL && generatedODRL.odrl_turtle && (
         <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-          <div className={`px-6 py-4 ${darkMode ? 'bg-green-900/10' : 'bg-green-50/50'}`}>
-            <p className={`text-sm ${textClass} font-medium`}>
-              Your ODRL policy is valid and ready for deployment!
-            </p>
-          </div>
+          <button
+            onClick={() => setShowPolicy(!showPolicy)}
+            className={`w-full px-6 py-4 flex items-center justify-between transition ${
+              darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Code className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+              <h3 className={`text-lg font-bold ${textClass}`}>
+                Generated Policy (Turtle)
+              </h3>
+              {generatedODRL.attempt_number && generatedODRL.attempt_number > 1 && (
+                <span className="text-xs px-2 py-1 bg-orange-500 text-white rounded">
+                  Attempt #{generatedODRL.attempt_number}
+                </span>
+              )}
+            </div>
+            {showPolicy ? (
+              <ChevronUp className={`w-5 h-5 ${mutedTextClass}`} />
+            ) : (
+              <ChevronDown className={`w-5 h-5 ${mutedTextClass}`} />
+            )}
+          </button>
+          
+          {showPolicy && (
+            <div className="px-6 pb-6">
+              <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
+                <pre className={`text-sm ${textClass} font-mono`}>
+                  {generatedODRL.odrl_turtle}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
