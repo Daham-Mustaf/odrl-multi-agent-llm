@@ -18,6 +18,8 @@ from fastapi.responses import JSONResponse
 
 # Add this import
 from utils.request_utils import run_with_disconnect_check
+from utils.rdf_converter import jsonld_to_turtle   
+
 
 # Load environment first
 from dotenv import load_dotenv
@@ -555,7 +557,7 @@ async def reason(request: Request, data: ReasonRequest):
 
 
 @app.post("/api/generate")
-async def generate_odrl(request: Request, data: GenerateRequest): 
+async def generate_odrl(request: Request, data: GenerateRequest):
     """Agent 3: Generate or regenerate ODRL with optional SHACL error fixes"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
@@ -589,9 +591,9 @@ async def generate_odrl(request: Request, data: GenerateRequest):
             data.parsed_data,
             data.original_text,
             data.reasoning,
-            data.validation_errors,  
-            data.previous_odrl,     
-            data.attempt_number or 1 
+            data.validation_errors,
+            data.previous_odrl,
+            data.attempt_number or 1
         )
         
         if odrl_policy is None:
@@ -599,16 +601,25 @@ async def generate_odrl(request: Request, data: GenerateRequest):
         
         elapsed_ms = int((time.time() - start) * 1000)
         
+        # Convert JSON-LD → Turtle
+        try:
+            ttl_string = jsonld_to_turtle(odrl_policy)
+        except Exception as e:
+            logger.warning(f"[Generator] ⚠️ TTL conversion failed: {e}")
+            ttl_string = None
+        
         logger.info(f"Generate complete: {elapsed_ms}ms")
+        
         return {
-            'odrl_policy': odrl_policy,
+            'odrl_policy': odrl_policy,           # JSON-LD 
+            'odrl_ttl': ttl_string,               # TTL format
             'processing_time_ms': elapsed_ms,
             'model_used': data.model or DEFAULT_MODEL,
-            'attempt_number': data.attempt_number or 1  
+            'attempt_number': data.attempt_number or 1
         }
         
     except Exception as e:
-        logger.error(f" Generate error: {e}")
+        logger.error(f"Generate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

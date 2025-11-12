@@ -19,7 +19,7 @@ export const StopButton = ({
   currentStage = 'Processing',
   darkMode = false 
 }) => {
-  // ✅ Keyboard shortcut: Ctrl+S to stop
+  // Keyboard shortcut: Ctrl+S to stop
   useEffect(() => {
     if (!isProcessing) return;
 
@@ -65,7 +65,7 @@ export const StopButton = ({
           Stop
         </button>
         
-        {/* ✅ Tooltip (shows on button hover) */}
+        {/* Tooltip (shows on button hover) */}
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
           Click or press <kbd className="px-1.5 py-0.5 bg-white/20 rounded font-mono mx-0.5">Ctrl+S</kbd>
           {/* Arrow pointer */}
@@ -86,7 +86,7 @@ export const CompactStopButton = ({
   onStop,
   darkMode = false 
 }) => {
-  // ✅ Same keyboard shortcut for compact version
+  // Same keyboard shortcut for compact version
   useEffect(() => {
     if (!isProcessing) return;
 

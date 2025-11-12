@@ -1,4 +1,3 @@
-// components/tabs/GeneratorTab.jsx
 import React, { useState } from 'react';
 import { 
   Code, 
@@ -11,7 +10,7 @@ import {
 } from 'lucide-react';
 
 /**
- * Generator Tab - Shows Generated ODRL
+ * Generator Tab - Shows Generated ODRL (JSON-LD / Turtle)
  */
 export const GeneratorTab = ({ 
   generatedODRL,
@@ -22,21 +21,29 @@ export const GeneratorTab = ({
   isValidating = false
 }) => {
   const [copied, setCopied] = useState(false);
+  const [format, setFormat] = useState('json-ld'); // NEW: switch between JSON-LD and TTL
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
+  // Select which format to display
+  const displayContent = format === 'turtle'
+    ? generatedODRL?.odrl_ttl
+    : JSON.stringify(generatedODRL?.odrl_policy || generatedODRL, null, 2);
+
   const handleCopy = () => {
-    const odrlJson = generatedODRL?.odrl_policy || generatedODRL?.odrl || generatedODRL;
-    onCopy(JSON.stringify(odrlJson, null, 2));
+    onCopy(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    const odrlJson = generatedODRL?.odrl_policy || generatedODRL?.odrl || generatedODRL;
-    onDownload(odrlJson, 'odrl-policy.json');
+    const filename = format === 'turtle' ? 'odrl-policy.ttl' : 'odrl-policy.json';
+    const content = format === 'turtle'
+      ? generatedODRL?.odrl_ttl
+      : generatedODRL?.odrl_policy || generatedODRL;
+    onDownload(content, filename);
   };
 
   if (!generatedODRL) {
@@ -57,8 +64,6 @@ export const GeneratorTab = ({
     );
   }
 
-  const odrlJson = generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL;
-
   return (
     <div className="space-y-4 animate-fade-in">
       
@@ -66,7 +71,10 @@ export const GeneratorTab = ({
       <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
         
         {/* Header */}
-        <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gradient-to-r from-green-900/30 to-emerald-900/30' : 'border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50'}`}>
+        <div className={`px-6 py-4 border-b ${darkMode 
+          ? 'border-gray-700 bg-gradient-to-r from-green-900/30 to-emerald-900/30' 
+          : 'border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50'
+        }`}>
           <div className="flex items-center justify-between">
             <div>
               <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
@@ -78,15 +86,52 @@ export const GeneratorTab = ({
               </p>
             </div>
             <div className="flex gap-2">
+              
+              {/* NEW: Format Selector */}
+              <div className="flex gap-1 mr-2">
+                <button
+                  onClick={() => setFormat('json-ld')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                    format === 'json-ld'
+                      ? 'bg-green-600 text-white'
+                      : darkMode
+                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  }`}
+                >
+                  JSON-LD
+                </button>
+                <button
+                  onClick={() => setFormat('turtle')}
+                  disabled={!generatedODRL?.odrl_ttl}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                    format === 'turtle'
+                      ? 'bg-green-600 text-white'
+                      : darkMode
+                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-50'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700 disabled:opacity-50'
+                  }`}
+                >
+                  Turtle
+                </button>
+              </div>
+
               <button
                 onClick={handleCopy}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-50 border border-gray-200'
+                  darkMode
+                    ? 'bg-gray-700 hover:bg-gray-600'
+                    : 'bg-white hover:bg-gray-50 border border-gray-200'
                 }`}
               >
-                {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                {copied ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
                 {copied ? 'Copied!' : 'Copy'}
               </button>
+
               <button
                 onClick={handleDownload}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
@@ -98,11 +143,22 @@ export const GeneratorTab = ({
           </div>
         </div>
 
-        {/* ODRL Content */}
+        {/* Content */}
         <div className="p-6">
+          {/* Warning if TTL unavailable */}
+          {format === 'turtle' && !generatedODRL?.odrl_ttl && (
+            <div className={`p-4 rounded-lg mb-4 ${
+              darkMode ? 'bg-yellow-900/20 border border-yellow-800' : 'bg-yellow-50 border border-yellow-200'
+            }`}>
+              <p className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                ⚠️ Turtle format not available for this policy.
+              </p>
+            </div>
+          )}
+
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-            <pre className={`text-sm ${textClass}`}>
-              {JSON.stringify(odrlJson, null, 2)}
+            <pre className={`text-sm ${textClass} whitespace-pre-wrap`}>
+              {displayContent}
             </pre>
           </div>
         </div>
@@ -113,7 +169,7 @@ export const GeneratorTab = ({
             <div className="flex items-start gap-2">
               <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
               <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                <strong>Next step:</strong> Validate this generated ODRL policy against the official ODRL specification using SHACL constraints to ensure compliance.
+                <strong>Next step:</strong> Validate this generated ODRL policy against SHACL constraints to ensure compliance.
               </p>
             </div>
           </div>
@@ -146,7 +202,9 @@ export const GeneratorTab = ({
       <div className={`flex items-center justify-between text-xs ${mutedTextClass}`}>
         <span>Generator: ODRL Policy Creation</span>
         {generatedODRL.processing_time_ms && (
-          <span>{generatedODRL.processing_time_ms}ms • {generatedODRL.model_used}</span>
+          <span>
+            {generatedODRL.processing_time_ms}ms • {generatedODRL.model_used}
+          </span>
         )}
       </div>
     </div>
