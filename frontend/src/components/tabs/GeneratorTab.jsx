@@ -6,15 +6,16 @@ import {
   Download, 
   CheckCircle,
   Shield,
-  Info,
   Loader2,
   Edit3,
   X,
-  Save
+  Save,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 /**
- * Generator Tab - Shows ODRL Turtle only with EDIT capability
+ * Generator Tab - Shows ODRL Turtle only with EDIT capability and collapsible content
  */
 export const GeneratorTab = ({ 
   generatedODRL,
@@ -29,12 +30,13 @@ export const GeneratorTab = ({
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
+  const [isCollapsed, setIsCollapsed] = useState(false); // Collapsible state
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
-  // ✅ Show Turtle only
+  // Show Turtle only
   const displayContent = generatedODRL?.odrl_turtle || '';
 
   const handleCopy = () => {
@@ -48,7 +50,7 @@ export const GeneratorTab = ({
     onDownload(content, 'odrl-policy.ttl');
   };
 
-  // Edit mode
+  // Edit mode handlers
   const handleStartEdit = () => {
     setEditedContent(displayContent);
     setIsEditing(true);
@@ -60,8 +62,7 @@ export const GeneratorTab = ({
   };
 
   const handleSaveEdit = () => {
-    // Save edited Turtle string
-    onUpdateODRL(editedContent, true); // ✅ Pass `isTurtle = true`
+    onUpdateODRL(editedContent, true); // Save as Turtle
     setIsEditing(false);
     setEditedContent('');
     showToast('✅ ODRL Turtle updated. Please validate.', 'success');
@@ -160,21 +161,31 @@ export const GeneratorTab = ({
           </div>
         </div>
 
-        {/* Turtle Content */}
+        {/* Turtle Content with Collapsible */}
         <div className="p-6">
-          {isEditing ? (
-            <textarea
-              value={editedContent}
-              onChange={(e) => setEditedContent(e.target.value)}
-              className={`w-full h-96 p-4 rounded-lg font-mono text-sm ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-gray-50 text-gray-900 border-gray-300'} border focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-              spellCheck={false}
-            />
-          ) : (
-            <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-              <pre className={`text-sm ${textClass}`}>
-                {displayContent}
-              </pre>
-            </div>
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="flex items-center gap-2 mb-2 px-2 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 font-medium"
+          >
+            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <span>ODRL Policy Turtle {isCollapsed ? '(collapsed)' : '(expanded)'}</span>
+          </button>
+
+          {!isCollapsed && (
+            isEditing ? (
+              <textarea
+                value={editedContent}
+                onChange={(e) => setEditedContent(e.target.value)}
+                className={`w-full h-96 p-4 rounded-lg font-mono text-sm ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-gray-50 text-gray-900 border-gray-300'} border focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                spellCheck={false}
+              />
+            ) : (
+              <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
+                <pre className={`text-sm ${textClass}`}>
+                  {displayContent}
+                </pre>
+              </div>
+            )
           )}
         </div>
 
