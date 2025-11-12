@@ -7,8 +7,6 @@ import {
   Info,
   RefreshCw,
   Edit3,
-  Copy,
-  Download,
   AlertTriangle
 } from 'lucide-react';
 
@@ -118,15 +116,24 @@ export const ValidatorTab = ({
                       darkMode ? 'bg-gray-700' : 'bg-red-50'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <span className={`text-xs font-bold px-2 py-1 rounded ${
-                        darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-200 text-red-800'
-                      }`}>
-                        #{idx + 1}
-                      </span>
-                      <p className={`text-sm flex-1 ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
-                        {issue}
-                      </p>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-start gap-3">
+                        <span className={`text-xs font-bold px-2 py-1 rounded ${
+                          darkMode ? 'bg-red-900/50 text-red-300' : 'bg-red-200 text-red-800'
+                        }`}>
+                          #{idx + 1}
+                        </span>
+                        <p className={`text-sm flex-1 ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+                          {issue.message || issue}
+                        </p>
+                      </div>
+
+                      {/* Display actual value if present */}
+                      {issue.actual_value && (
+                        <div className={`text-xs mt-1 px-3 py-2 rounded ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
+                          <strong>Actual value:</strong> <code>{issue.actual_value}</code>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

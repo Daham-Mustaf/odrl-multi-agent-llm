@@ -1,108 +1,144 @@
 """
-How LLMs Are Actually Used Inside Each Agent
-==============================================
-
-This shows the exact pattern of how self.llm is used in each agent.
-All agents follow the same pattern:
-
-1. Initialize LLM in __init__ using factory
-2. Create a ChatPromptTemplate
-3. Build a chain: prompt | self.llm | parser
-4. Invoke the chain with input data
+Agent 4: ODRL Validator
+Validates ODRL Turtle using SHACL constraints + LLM analysis
 """
-
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional
 from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
-from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 from utils.llm_factory import LLMFactory
-import os
+from .shacl_validator import ODRLValidationTool, ValidationReport
 
 
-# ============================================
-# AGENT 4: VALIDATOR (Uses LLM Differently)
-# ============================================
-
-class SHACLValidator:
-    """Agent 4: Uses LLM for error analysis (not primary validation)"""
+class Validator:
+    """Agent 4: Validate ODRL policies using SHACL + LLM"""
     
     def __init__(self, model=None, temperature=None, custom_config=None):
-        """
-        Initialize Validator
-        
-        Args:
-            model: Model identifier
-            temperature: Temperature setting
-            custom_config: Custom model configuration dict
-        """
         self.model = model
         self.temperature = temperature
         self.custom_config = custom_config
         
-        # Create LLM with custom config if provided
+        # Create LLM (for explaining errors)
         self.llm = LLMFactory.create_llm(
             model=model,
             temperature=temperature,
-            custom_config=custom_config  # ✅ PASS IT HERE
+            custom_config=custom_config
         )
         
-        # STEP 2: Create prompt for error analysis
-        self.analysis_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an ODRL validation expert. Explain errors clearly."),
-            ("human", """Analyze these validation errors:
-
-{errors}
-
-Provide:
-1. Summary of issues
-2. Severity assessment
-3. Suggested fixes""")
-        ])
+        # Create SHACL validator
+        self.shacl_tool = ODRLValidationTool()
     
-    def validate(self, odrl_policy: Dict[str, Any]) -> Dict[str, Any]:
+    def validate(
+        self, 
+        odrl_turtle: str,  # ✅ Now accepts Turtle string directly
+        original_text: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
-        Shows how LLM is used AFTER SHACL validation
-        (SHACL does the actual validation, LLM explains errors)
+        Validate ODRL Turtle using SHACL constraints
+        
+        Args:
+            odrl_turtle: ODRL in Turtle format
+            original_text: Original user input (for context)
+            
+        Returns:
+            Validation report with issues and suggestions
         """
+        
         print(f"[Validator] Validating with SHACL...")
+        print(f"[Validator] 🐢 Turtle input ({len(odrl_turtle)} chars)")
         
-        # SHACL validation happens first (no LLM)
-        validation_errors = self._run_shacl_validation(odrl_policy)
-        
-        if validation_errors:
-            print(f"[Validator] Found {len(validation_errors)} errors, using LLM to analyze...")
+        try:
+            # Run SHACL validation directly on Turtle
+            report: ValidationReport = self.shacl_tool.validate_kg(
+                user_text=original_text or "Policy validation",
+                kg_turtle=odrl_turtle
+            )
             
-            # NOW use LLM to explain errors
-            chain = self.analysis_prompt | self.llm
-            
-            errors_str = "\n".join([f"- {e['message']}" for e in validation_errors])
-            
-            analysis = chain.invoke({"errors": errors_str})
-            
-            # The LLM provides:
-            # 1. Human-readable explanations
-            # 2. Suggested fixes
-            # 3. Priority of issues
+            if report.is_valid:
+                print("[Validator] ✅ Policy is valid!")
+                return {
+                    'is_valid': True,
+                    'issues': [],
+                    'summary': 'All SHACL constraints passed'
+                }
+            else:
+                print(f"[Validator] ❌ Found {len(report.issues)} issues")
+                
+                # Convert issues to frontend format
+                issues = []
+                for issue in report.issues:
+                    issues.append({
+                        'severity': issue.severity,
+                        'type': issue.issue_type,
+                        'field': issue.property_path,
+                        'message': issue.constraint_violated,
+                        'actual_value': issue.actual_value,
+                        'focus_node': issue.focus_node
+                    })
+                
+                # Optionally use LLM to explain errors (if configured)
+                llm_explanation = None
+                if self.llm and len(issues) > 0:
+                    llm_explanation = self._get_llm_explanation(issues)
+                
+                return {
+                    'is_valid': False,
+                    'issues': issues,
+                    'summary': f'{len(issues)} validation issue(s) found',
+                    'llm_explanation': llm_explanation
+                }
+                
+        except Exception as e:
+            print(f"[Validator] ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             
             return {
-                "is_valid": False,
-                "errors": validation_errors,
-                "llm_analysis": analysis.content
+                'is_valid': False,
+                'issues': [{
+                    'severity': 'Error',
+                    'type': 'Validation Error',
+                    'field': 'unknown',
+                    'message': f'Validation failed: {str(e)}',
+                    'actual_value': 'N/A',
+                    'focus_node': 'N/A'
+                }],
+                'summary': 'Validation error occurred'
             }
-        else:
-            print("[Validator] Policy is valid!")
-            return {"is_valid": True, "errors": []}
     
-    def _run_shacl_validation(self, policy: Dict[str, Any]) -> List[Dict]:
-        """SHACL validation (no LLM, just rule-based)"""
-        # This uses pyshacl library, not LLM
-        errors = []
-        
-        if not policy.get("uid"):
-            errors.append({"message": "Missing uid", "severity": "high"})
-        if not policy.get("@context"):
-            errors.append({"message": "Missing @context", "severity": "high"})
-        
-        return errors
+    def _get_llm_explanation(self, issues: list) -> Optional[str]:
+        """
+        Use LLM to provide human-friendly explanation of errors
+        """
+        try:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are an ODRL validation expert. Explain SHACL validation errors clearly and suggest fixes.
 
+Be concise and actionable. Focus on what needs to be fixed."""),
+                
+                ("human", """These ODRL validation issues were found:
+
+{issues}
+
+Provide:
+1. Brief summary (1 sentence)
+2. Most critical issue
+3. Suggested fix for critical issue""")
+            ])
+            
+            chain = prompt | self.llm
+            
+            # Format issues for LLM (limit to top 5)
+            issues_text = "\n".join([
+                f"- [{issue['severity']}] {issue['type']}: {issue['message']}"
+                for issue in issues[:5]
+            ])
+            
+            result = chain.invoke({"issues": issues_text})
+            
+            explanation = result.content if hasattr(result, 'content') else str(result)
+            
+            print(f"[Validator] 💡 LLM explanation generated")
+            return explanation
+            
+        except Exception as e:
+            print(f"[Validator] ⚠️  LLM explanation failed: {e}")
+            return None

@@ -19,6 +19,8 @@ from fastapi.responses import JSONResponse
 # Add this import
 from utils.request_utils import run_with_disconnect_check
 from utils.rdf_converter import jsonld_to_turtle   
+from utils.logger_utils import log_request, logger
+
 
 
 # Load environment first
@@ -44,18 +46,32 @@ logger = logging.getLogger(__name__)
 # Add to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# Import agents
 try:
+    print("[DEBUG] Importing Parser...")
     from agents.text_parser.parser import TextParser
+    print("[DEBUG] Parser imported")
+    
+    print("[DEBUG] Importing Reasoner...")
     from agents.reasoner.reasoner import Reasoner
+    print("[DEBUG] Reasoner imported")
+    
+    print("[DEBUG] Importing Generator...")
     from agents.generator.generator import Generator
-    from agents.validator.validator import SHACLValidator
+    print("[DEBUG] Generator imported")
+    
+    print("[DEBUG] Importing Validator...")
+    from agents.validator.validator import Validator
+    print("[DEBUG]  Validator imported")
+    
     AGENTS_AVAILABLE = True
+    print("[INFO] All agents loaded successfully")
+    
 except ImportError as e:
-    logger.error(f"Failed to import agents: {e}")
     AGENTS_AVAILABLE = False
-
-# Import LLM Factory
+    print(f"[ERROR] Failed to import agents: {e}")
+    import traceback
+    traceback.print_exc()
+    
 try:
     from utils.llm_factory import LLMFactory
     FACTORY_AVAILABLE = True
@@ -81,7 +97,7 @@ def load_custom_models_from_file():
         try:
             with open(CUSTOM_MODELS_FILE, 'r') as f:
                 data = json.load(f)
-                logger.info(f"📦 Loaded {len(data)} custom models from config/")
+                logger.info(f"Loaded {len(data)} custom models from config/")
                 return data
         except Exception as e:
             logger.error(f"Error loading custom models: {e}")
@@ -97,7 +113,7 @@ def save_custom_models_to_file(models: List[Dict]):
         
         with open(CUSTOM_MODELS_FILE, 'w') as f:
             json.dump(models, f, indent=2)
-        logger.info(f"💾 Saved {len(models)} custom models to {CUSTOM_MODELS_FILE.name}")
+        logger.info(f"Saved {len(models)} custom models to {CUSTOM_MODELS_FILE.name}")
         return True
     except Exception as e:
         logger.error(f"Error saving custom models: {e}")
@@ -140,21 +156,22 @@ class ReasonRequest(BaseModel):
     custom_model: Optional[Dict[str, Any]] = None
     
 class GenerateRequest(BaseModel):
-    parsed_data: Dict[str, Any]
+    parsed_data: dict
     original_text: str
-    reasoning: Optional[Dict[str, Any]] = None
-    validation_errors: Optional[Dict[str, Any]] = None  
-    previous_odrl: Optional[Dict[str, Any]] = None      
-    attempt_number: Optional[int] = 1                    
+    reasoning: Optional[dict] = None
+    validation_errors: Optional[dict] = None
+    previous_odrl: Optional[str] = None  # a string (Turtle)
+    attempt_number: int = 1
     model: Optional[str] = None
     temperature: Optional[float] = None
-    custom_model: Optional[Dict[str, Any]] = None
+    custom_config: Optional[dict] = None
 
 class ValidateRequest(BaseModel):
-    odrl_policy: Dict[str, Any]  # 
+    odrl_turtle: str  # accepts Turtle string
+    original_text: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = None
-    custom_model: Optional[Dict[str, Any]] = None
+    custom_config: Optional[dict] = None
 
 class CustomModelRequest(BaseModel):
     name: str
@@ -518,7 +535,7 @@ async def reason(request: Request, data: ReasonRequest):
         raise HTTPException(status_code=503, detail="Agents not available")
     
     if await request.is_disconnected():
-        logger.warning("⚠️  Client disconnected before reasoning")
+        logger.warning("Client disconnected before reasoning")
         return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
     
     logger.info(f"Reason request: model={data.model}")
@@ -557,65 +574,42 @@ async def reason(request: Request, data: ReasonRequest):
 
 
 @app.post("/api/generate")
-async def generate_odrl(request: Request, data: GenerateRequest):
-    """Agent 3: Generate or regenerate ODRL with optional SHACL error fixes"""
-    if not AGENTS_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Agents not available")
-    
-    if await request.is_disconnected():
-        logger.warning("Client disconnected before generation")
-        return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
-    
-    # Log whether this is first generation or regeneration
-    if data.validation_errors and data.previous_odrl:
-        logger.info(f"Regenerate request (attempt #{data.attempt_number}): model={data.model}")
-        logger.info(f"   Fixing {len(data.validation_errors.get('issues', []))} SHACL issues")
-    else:
-        logger.info(f"Generate request: model={data.model}")
-    
-    start = time.time()
+async def generate_odrl(request: GenerateRequest):
+    """Generate ODRL policy in Turtle format"""
+    start_time = time.time()
     
     try:
-        if data.custom_model:
-            generator = Generator(
-                model=data.model,
-                temperature=data.temperature,
-                custom_config=data.custom_model
-            )
-        else:
-            generator = Generator(model=data.model, temperature=data.temperature)
+        log_request("Generate", request.model)
         
-        odrl_policy = await run_with_disconnect_check(
-            generator.generate,
-            request,
-            data.parsed_data,
-            data.original_text,
-            data.reasoning,
-            data.validation_errors,
-            data.previous_odrl,
-            data.attempt_number or 1
+        if not AGENTS_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Agents not available")
+        
+        # Create generator with model config
+        generator = Generator(
+            model=request.model,
+            temperature=request.temperature,
+            custom_config=request.custom_config
         )
         
-        if odrl_policy is None:
-            return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
+        # Generate ODRL Turtle
+        result = generator.generate(
+            parsed_data=request.parsed_data,
+            original_text=request.original_text,
+            reasoning=request.reasoning,
+            validation_errors=request.validation_errors,
+            previous_odrl=request.previous_odrl,  # A Turtle string
+            attempt_number=request.attempt_number
+        )
         
-        elapsed_ms = int((time.time() - start) * 1000)
-        
-        # Convert JSON-LD → Turtle
-        try:
-            ttl_string = jsonld_to_turtle(odrl_policy)
-        except Exception as e:
-            logger.warning(f"[Generator] ⚠️ TTL conversion failed: {e}")
-            ttl_string = None
-        
-        logger.info(f"Generate complete: {elapsed_ms}ms")
+        processing_time = int((time.time() - start_time) * 1000)
+        logger.info(f" Generate complete: {processing_time}ms")
         
         return {
-            'odrl_policy': odrl_policy,           # JSON-LD 
-            'odrl_ttl': ttl_string,               # TTL format
-            'processing_time_ms': elapsed_ms,
-            'model_used': data.model or DEFAULT_MODEL,
-            'attempt_number': data.attempt_number or 1
+            "odrl_turtle": result['odrl_turtle'],
+            "format": "turtle",
+            "processing_time_ms": processing_time,
+            "model_used": request.model or "default",
+            "attempt_number": result.get('attempt_number', 1)
         }
         
     except Exception as e:
@@ -624,43 +618,37 @@ async def generate_odrl(request: Request, data: GenerateRequest):
 
 
 @app.post("/api/validate")
-async def validate_odrl(request: Request, data: ValidateRequest): 
-    """Agent 4: Validate with disconnect detection"""
-    if not AGENTS_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Agents not available")
-    
-    if await request.is_disconnected():
-        logger.warning("Client disconnected before validation")
-        return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
-    
-    logger.info(f"Validate request: model={data.model}")
-    start = time.time()
+async def validate_odrl(request: ValidateRequest):
+    """Validate ODRL Turtle with SHACL"""
+    start_time = time.time()
     
     try:
-        if data.custom_model:
-            validator = SHACLValidator(
-                model=data.model,
-                temperature=data.temperature,
-                custom_config=data.custom_model
-            )
-        else:
-            validator = SHACLValidator(model=data.model, temperature=data.temperature)
+        log_request("Validate", request.model)
         
-        result = await run_with_disconnect_check(
-            validator.validate,
-            request,
-            data.odrl_policy
+        if not AGENTS_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Agents not available")
+        
+        # Create validator
+        validator = Validator(
+            model=request.model,
+            temperature=request.temperature,
+            custom_config=request.custom_config
         )
         
-        if result is None:
-            return JSONResponse(status_code=499, content={"detail": "Request cancelled"})
+        # Validate Turtle directly
+        result = validator.validate(
+            odrl_turtle=request.odrl_turtle,  # Now accepts Turtle string
+            original_text=request.original_text
+        )
         
-        elapsed_ms = int((time.time() - start) * 1000)
-        result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = data.model or DEFAULT_MODEL
+        processing_time = int((time.time() - start_time) * 1000)
+        logger.info(f"Validate complete: {processing_time}ms")
         
-        logger.info(f"Validate complete: {elapsed_ms}ms")
-        return result
+        return {
+            **result,
+            "processing_time_ms": processing_time,
+            "model_used": request.model or "default"
+        }
         
     except Exception as e:
         logger.error(f"Validate error: {e}")
@@ -674,24 +662,24 @@ async def validate_odrl(request: Request, data: ValidateRequest):
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 80)
-    logger.info("🚀 ODRL Policy Generator API Starting v2.1.0")
+    logger.info("ODRL Policy Generator API Starting v2.1.0")
     logger.info("=" * 80)
-    logger.info(f"📍 API: http://localhost:8000")
-    logger.info(f"📚 Docs: http://localhost:8000/docs")
-    logger.info(f"📁 Config: {CONFIG_DIR}")
-    logger.info(f"💾 Models Storage: {CUSTOM_MODELS_FILE.name}")
-    logger.info(f"🤖 Agents: {AGENTS_AVAILABLE}")
-    logger.info(f"🏭 Factory: {FACTORY_AVAILABLE}")
+    logger.info(f"API: http://localhost:8000")
+    logger.info(f"Docs: http://localhost:8000/docs")
+    logger.info(f"Config: {CONFIG_DIR}")
+    logger.info(f"Models Storage: {CUSTOM_MODELS_FILE.name}")
+    logger.info(f"Agents: {AGENTS_AVAILABLE}")
+    logger.info(f"Factory: {FACTORY_AVAILABLE}")
     
     # Load custom models
     custom_models = load_custom_models_from_file()
-    logger.info(f"📦 Custom Models: {len(custom_models)} loaded")
+    logger.info(f"Custom Models: {len(custom_models)} loaded")
     
     # Log configuration
     log_configuration()
     
     logger.info("=" * 80)
-    logger.info("✅ API Ready!")
+    logger.info("API Ready!")
     logger.info("=" * 80)
 
 if __name__ == "__main__":

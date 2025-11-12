@@ -583,7 +583,6 @@ OPENAI_API_KEY=sk-xxx
 
 ---
 
-## 📞 Support
 
 ### Getting Help
 1. Check error message in GUI

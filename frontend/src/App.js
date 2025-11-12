@@ -488,7 +488,7 @@ const handleProcess = async () => {
     
     const reasonResult = await callAPI('reason', {
       parsed_data: parseResult,
-      original_text: inputText,  // ✅ NEW
+      original_text: inputText, 
       model: reasonerModel,
       temperature,
       custom_model: reasonerCustomConfig
@@ -538,9 +538,9 @@ const handleProcess = async () => {
     const generatorCustomConfig = getModelConfig(generatorModel);
     
     const genResult = await callAPI('generate', {
-      parsed_data: parseResult,    // ✅ NEW
-      original_text: inputText,    // ✅ NEW
-      reasoning: reasonResult,     // ✅ CHANGED
+      parsed_data: parseResult,   
+      original_text: inputText,    
+      reasoning: reasonResult,    
       model: generatorModel,
       temperature,
       custom_model: generatorCustomConfig
@@ -657,7 +657,6 @@ const handleProcess = async () => {
   }
 };
 
-
 // ============================================
 // handleGenerate Function
 // ============================================
@@ -667,7 +666,6 @@ const handleGenerate = async () => {
     return;
   }
 
-  // Need parsed data - should be saved from handleProcess
   if (!parsedData) {
     showToast('Parser data missing - please run parsing again', 'error');
     return;
@@ -683,39 +681,50 @@ const handleGenerate = async () => {
   const getModelConfig = (modelValue) => {
     if (!modelValue) return null;
     const customModel = customModels.find(m => m.value === modelValue);
-    if (customModel) {
-      return {
-        provider_type: customModel.provider_type,
-        base_url: customModel.base_url,
-        model_id: customModel.model_id,
-        api_key: customModel.api_key,
-        context_length: customModel.context_length,
-        temperature_default: customModel.temperature_default
-      };
-    }
-    return null;
+    if (!customModel) return null;
+    return {
+      provider_type: customModel.provider_type,
+      base_url: customModel.base_url,
+      model_id: customModel.model_id,
+      api_key: customModel.api_key,
+      context_length: customModel.context_length,
+      temperature_default: customModel.temperature_default
+    };
   };
 
   try {
+    // Update generator agent state
     updateAgentState('generator', 'processing');
-    
-    const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+
+    const generatorModel = advancedMode && agentModels.generator
+      ? agentModels.generator
+      : selectedModel;
+
     const generatorCustomConfig = getModelConfig(generatorModel);
-    
+
+    // Call backend API
     const genResult = await callAPI('generate', {
-      parsed_data: parsedData,        
-      original_text: inputText,      
-      reasoning: reasoningResult,     
+      parsed_data: parsedData,
+      original_text: inputText,
+      reasoning: reasoningResult,
       temperature,
       custom_model: generatorCustomConfig
     }, signal);
-    
+
+    // Save result to state
     setGeneratedODRL(genResult);
+
+    // Update metrics
     setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTime }));
+
+    // Update generator agent state to completed
     updateAgentState('generator', 'completed');
+
+    // Update progress & notify
     setProcessingProgress(100);
     showToast('ODRL policy generated!', 'success');
-    
+
+    // Switch to generator tab
     setActiveTab('generator');
 
   } catch (error) {
@@ -728,7 +737,6 @@ const handleGenerate = async () => {
     setProcessingStage('');
   }
 };
-
 // ============================================
 // handleValidate Function
 // ============================================
@@ -764,10 +772,14 @@ const handleValidate = async () => {
     const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
     const validatorCustomConfig = getModelConfig(validatorModel);
     
-    const odrlPolicy = generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL;
+    //Send Turtle string if available, otherwise fallback to JSON-LD
+    const odrlPayload = generatedODRL.odrl_turtle 
+      ? { odrl_turtle: generatedODRL.odrl_turtle } 
+      : { odrl_policy: generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL };
     
     const valResult = await callAPI('validate', {
-      odrl_policy: odrlPolicy,
+      ...odrlPayload,
+      original_text: inputText,
       model: validatorModel,
       temperature,
       custom_model: validatorCustomConfig
@@ -1090,8 +1102,34 @@ const handleLoadHistory = (historyItem) => {
     };
     return icons[agent] || FileText;
   };
+  // ============================================
+  // handleUpdateODRL Function 
+  // ============================================
+const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
+  if (isTurtle) {
+    console.log('[App] User updated ODRL Turtle manually');
 
+    // Update Turtle string
+    setGeneratedODRL({
+      ...generatedODRL,
+      odrl_turtle: updatedODRL
+    });
+  } else {
+    console.log('[App] User updated ODRL JSON-LD manually');
 
+    // Update JSON-LD objects
+    setGeneratedODRL({
+      ...generatedODRL,
+      odrl_policy: updatedODRL,
+      odrl: updatedODRL
+    });
+  }
+
+  // Clear previous validation result
+  setValidationResult(null);
+
+  showToast('ODRL updated. Please validate the changes.', 'info');
+};
   // ============================================
   // RENDER UI
   // ============================================
@@ -1596,16 +1634,18 @@ Or drag and drop a .txt, .md, or .json file here"
 )}
 
         {/* Generator Tab */}
-{activeTab === 'generator' && (
-  <GeneratorTab
-    generatedODRL={generatedODRL}
-    darkMode={darkMode}
-    onCopy={copyToClipboard}
-    onDownload={downloadJSON}
-    onValidate={handleValidate}
-    isValidating={validating}
-  />
-)}
+    {activeTab === 'generator' && (
+      <GeneratorTab
+        generatedODRL={generatedODRL}
+        darkMode={darkMode}
+        onCopy={copyToClipboard}
+        onDownload={downloadJSON}
+        onValidate={handleValidate}
+        onUpdateODRL={handleUpdateODRL} 
+        isValidating={validating}
+        showToast={showToast}
+      />
+    )}
 
 {/* Validator Tab */}
 {activeTab === 'validator' && (
