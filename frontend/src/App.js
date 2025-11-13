@@ -93,6 +93,7 @@ const ODRLDemo = () => {
   // Store generation context for regeneration
   const [generationContext, setGenerationContext] = useState(null);
   const { getSignal, abort } = useAbortController();
+
   // Create abort controller ref for cancellation
   const abortControllerRef = useRef(new AbortController());
   // Reset abort controller when needed
@@ -172,7 +173,7 @@ const ODRLDemo = () => {
   // TOAST NOTIFICATION HELPER
   // ============================================
   const showToast = (message, type = 'success') => {
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     const newToast = { id, message, type };
     setToasts(prev => [...prev, newToast]);
     
@@ -181,6 +182,24 @@ const ODRLDemo = () => {
       setToasts(prev => prev.filter(toast => toast.id !== id));
     }, 4000);
   };
+  // ============================================
+  // HELPER: Get Custom Model Config
+  // ============================================
+  const getModelConfig = React.useCallback((modelValue) => {
+    if (!modelValue) return null;
+    
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (!customModel) return null;
+    
+    return {
+      provider_type: customModel.provider_type,
+      base_url: customModel.base_url,
+      model_id: customModel.model_id,
+      api_key: customModel.api_key,
+      context_length: customModel.context_length,
+      temperature_default: customModel.temperature_default
+    };
+  }, [customModels]);
 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
@@ -410,7 +429,9 @@ const ODRLDemo = () => {
   const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
-  
+ // ============================================
+// MAIN PIPELINE FUNCTION
+// ============================================
 const handleProcess = async () => {
   if (!inputText.trim()) {
     setError('Please enter a policy description');
@@ -418,6 +439,7 @@ const handleProcess = async () => {
     return;
   }
 
+  // Reset states
   setLoading(true);
   setError(null);
   setAttemptNumber(1);
@@ -439,22 +461,6 @@ const handleProcess = async () => {
   const signal = getSignal();
   const completedStages = [];
 
-  const getModelConfig = (modelValue) => {
-    if (!modelValue) return null;
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (customModel) {
-      return {
-        provider_type: customModel.provider_type,
-        base_url: customModel.base_url,
-        model_id: customModel.model_id,
-        api_key: customModel.api_key,
-        context_length: customModel.context_length,
-        temperature_default: customModel.temperature_default
-      };
-    }
-    return null;
-  };
-
   try {
     // ============================================
     // STAGE 1: PARSE
@@ -462,21 +468,27 @@ const handleProcess = async () => {
     updateAgentState('parser', 'processing');
     setProcessingStage('Parsing policy text...');
     setProcessingProgress(10);
-    
+
     const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
     const parserCustomConfig = getModelConfig(parserModel);
-    
+    console.log('[DEBUG] Parse request:', {
+      text: inputText.substring(0, 50) + '...',
+      model: parserModel,
+      temperature,
+      custom_model: parserCustomConfig
+    });
+
     const parseResult = await callAPI('parse', {
       text: inputText,
       model: parserModel,
       temperature,
       custom_model: parserCustomConfig
-    }, signal);  
-    
+    }, signal);
+
     setParsedData(parseResult);
     setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
     updateAgentState('parser', 'completed');
-    completedStages.push('parser');  
+    completedStages.push('parser');
     setProcessingProgress(25);
     showToast('Policy parsed successfully!', 'success');
 
@@ -488,28 +500,35 @@ const handleProcess = async () => {
     updateAgentState('reasoner', 'processing');
     setProcessingStage('Analyzing policy...');
     setProcessingProgress(35);
-    
+
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
     const reasonerCustomConfig = getModelConfig(reasonerModel);
-    
+
     const reasonResult = await callAPI('reason', {
       parsed_data: parseResult,
-      original_text: inputText, 
+      original_text: inputText,
       model: reasonerModel,
       temperature,
       custom_model: reasonerCustomConfig
-    }, signal);  
-    
+    }, signal);
+
     setReasoningResult(reasonResult);
     setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
     updateAgentState('reasoner', 'completed');
-    completedStages.push('reasoner');  
+    completedStages.push('reasoner');
     setProcessingProgress(50);
     showToast('Analysis complete!', 'success');
 
-    // Check if auto-progress is ON
+    // ============================================
+    // CHECKPOINT: Should we continue automatically?
+    // ============================================
     if (!autoProgress) {
+      console.log('[App] Manual mode - pausing at Reasoner checkpoint');
       setActiveTab('reasoner');
+      setLoading(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
+
       const totalTime = Date.now() - startTimes.total;
       const historyItem = createHistoryItem({
         inputText,
@@ -523,14 +542,19 @@ const handleProcess = async () => {
           parseTime: Date.now() - startTimes.parse,
           reasonTime: Date.now() - startTimes.reason
         },
-        status: 'completed'
+        status: 'paused_at_reasoner'
       });
+
       addToHistory(historyItem);
       setCurrentHistoryId(historyItem.id);
-      return;
+      showToast('Review analysis and click Continue to generate ODRL', 'info');
+      return; // STOP HERE in manual mode
     }
 
-    // Auto-progress mode - continue to generation
+    // ============================================
+    // AUTO-PROGRESS MODE: CONTINUE
+    // ============================================
+    console.log('[App] Auto-progress mode - continuing to Generator');
     startTimes.generate = Date.now();
 
     // ============================================
@@ -539,20 +563,28 @@ const handleProcess = async () => {
     updateAgentState('generator', 'processing');
     setProcessingStage('Generating ODRL policy...');
     setProcessingProgress(65);
-    
+
     const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
     const generatorCustomConfig = getModelConfig(generatorModel);
-    
+
+    console.log('[Generator] Using model:', generatorModel);
+    console.log('[Generator] Custom config:', generatorCustomConfig ? 'YES' : 'NO');
+
     const genResult = await callAPI('generate', {
-      parsed_data: parseResult,   
-      original_text: inputText,    
-      reasoning: reasonResult,    
+      parsed_data: parseResult,
+      original_text: inputText,
+      reasoning: reasonResult,
       model: generatorModel,
       temperature,
-      custom_model: generatorCustomConfig
+      custom_config: generatorCustomConfig
     }, signal);
-    
+
     setGeneratedODRL(genResult);
+    setGenerationContext({
+      parsed_data: parseResult,
+      original_text: inputText,
+      reasoning: reasonResult
+    });
     setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
     updateAgentState('generator', 'completed');
     completedStages.push('generator');
@@ -567,25 +599,35 @@ const handleProcess = async () => {
     updateAgentState('validator', 'processing');
     setProcessingStage('Validating with SHACL...');
     setProcessingProgress(90);
-    
+
     const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
     const validatorCustomConfig = getModelConfig(validatorModel);
-    
-    const odrlPolicy = genResult.odrl_policy || genResult.odrl || genResult;
-    
+
+    // Ensure Turtle output exists
+    if (!genResult.odrl_turtle) {
+      throw new Error('Generator did not return odrl_turtle format');
+    }
+    // ebug logs
+    console.log('[Validator] Validating Turtle policy');
+    console.log('[Validator]  Length:', genResult.odrl_turtle.length, 'characters');
+    console.log('[Validator] Model:', validatorModel);
+    console.log('[Validator] Has custom config?', !!validatorCustomConfig);
+
+
     const valResult = await callAPI('validate', {
-      odrl_policy: odrlPolicy,
+      odrl_turtle: genResult.odrl_turtle,
+      original_text: inputText,
       model: validatorModel,
       temperature,
-      custom_model: validatorCustomConfig
+      custom_config: validatorCustomConfig
     }, signal);
-    
+
     setValidationResult(valResult);
     setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
     updateAgentState('validator', 'completed');
     completedStages.push('validator');
     setProcessingProgress(100);
-    
+
     if (valResult.is_valid) {
       showToast('Complete! All validations passed!', 'success');
     } else {
@@ -594,6 +636,9 @@ const handleProcess = async () => {
 
     setActiveTab('validator');
 
+    // ============================================
+    // SAVE HISTORY
+    // ============================================
     const totalTime = Date.now() - startTimes.total;
     const historyItem = createHistoryItem({
       inputText,
@@ -613,22 +658,22 @@ const handleProcess = async () => {
       },
       status: 'completed'
     });
-    
+
     const historyId = addToHistory(historyItem);
     setCurrentHistoryId(historyId);
 
   } catch (err) {
-    const errorMessage = 
+    const errorMessage =
       (err instanceof Error ? err.message : null) ||
       (typeof err === 'string' ? err : null) ||
       err?.message ||
       err?.detail ||
       'An error occurred';
-    
+
     if (errorMessage === 'Request cancelled by user') {
-      setError(null); 
+      setError(null);
       showToast('Processing cancelled', 'warning');
-      
+
       Object.keys(agentStates).forEach(agent => {
         if (agentStates[agent] === 'processing') {
           updateAgentState(agent, 'cancelled');
@@ -637,14 +682,14 @@ const handleProcess = async () => {
     } else {
       setError(errorMessage);
       showToast(`Error: ${errorMessage}`, 'error');
-      
+
       Object.keys(agentStates).forEach(agent => {
         if (agentStates[agent] === 'processing') {
           updateAgentState(agent, 'error');
         }
       });
     }
-    
+
     const historyItem = createHistoryItem({
       inputText,
       selectedModel,
@@ -655,7 +700,7 @@ const handleProcess = async () => {
       totalTime: Date.now() - startTimes.total
     });
     addToHistory(historyItem);
-      
+
   } finally {
     setLoading(false);
     setProcessingProgress(0);
@@ -685,20 +730,6 @@ const handleGenerate = async () => {
 
   const startTime = Date.now();
   const signal = abortControllerRef.current.signal;
-  const getModelConfig = (modelValue) => {
-    if (!modelValue) return null;
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (!customModel) return null;
-    return {
-      provider_type: customModel.provider_type,
-      base_url: customModel.base_url,
-      model_id: customModel.model_id,
-      api_key: customModel.api_key,
-      context_length: customModel.context_length,
-      temperature_default: customModel.temperature_default
-    };
-  };
-
   try {
     // Update generator agent state
     updateAgentState('generator', 'processing');
@@ -777,68 +808,85 @@ const handleValidate = async () => {
     showToast('Please generate ODRL first!', 'warning');
     return;
   }
-
+  
+  // Check if Turtle exists
+  if (!generatedODRL.odrl_turtle) {
+    showToast('Generated ODRL missing Turtle format!', 'error');
+    console.error('[Validator] Generated ODRL:', generatedODRL);
+    return;
+  }
+  
   setValidating(true);
+  setProcessingStage('Validating ODRL...');
+  setProcessingProgress(90);
+  
   const startTime = Date.now();
   const signal = getSignal();
-
+  
   const getModelConfig = (modelValue) => {
     if (!modelValue) return null;
     const customModel = customModels.find(m => m.value === modelValue);
-    if (customModel) {
-      return {
-        provider_type: customModel.provider_type,
-        base_url: customModel.base_url,
-        model_id: customModel.model_id,
-        api_key: customModel.api_key,
-        context_length: customModel.context_length,
-        temperature_default: customModel.temperature_default
-      };
-    }
-    return null;
+    if (!customModel) return null;
+    return {
+      provider_type: customModel.provider_type,
+      base_url: customModel.base_url,
+      model_id: customModel.model_id,
+      api_key: customModel.api_key,
+      context_length: customModel.context_length,
+      temperature_default: customModel.temperature_default
+    };
   };
-
+  
   try {
     updateAgentState('validator', 'processing');
     
     const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
     const validatorCustomConfig = getModelConfig(validatorModel);
     
-    //Send Turtle string if available, otherwise fallback to JSON-LD
-    const odrlPayload = generatedODRL.odrl_turtle 
-      ? { odrl_turtle: generatedODRL.odrl_turtle } 
-      : { odrl_policy: generatedODRL.odrl_policy || generatedODRL.odrl || generatedODRL };
+    console.log('[Validator] Manual validation starting...');
+    console.log('[Validator] Turtle length:', generatedODRL.odrl_turtle.length, 'chars');
+    console.log('[Validator] Model:', validatorModel);
+    console.log('[Validator] Has custom config?', !!validatorCustomConfig);
+    if (validatorCustomConfig) {
+      console.log('[Validator] Config preview:', {
+        provider: validatorCustomConfig.provider_type,
+        model: validatorCustomConfig.model_id,
+        url: validatorCustomConfig.base_url
+      });
+    }
     
     const valResult = await callAPI('validate', {
-      ...odrlPayload,
+      odrl_turtle: generatedODRL.odrl_turtle,
       original_text: inputText,
       model: validatorModel,
       temperature,
-      custom_model: validatorCustomConfig
+      custom_config: validatorCustomConfig 
     }, signal);
     
     setValidationResult(valResult);
     setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
     updateAgentState('validator', 'completed');
+    setProcessingProgress(100);
     
-    // Switch to validator tab to show results
+    // Switch to validator tab
     setActiveTab('validator');
     
     if (valResult.is_valid) {
       showToast('SHACL validation passed!', 'success');
     } else {
-      showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'error');
+      showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
     }
-
+    
   } catch (error) {
     console.error('[Validator] Error:', error);
     showToast('Validation failed: ' + error.message, 'error');
     updateAgentState('validator', 'error');
   } finally {
     setValidating(false);
+    setProcessingProgress(0);
+    setProcessingStage('');
   }
 };
-
 // ============================================
 // handleRegenerate Function
 // ============================================
@@ -852,6 +900,19 @@ const handleRegenerate = async () => {
   setValidationResult(null);
   setProcessingStage(`Regenerating ODRL (attempt ${(generatedODRL.attempt_number || 1) + 1})...`);
   setProcessingProgress(50);
+   const getModelConfig = (modelValue) => {
+    if (!modelValue) return null;
+    const customModel = customModels.find(m => m.value === modelValue);
+    if (!customModel) return null;
+    return {
+      provider_type: customModel.provider_type,
+      base_url: customModel.base_url,
+      model_id: customModel.model_id,
+      api_key: customModel.api_key,
+      context_length: customModel.context_length,
+      temperature_default: customModel.temperature_default
+    };
+  };
 
   try {
     console.log('[Generator] Regenerating ODRL with validation fixes...');
@@ -862,24 +923,26 @@ const handleRegenerate = async () => {
       validation_issues: validationResult.issues?.length
     });
 
+    // Get model config
+    const regenerateModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const regenerateCustomConfig = getModelConfig(regenerateModel);
+
+    console.log('[Regenerate] Model:', regenerateModel);
+    console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
+
     const response = await fetch(`${API_BASE_URL}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        // Original generation context
         parsed_data: generationContext.parsed_data,
         original_text: generationContext.original_text,
         reasoning: generationContext.reasoning,
-
-        // Regeneration-specific info
         validation_errors: validationResult,
         previous_odrl: generatedODRL.odrl_turtle,
         attempt_number: (generatedODRL.attempt_number || 1) + 1,
-
-        // Model configuration
-        model: selectedModel?.id,
-        temperature: selectedModel?.temperature,
-        custom_config: selectedModel?.custom_config
+        model: regenerateModel,
+        temperature,
+        custom_config: regenerateCustomConfig  // ✅ FIXED
       }),
       signal: abortControllerRef.current.signal
     });
@@ -1416,69 +1479,145 @@ Or drag and drop a .txt, .md, or .json file here"
                     <span className="text-sm">{uploadStatus.message}</span>
                   </div>
                 )}
+{/* ============================================ */}
+{/* ADVANCED SETTINGS - COLLAPSIBLE SECTION */}
+{/* ============================================ */}
+<div
+  className={`rounded-lg border ${
+    advancedMode
+      ? darkMode
+        ? 'border-green-600 bg-green-900/10'
+        : 'border-green-500 bg-green-50'
+      : darkMode
+        ? 'border-gray-700'
+        : 'border-gray-200'
+  }`}
+>
+  <button
+    onClick={() => setAdvancedMode(!advancedMode)}
+    className={`w-full px-4 py-3 flex items-center justify-between transition ${
+      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+    }`}
+  >
+    <div className="flex items-center gap-2">
+      <Settings className={`w-4 h-4 ${advancedMode ? 'text-green-500' : ''}`} />
+      <span className={`text-sm font-medium ${textClass}`}>
+        Advanced Settings
+      </span>
+      <span
+        className={`text-xs px-2 py-0.5 rounded ${
+          advancedMode
+            ? 'bg-green-500 text-white'
+            : darkMode
+              ? 'bg-gray-700 text-gray-400'
+              : 'bg-gray-100 text-gray-600'
+        }`}
+      >
+        {advancedMode ? 'ON' : 'OFF'}
+      </span>
+    </div>
+    {advancedMode ? (
+      <ChevronUp className="w-4 h-4" />
+    ) : (
+      <ChevronDown className="w-4 h-4" />
+    )}
+  </button>
 
-                {/* IMPROVED: Advanced Settings - Collapsible */}
-                <div className={`rounded-lg border ${
-                  advancedMode 
-                    ? darkMode ? 'border-green-600 bg-green-900/10' : 'border-green-500 bg-green-50'
-                    : darkMode ? 'border-gray-700' : 'border-gray-200'
-                }`}>
-                  <button
-                    onClick={() => setAdvancedMode(!advancedMode)}
-                    className={`w-full px-4 py-3 flex items-center justify-between transition ${
-                      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Settings className={`w-4 h-4 ${advancedMode ? 'text-green-500' : ''}`} />
-                      <span className={`text-sm font-medium ${textClass}`}>Advanced Settings</span>
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        advancedMode 
-                          ? 'bg-green-500 text-white'
-                          : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {advancedMode ? 'ON' : 'OFF'}
-                      </span>
-                    </div>
-                    {advancedMode ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
+  {/* Expanded content */}
+  {advancedMode && (
+    <div
+      className={`px-4 py-4 border-t space-y-4 ${
+        darkMode
+          ? 'border-gray-700 bg-gray-800/50'
+          : 'border-gray-200 bg-gray-50'
+      }`}
+    >
+      {/* Info Tip */}
+      <div
+        className={`flex items-start gap-2 p-3 rounded-lg ${
+          darkMode
+            ? 'bg-blue-900/20 border border-blue-800'
+            : 'bg-blue-50 border border-blue-200'
+        }`}
+      >
+        <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+        <p
+          className={`text-xs ${
+            darkMode ? 'text-blue-300' : 'text-blue-700'
+          }`}
+        >
+          <strong>Pro Tip:</strong> Use faster models for parsing/validation
+          and powerful models for reasoning/generation.
+        </p>
+      </div>
 
-                  {advancedMode && (
-                    <div className={`px-4 py-4 border-t space-y-4 ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
-                      <div className={`flex items-start gap-2 p-3 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
-                        <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                        <p className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                          <strong>Pro Tip:</strong> Use faster models for parsing/validation and powerful models for reasoning/generation
-                        </p>
-                      </div>
+      {/* Agent model selectors */}
+      {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
+        <div key={agent}>
+          <label
+            className={`block text-sm font-medium mb-2 ${textClass} capitalize`}
+          >
+            {agent} Model
+          </label>
 
-                      {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
-                        <div key={agent}>
-                          <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
-                            {agent} Model
-                          </label>
-                          <select
-                            value={agentModels[agent] || ''}
-                            onChange={(e) => setAgentModels({
-                              ...agentModels,
-                              [agent]: e.target.value || null
-                            })}
-                            className={`w-full px-3 py-2 ${
-                              darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                            } border rounded-lg`}
-                          >
-                            <option value="">Use default ({selectedModel?.split(':')[1] || 'llama3.3'})</option>
-                            {providers.flatMap(p => p.models).map(model => (
-                              <option key={model.value} value={model.value}>
-                                {model.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+          <select
+            value={agentModels[agent] || ''}
+            onChange={(e) =>
+              setAgentModels({
+                ...agentModels,
+                [agent]: e.target.value || null,
+              })
+            }
+            className={`w-full px-3 py-2 ${
+              darkMode
+                ? 'bg-gray-700 border-gray-600 text-white'
+                : 'bg-white border-gray-300'
+            } border rounded-lg text-sm`}
+          >
+            {/* Default Option */}
+            <option value="">
+              Use default (
+              {selectedModel
+                ? providers
+                    .flatMap((p) => p.models)
+                    .find((m) => m.value === selectedModel)?.label ||
+                  customModels.find((m) => m.value === selectedModel)?.label ||
+                  'llama3.3'
+                : 'llama3.3'}
+              )
+            </option>
+
+            {/* Default Provider Models */}
+            {providers.length > 0 && (
+              <optgroup label="━━ Available Providers ━━">
+                {providers.flatMap((p) => p.models).map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+
+            {/* Custom Models */}
+            {customModels.length > 0 && (
+              <optgroup label="━━ Your Custom Models ━━">
+                {customModels.map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}{' '}
+                    {model.context_length >= 1000000
+                      ? `(${(model.context_length / 1000000).toFixed(1)}M ctx)`
+                      : `(${(model.context_length / 1024).toFixed(0)}K ctx)`}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
 
                 {/* Auto-progress Setting - Moved to bottom */}
                 <div className="flex items-center justify-between pt-2">
@@ -1992,56 +2131,53 @@ Or drag and drop a .txt, .md, or .json file here"
   />
 )}
 
-
-
-      <style jsx>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.3s ease-out;
-        }
-        
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        
-        @keyframes slide-in-right {
-          from {
-            opacity: 0;
-            transform: translateX(100%);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        
-        .animate-slide-in-right {
-          animation: slide-in-right 0.3s ease-out;
-        }
-        
-        /* Better focus states for accessibility */
-        button:focus-visible,
-        input:focus-visible,
-        select:focus-visible,
-        textarea:focus-visible {
-          outline: 2px solid #3b82f6;
-          outline-offset: 2px;
-        }
-      `}</style>
+      <style>{`
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+  
+  /* Better focus states for accessibility */
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+`}</style>
     </div>
   );
 };

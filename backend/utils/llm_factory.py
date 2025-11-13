@@ -206,6 +206,7 @@ class LLMFactory:
         
         # Unknown cost
         return {"input": None, "output": None}
+    
     @staticmethod
     def create_llm(
         model: Optional[str] = None,
@@ -219,92 +220,139 @@ class LLMFactory:
         **kwargs
     ) -> BaseChatModel:
         """
-        Create LLM client with optional custom configuration.
+        Create LLM client with optional custom configuration or 'custom:' prefix.
 
-        Args:
-            model: Model string (e.g., "groq:llama-3.1-70b")
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            max_retries: Number of retry attempts
-            retry_delay: Delay between retries (exponential backoff)
-            enable_fallback: Attempt fallback on failure
-            verbose: Enable debug logging
-            custom_config: Custom model configuration dict
-            **kwargs: Additional provider-specific params
+        Supports:
+        - Standard providers (groq, openai, ollama, anthropic)
+        - Custom model configs from frontend
+        - 'custom:' prefix model strings for user-defined endpoints
 
-        Returns:
-            Configured LangChain chat model instance
+        Example:
+            model="custom:gpt-oss:120b"
+            custom_config={
+                "provider_type": "openai-compatible",
+                "base_url": "https://api.fitmodels.ai/v1",
+                "api_key": "sk-xxxx",
+                "model_id": "gpt-oss:120b",
+                "context_length": 8192
+            }
         """
         if verbose:
             logger.setLevel(logging.DEBUG)
 
-        # Use default model if none specified
+        # Default model and temperature
         if not model:
             model = os.getenv("DEFAULT_MODEL", "groq:llama-3.3-70b-versatile")
 
         if not temperature:
             temperature = float(os.getenv("LLM_TEMPERATURE_PRECISE", "0.3"))
 
-        # Handle custom configuration
-        if custom_config:
+        # Handle custom: prefix in model string
+        if model and model.startswith("custom:"):
+            logger.info(f"Detected custom model prefix: {model}")
+
+            if not custom_config:
+                raise ValueError(
+                    f"Model '{model}' uses 'custom:' prefix but no custom_config provided. "
+                    "Pass a 'custom_model' dict with provider details."
+                )
+
             provider_type = custom_config.get("provider_type")
             base_url = custom_config.get("base_url")
             api_key = custom_config.get("api_key", "")
-            model_id = custom_config.get("model_id", model.split(":")[1] if ":" in model else model)
+            model_id = custom_config.get("model_id") or model.split("custom:")[-1]
+            context_length = custom_config.get("context_length", 8192)
 
             logger.info(f"Creating custom LLM: {provider_type} at {base_url}")
 
             if provider_type == "ollama":
                 from langchain_ollama import ChatOllama
-                context_length = custom_config.get("context_length", 4096)  
-                logger.info(f"Ollama context: {context_length} tokens")
                 return ChatOllama(
                     model=model_id,
                     base_url=base_url,
                     temperature=temperature,
-                    num_ctx=context_length, 
+                    num_ctx=context_length,
                     **kwargs
                 )
-            elif provider_type == "google-genai":
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                context_length = custom_config.get("context_length", 1000000)  # ✅ NEW
-                logger.info(f"Gemini context: {context_length} tokens")
-                logger.info(f"Creating Google GenAI with model: {model_id}")
-                return ChatGoogleGenerativeAI(
-                    model=model_id,
-                    google_api_key=api_key,
-                    temperature=temperature,
-                    max_output_tokens=min(max_tokens or 8192, context_length // 2),  # ✅ NEW
-                    convert_system_message_to_human=True,  # Recommended for Gemini
-                    **kwargs
-                )
+
             elif provider_type == "openai-compatible":
                 from langchain_openai import ChatOpenAI
-                context_length = custom_config.get("context_length", 8192)
-                logger.info(f"OpenAI-compatible context: {context_length} tokens")
-                # Calculate safe max_tokens (don't exceed context window)
                 safe_max_tokens = max_tokens if max_tokens else min(4096, context_length // 2)
                 return ChatOpenAI(
                     model_name=model_id,
                     openai_api_base=base_url,
                     openai_api_key=api_key or "not-needed",
                     temperature=temperature,
-                    max_tokens=safe_max_tokens,  # ✅ Use calculated value
-                    # Don't pass max_context_length - OpenAI API doesn't support it
+                    max_tokens=safe_max_tokens,
                     **kwargs
                 )
+
+            elif provider_type == "google-genai":
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                return ChatGoogleGenerativeAI(
+                    model=model_id,
+                    google_api_key=api_key,
+                    temperature=temperature,
+                    max_output_tokens=min(max_tokens or 8192, context_length // 2),
+                    convert_system_message_to_human=True,
+                    **kwargs
+                )
+
             else:
-                logger.warning(f"Unknown custom provider: {provider_type}, falling back to standard logic")
+                raise ValueError(f"Unknown custom provider type: {provider_type}")
 
-        # Fallback to standard provider logic
+        # ACKWARD COMPATIBILITY: Handle classic custom_config (no prefix)
+        elif custom_config:
+            provider_type = custom_config.get("provider_type")
+            base_url = custom_config.get("base_url")
+            api_key = custom_config.get("api_key", "")
+            model_id = custom_config.get("model_id", model.split(":")[1] if ":" in model else model)
+            context_length = custom_config.get("context_length", 8192)
+
+            logger.info(f"Creating LLM via legacy custom_config ({provider_type})")
+
+            if provider_type == "ollama":
+                from langchain_ollama import ChatOllama
+                return ChatOllama(
+                    model=model_id,
+                    base_url=base_url,
+                    temperature=temperature,
+                    num_ctx=context_length,
+                    **kwargs
+                )
+
+            elif provider_type == "openai-compatible":
+                from langchain_openai import ChatOpenAI
+                safe_max_tokens = max_tokens if max_tokens else min(4096, context_length // 2)
+                return ChatOpenAI(
+                    model_name=model_id,
+                    openai_api_base=base_url,
+                    openai_api_key=api_key or "not-needed",
+                    temperature=temperature,
+                    max_tokens=safe_max_tokens,
+                    **kwargs
+                )
+
+            elif provider_type == "google-genai":
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                return ChatGoogleGenerativeAI(
+                    model=model_id,
+                    google_api_key=api_key,
+                    temperature=temperature,
+                    max_output_tokens=min(max_tokens or 8192, context_length // 2),
+                    convert_system_message_to_human=True,
+                    **kwargs
+                )
+
+            else:
+                logger.warning(f"Unknown provider in custom_config: {provider_type}, using default flow")
+
+        # STANDARD PROVIDERS FLOW
         provider, model_name = LLMFactory.parse_model_string(model)
-
-        # Cost info (for logging)
         cost_info = LLMFactory.get_cost_info(provider, model_name)
         cost_str = "FREE" if cost_info["input"] == 0.0 else f"~${cost_info['input']}/{cost_info['output']} per 1M tokens"
         logger.info(f"Creating {provider} LLM: {model_name} (T={temperature}, Cost: {cost_str})")
 
-        # Retry loop
         last_error = None
         for attempt in range(max_retries):
             try:
@@ -328,7 +376,7 @@ class LLMFactory:
                 else:
                     logger.error(f"All {max_retries} attempts failed for {provider}:{model_name}")
 
-        # Fallback to alternative providers
+        # Fallback logic
         if enable_fallback:
             logger.info("Attempting fallback to alternative providers...")
             for fallback_provider in LLMFactory._get_fallback_order(provider):
@@ -351,6 +399,7 @@ class LLMFactory:
             f"Last error: {last_error}\n"
             f"Check your .env configuration and network connection."
         )
+
     
     @staticmethod
     def _get_fallback_order(failed_provider: str) -> list[str]:
