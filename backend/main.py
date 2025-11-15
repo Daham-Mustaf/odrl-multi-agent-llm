@@ -5,7 +5,7 @@ UPDATED: Now uses config directory for settings and custom_models.json
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import sys
 import os
@@ -15,6 +15,7 @@ import logging
 from fastapi import UploadFile, File
 from fastapi import FastAPI, HTTPException, Request  
 from fastapi.responses import JSONResponse 
+from urllib.parse import unquote
 
 # Add this import
 from utils.request_utils import run_with_disconnect_check
@@ -111,12 +112,27 @@ def save_custom_models_to_file(models: List[Dict]):
         # Ensure config directory exists
         CONFIG_DIR.mkdir(exist_ok=True)
         
+        logger.info(f"Attempting to save {len(models)} models to {CUSTOM_MODELS_FILE}")
+        
+        # Write to file
         with open(CUSTOM_MODELS_FILE, 'w') as f:
             json.dump(models, f, indent=2)
-        logger.info(f"Saved {len(models)} custom models to {CUSTOM_MODELS_FILE.name}")
-        return True
+        
+        logger.info(f"Successfully saved {len(models)} models")
+        
+        # Verify the file was written
+        if CUSTOM_MODELS_FILE.exists():
+            file_size = CUSTOM_MODELS_FILE.stat().st_size
+            logger.info(f"File size: {file_size} bytes")
+            return True
+        else:
+            logger.error(f"File was not created: {CUSTOM_MODELS_FILE}")
+            return False
+            
     except Exception as e:
         logger.error(f"Error saving custom models: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 # ============================================
@@ -182,12 +198,12 @@ class ValidateRequest(BaseModel):
 
 class CustomModelRequest(BaseModel):
     name: str
-    provider_type: str  # "ollama", "openai-compatible", "google-genai", "custom"
+    provider_type: str
     base_url: Optional[str] = None
     model_id: str
     api_key: Optional[str] = None
     context_length: Optional[int] = 4096
-    temperature_default: Optional[float] = 0.3
+    temperature: Optional[float] = 0.3 
 
 # ============================================
 # BASIC ENDPOINTS
@@ -280,7 +296,7 @@ async def get_available_providers():
 @app.post("/api/parse-file")
 async def parse_file(file: UploadFile = File(...)):
     """
-    Extract text from uploaded files (.txt, .pdf, .docx, .md)
+    Extract text from uploaded files (.txt , .docx, .md)
     
     Returns:
         - text: Extracted text content
@@ -323,6 +339,8 @@ async def get_custom_models():
     """Get all custom models from server storage"""
     try:
         models = load_custom_models_from_file()
+        logger.info(f"Returning {len(models)} custom models")
+        
         return {
             "models": models,
             "count": len(models),
@@ -332,19 +350,22 @@ async def get_custom_models():
     except Exception as e:
         logger.error(f"Error getting custom models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @app.post("/api/custom-models")
 async def add_custom_model(model: CustomModelRequest):
     """Add or update a custom model"""
     try:
+        logger.info(f"📥 Received custom model request: {model.name}")
+        
         # Load existing models
         models = load_custom_models_from_file()
         
-        # Create value based on provider type
-        if model.provider_type == "google-genai":
-            value = f"{model.provider_type}:{model.model_id}"
-        else:
-            value = f"{model.provider_type}:{model.model_id}"
+        # Create unique value key
+        # value = f"{model.provider_type}:{model.model_id}"
+        value = f"custom:{model.model_id}"
+        
+        logger.info(f"Model value key: {value}")
         
         # Create new model entry
         new_model = {
@@ -355,26 +376,37 @@ async def add_custom_model(model: CustomModelRequest):
             "model_id": model.model_id,
             "api_key": model.api_key,
             "context_length": model.context_length or 4096,
-            "temperature_default": model.temperature_default or 0.3,
+            "temperature_default": model.temperature or 0.3,  # Store as temperature_default for consistency
             "created_at": time.time(),
             "updated_at": time.time()
         }
         
-        # Check if model already exists (update instead of duplicate)
-        existing_idx = next((i for i, m in enumerate(models) if m['value'] == new_model['value']), None)
+        # Check if model already exists
+        existing_idx = next(
+            (i for i, m in enumerate(models) if m['value'] == new_model['value']), 
+            None
+        )
         
         if existing_idx is not None:
             # Update existing model
-            models[existing_idx] = {**models[existing_idx], **new_model, "updated_at": time.time()}
+            models[existing_idx] = {
+                **models[existing_idx], 
+                **new_model, 
+                "updated_at": time.time()
+            }
             action = "updated"
+            logger.info(f"Updating existing model at index {existing_idx}")
         else:
             # Add new model
             models.append(new_model)
             action = "added"
+            logger.info(f"Adding new model (total will be {len(models)})")
         
         # Save to file
         if save_custom_models_to_file(models):
             logger.info(f"Custom model {action}: {model.name}")
+            logger.info(f"Saved to: {CUSTOM_MODELS_FILE}")
+            
             return {
                 "success": True,
                 "action": action,
@@ -382,44 +414,48 @@ async def add_custom_model(model: CustomModelRequest):
                 "total_models": len(models)
             }
         else:
+            logger.error(f"Failed to save models to file")
             raise HTTPException(status_code=500, detail="Failed to save model")
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error adding custom model: {e}")
+        logger.error(f" Error adding custom model: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @app.delete("/api/custom-models/{model_value}")
 async def delete_custom_model(model_value: str):
-    """Delete a custom model"""
+    """Delete a custom model - accepts both 'custom:' and 'provider:' formats"""
     try:
-        # Load existing models
-        models = load_custom_models_from_file()
+        model_value = unquote(model_value)
         
-        # Find and remove the model
+        # Normalize to custom: format
+        if ":" in model_value:
+            parts = model_value.split(":")
+            model_id = ":".join(parts[1:])
+            model_value = f"custom:{model_id}"
+        
+        models = load_custom_models_from_file()
         original_count = len(models)
         models = [m for m in models if m['value'] != model_value]
         
         if len(models) == original_count:
-            raise HTTPException(status_code=404, detail=f"Model {model_value} not found")
+            raise HTTPException(status_code=404, detail="Model not found")
         
-        # Save updated list
         if save_custom_models_to_file(models):
-            logger.info(f" Deleted custom model: {model_value}")
-            return {
-                "success": True,
-                "message": "Model deleted successfully",
-                "remaining_models": len(models)
-            }
+            logger.info(f" Deleted: {model_value}")
+            return {"success": True, "remaining_models": len(models)}
         else:
-            raise HTTPException(status_code=500, detail="Failed to save changes")
+            raise HTTPException(status_code=500, detail="Failed to save")
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting custom model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/custom-models/export")
 async def export_custom_models():
@@ -670,6 +706,25 @@ async def validate_odrl(request: ValidateRequest):
     except Exception as e:
         logger.error(f"Validate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+# Add this debug endpoint temporarily
+
+@app.get("/api/debug/config")
+async def debug_config():
+    """Debug endpoint to check config directory"""
+    try:
+        return {
+            "config_dir": str(CONFIG_DIR),
+            "config_dir_exists": CONFIG_DIR.exists(),
+            "custom_models_file": str(CUSTOM_MODELS_FILE),
+            "custom_models_file_exists": CUSTOM_MODELS_FILE.exists(),
+            "custom_models_file_size": CUSTOM_MODELS_FILE.stat().st_size if CUSTOM_MODELS_FILE.exists() else 0,
+            "models_in_file": len(load_custom_models_from_file()),
+            "config_dir_contents": [str(f) for f in CONFIG_DIR.iterdir()] if CONFIG_DIR.exists() else []
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ============================================

@@ -1,4 +1,9 @@
-# odrl_validation_tool.py
+# agents/validator/odrl_validation_tool.py
+"""
+ODRL Validation Tool v3.0
+Validates ODRL Turtle against SHACL shapes
+Provides structured feedback for LLM regeneration
+"""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Dict, Any, Set, Optional
@@ -9,7 +14,6 @@ from pyshacl import validate
 # --------------------------
 # Core Data Structures
 # --------------------------
-
 @dataclass
 class ValidationIssue:
     """Structured validation issue without suggestions."""
@@ -90,7 +94,6 @@ class ValidationReport:
 # --------------------------
 # Constraint System Classes
 # --------------------------
-
 class OperatorType(Enum):
     """ODRL Core Constraint Operators from http://www.w3.org/ns/odrl/2/#constraintRelationalOperators"""
     EQ = "eq"           # equal to
@@ -171,7 +174,28 @@ class ODRLLeftOperands:
             label="Recipient",
             definition="The party receiving the result/outcome of exercising the action of the Rule",
             compatible_operators={OperatorType.EQ, OperatorType.IS_A, OperatorType.IS_ANY_OF, OperatorType.IS_NONE_OF}
-        )
+        ),
+        # ============================================
+        # TODO: ADD MORE LEFT OPERANDS HERE
+        # ============================================
+        # Examples to add:
+        # - "delayPeriod": For time delays before action execution
+        # - "industry": For industry sector constraints
+        # - "language": For language-specific constraints
+        # - "event": For event-based constraints
+        # - "timeInterval": For recurring time windows
+        # - "virtualLocation": For virtual/online location constraints
+        # - "absolutePosition": For absolute spatial coordinates
+        # - "relativePosition": For relative spatial positions
+        # - "absoluteSize": For absolute size constraints
+        # - "relativeSize": For relative size constraints
+        # - "absoluteSpatialPosition": For GPS coordinates
+        # - "absoluteTemporalPosition": For absolute timestamps
+        # - "systemDevice": For device-specific constraints
+        # - "deliveryChannel": For delivery method constraints
+        # - "meteredTime": For metered usage time
+        # - "unitOfCount": For custom count units
+        # ============================================
     }
     
     @classmethod
@@ -181,7 +205,6 @@ class ODRLLeftOperands:
     @classmethod
     def list_operands(cls) -> List[str]:
         return list(cls.OPERANDS.keys())
-
 
 class BaseValidator(ABC):
     """Abstract base class for ODRL validators."""
@@ -193,6 +216,69 @@ class BaseValidator(ABC):
     @abstractmethod
     def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
         pass
+
+class PolicyStructureValidator(BaseValidator):
+    """Validates basic ODRL policy structure."""
+    
+    def get_shape_ttl(self) -> str:
+        return """
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix odrl: <http://www.w3.org/ns/odrl/2/> .
+
+<PolicyStructureShape> a sh:NodeShape ;
+    sh:targetClass odrl:Policy ;
+    sh:property [
+        sh:path odrl:uid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message "Policy must have exactly one uid with IRI value" ;
+    ] ;
+    sh:or (
+        [ sh:property [ sh:path odrl:permission ; sh:minCount 1 ] ]
+        [ sh:property [ sh:path odrl:prohibition ; sh:minCount 1 ] ]
+        [ sh:property [ sh:path odrl:obligation ; sh:minCount 1 ] ]
+    ) ;
+    sh:message "Policy must have at least one rule" .
+
+# ============================================
+# TODO: ADD MORE POLICY-LEVEL CONSTRAINTS
+# ============================================
+# Examples to add:
+# - Validate odrl:profile usage
+# - Validate odrl:inheritFrom references
+# - Validate conflict resolution strategy
+# - Validate policy metadata (dc:creator, dc:created, etc.)
+# - Validate odrl:relation between policies
+# - Validate odrl:target at policy level
+# - Ensure policy type (Set/Offer/Agreement) consistency
+# ============================================
+"""
+    
+    def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
+        issues = []
+        for violation in violations:
+            constraint_type = violation.get("source_constraint_component", "")
+            
+            if "uid" in str(violation.get("result_path", "")):
+                issue_type = "Missing Policy UID"
+                constraint_violated = "ODRL Policy must have exactly one odrl:uid property with an IRI value as per ODRL Information Model specification"
+            elif "OrConstraintComponent" in constraint_type:
+                issue_type = "Missing Policy Rules"  
+                constraint_violated = "ODRL Policy must contain at least one Rule (odrl:permission, odrl:prohibition, or odrl:obligation) as per ODRL Information Model specification"
+            else:
+                issue_type = "Policy Structure Error"
+                constraint_violated = violation.get("message", "Unknown policy structure violation")
+            
+            issues.append(ValidationIssue(
+                issue_type=issue_type,
+                focus_node=str(violation.get("focus_node", "")),
+                property_path=str(violation.get("result_path", "")),
+                actual_value=str(violation.get("value", "not specified")),
+                constraint_violated=constraint_violated
+            ))
+        
+        return issues
 
 class ConstraintStructureValidator(BaseValidator):
     """Validates basic constraint structure."""
@@ -238,6 +324,19 @@ class ConstraintStructureValidator(BaseValidator):
         [ sh:property [ sh:path odrl:rightOperandReference ; sh:minCount 1 ] ]
     ) ;
     sh:message "Missing right operand or reference" .
+
+# ============================================
+# TODO: ADD MORE CONSTRAINT-LEVEL VALIDATIONS
+# ============================================
+# Examples to add:
+# - Validate datatype consistency (dateTime with xsd:date, count with xsd:integer)
+# - Validate unit property for payAmount/percentage/fileSize
+# - Validate dataType property usage
+# - Validate status property (odrl:active, odrl:inactive)
+# - Ensure rightOperand values match expected types
+# - Validate URI formats for spatial/purpose/recipient
+# - Check for contradictory constraints in same rule
+# ============================================
 """
     
     def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
@@ -248,11 +347,12 @@ class ConstraintStructureValidator(BaseValidator):
             if "leftOperand" in str(violation.get("result_path", "")):
                 issue_type = "Invalid Left Operand"
                 actual_operand = self._extract_operand_from_value(violation.get("value", ""))
-                constraint_violated = f"Left operand '{actual_operand}' is not in ODRL Core vocabulary. Valid operands: dateTime, count, elapsedTime, payAmount, percentage, spatial, purpose, recipient"
+                constraint_violated = f"Left operand '{actual_operand}' is not in ODRL Core vocabulary. Valid operands: {', '.join(ODRLLeftOperands.list_operands())}"
             elif "operator" in str(violation.get("result_path", "")):
                 issue_type = "Invalid Operator"
                 actual_op = self._extract_operator_from_value(violation.get("value", ""))
-                constraint_violated = f"Operator '{actual_op}' is not in ODRL Core constraintRelationalOperators collection. Valid operators: eq, gt, gteq, lt, lteq, neq, isA, hasPart, isPartOf, isAllOf, isAnyOf, isNoneOf"
+                valid_ops = ', '.join([op.value for op in OperatorType])
+                constraint_violated = f"Operator '{actual_op}' is not in ODRL Core. Valid: {valid_ops}"
             elif "XoneConstraintComponent" in constraint_type:
                 issue_type = "Missing Right Operand"
                 constraint_violated = "Must have either rightOperand or rightOperandReference"
@@ -280,7 +380,7 @@ class ConstraintStructureValidator(BaseValidator):
     
     def _extract_operator_from_value(self, uri_value: str) -> str:
         """Extract operator name from URI value."""
-        return self._extract_operand_from_value(uri_value)  # Same logic
+        return self._extract_operand_from_value(uri_value)
 
 class ConstraintCompatibilityValidator(BaseValidator):
     """Validates operand-operator compatibility."""
@@ -317,23 +417,47 @@ class ConstraintCompatibilityValidator(BaseValidator):
     def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
         issues = []
         for violation in violations:
-            actual_operand = self._extract_operand_from_value(violation.get("value", ""))
+            #FIX: Extract operand from focus node, not from value
+            focus_node = str(violation.get("focus_node", ""))
+            operator_value = str(violation.get("value", ""))
+            
+            # Extract operand name from the violation message or focus node
+            message = violation.get("message", "")
+            
+            # Parse operand from message like "Incompatible operator for dateTime"
+            operand_name = None
+            if "for " in message:
+                operand_name = message.split("for ")[-1].strip()
+            
+            if operand_name:
+                operand_info = ODRLLeftOperands.get_operand(operand_name)
+                if operand_info:
+                    valid_ops = ', '.join([op.value for op in operand_info.compatible_operators])
+                    operator_short = self._extract_operator_from_value(operator_value)
+                    constraint_violated = f"Operator '{operator_short}' not compatible with leftOperand '{operand_name}'. Valid operators: {valid_ops}"
+                else:
+                    constraint_violated = f"Unknown operand '{operand_name}'"
+            else:
+                constraint_violated = "Operator-operand compatibility issue"
+            
             issues.append(ValidationIssue(
                 issue_type="Operator Compatibility",
-                focus_node=str(violation.get("focus_node", "")),
+                focus_node=focus_node,
                 property_path="odrl:operator",
-                actual_value=str(violation.get("value", "")),
-                constraint_violated=f"Operator is not compatible with left operand '{actual_operand}'. Check ODRL specification for valid operator-operand combinations.",
+                actual_value=operator_value,
+                constraint_violated=constraint_violated,
                 severity="Warning"
             ))
         return issues
     
-    def _extract_operand_from_value(self, uri_value: str) -> str:
-        """Extract operand name from URI value."""
+    def _extract_operator_from_value(self, uri_value: str) -> str:
+        """Extract operator name from URI value."""
         if "odrl/2/" in uri_value:
             return uri_value.split("odrl/2/")[-1]
-        elif ":" in uri_value:
-            return uri_value.split(":")[-1]
+        elif "#" in uri_value:
+            return uri_value.split("#")[-1]
+        elif "/" in uri_value:
+            return uri_value.split("/")[-1]
         return uri_value
 
 class LogicalConstraintValidator(BaseValidator):
@@ -373,6 +497,17 @@ class LogicalConstraintValidator(BaseValidator):
         ''' ;
         sh:message "Logical operators require at least 2 operands" ;
     ] .
+
+# ============================================
+# TODO: ADD MORE LOGICAL CONSTRAINT VALIDATIONS
+# ============================================
+# Examples to add:
+# - Validate nested logical constraints
+# - Check for circular logical references
+# - Validate andSequence ordering constraints
+# - Ensure operands are valid Constraints
+# - Detect contradictory logical combinations
+# ============================================
 """
     
     def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
@@ -400,60 +535,52 @@ class LogicalConstraintValidator(BaseValidator):
         
         return issues
 
-class PolicyStructureValidator(BaseValidator):
-    """Validates basic ODRL policy structure."""
-    
-    def get_shape_ttl(self) -> str:
-        return """
-@prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix odrl: <http://www.w3.org/ns/odrl/2/> .
-
-<PolicyStructureShape> a sh:NodeShape ;
-    sh:targetClass odrl:Policy ;
-    sh:property [
-        sh:path odrl:uid ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:nodeKind sh:IRI ;
-        sh:message "Policy must have exactly one uid with IRI value" ;
-    ] ;
-    sh:or (
-        [ sh:property [ sh:path odrl:permission ; sh:minCount 1 ] ]
-        [ sh:property [ sh:path odrl:prohibition ; sh:minCount 1 ] ]
-        [ sh:property [ sh:path odrl:obligation ; sh:minCount 1 ] ]
-    ) ;
-    sh:message "Policy must have at least one rule" .
-"""
-    
-    def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
-        issues = []
-        for violation in violations:
-            constraint_type = violation.get("source_constraint_component", "")
-            
-            if "uid" in str(violation.get("result_path", "")):
-                issue_type = "Missing Policy UID"
-                constraint_violated = "ODRL Policy must have exactly one odrl:uid property with an IRI value as per ODRL Information Model specification"
-            elif "OrConstraintComponent" in constraint_type:
-                issue_type = "Missing Policy Rules"  
-                constraint_violated = "ODRL Policy must contain at least one Rule (odrl:permission, odrl:prohibition, or odrl:obligation) as per ODRL Information Model specification"
-            else:
-                issue_type = "Policy Structure Error"
-                constraint_violated = violation.get("message", "Unknown policy structure violation")
-            
-            issues.append(ValidationIssue(
-                issue_type=issue_type,
-                focus_node=str(violation.get("focus_node", "")),
-                property_path=str(violation.get("result_path", "")),
-                actual_value=str(violation.get("value", "not specified")),
-                constraint_violated=constraint_violated
-            ))
-        
-        return issues
+# ============================================
+# TODO: ADD MORE VALIDATOR CLASSES
+# ============================================
+# Suggested validators to implement:
+#
+# 1. RuleStructureValidator:
+#    - Validate Permission/Prohibition/Duty structure
+#    - Check for required properties (action, target)
+#    - Validate assignee/assigner usage
+#    - Ensure duty attachments are valid
+#
+# 2. ActionValidator:
+#    - Validate actions are from ODRL vocabulary
+#    - Check action-specific constraints
+#    - Validate includedIn/implies relationships
+#
+# 3. AssetValidator:
+#    - Validate target/output properties
+#    - Check asset relations (partOf, hasPolicy)
+#    - Validate asset collections
+#
+# 4. PartyValidator:
+#    - Validate assignee/assigner IRIs
+#    - Check party functions (assigner, assignee, attributedParty, etc.)
+#    - Validate party scope
+#
+# 5. DutyValidator:
+#    - Validate duty structure
+#    - Check consequence chains
+#    - Validate remedy relationships
+#    - Ensure duty actions are valid
+#
+# 6. ConflictValidator:
+#    - Detect conflicting permissions/prohibitions
+#    - Check for redundant constraints
+#    - Validate conflict resolution strategies
+#
+# 7. DataspaceValidator (for DRK/FDO-ONE specific):
+#    - Validate connector restrictions
+#    - Check security profiles
+#    - Validate dataspace-specific properties
+# ============================================
 
 # --------------------------
 # Main Validation Tool
 # --------------------------
-
 class ODRLValidationTool:
     """Main validation tool for ODRL knowledge graphs."""
     
@@ -461,8 +588,20 @@ class ODRLValidationTool:
         self.validators = [
             PolicyStructureValidator(),
             ConstraintStructureValidator(),
-            ConstraintCompatibilityValidator(),
+            # ConstraintCompatibilityValidator(),
             LogicalConstraintValidator(),
+            # ============================================
+            # TODO: ADD NEW VALIDATORS HERE
+            # ============================================
+            # Examples:
+            # RuleStructureValidator(),
+            # ActionValidator(),
+            # AssetValidator(),
+            # PartyValidator(),
+            # DutyValidator(),
+            # ConflictValidator(),
+            # DataspaceValidator(),
+            # ============================================
         ]
     
     def validate_kg(self, user_text: str, kg_turtle: str) -> ValidationReport:
@@ -528,12 +667,17 @@ class ODRLValidationTool:
             return violations
             
         except Exception as e:
-            return [{"message": f"Validation error: {str(e)}", "focus_node": "", "value": "", "source_constraint_component": "", "result_path": ""}]
+            return [{
+                "message": f"Validation error: {str(e)}",
+                "focus_node": "",
+                "value": "",
+                "source_constraint_component": "",
+                "result_path": ""
+            }]
 
 # --------------------------
 # Usage Example
 # --------------------------
-
 if __name__ == "__main__":
     # Example usage
     user_text = "Alice can read the document until December 31, 2025, maximum 5 times"

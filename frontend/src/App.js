@@ -14,8 +14,8 @@ import { ValidatorTab } from './components/tabs/ValidatorTab';
 import MetricsBar from './components/MetricsBar';
 
 // API Configuration
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const API_BASE_URL = `${API_URL}/api`;
+// const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8000';
 
 
 // ============================================
@@ -153,7 +153,7 @@ const ODRLDemo = () => {
     api_key: '',
     model_id: '',
     context_length: 4096,
-    temperature_default: 0.3
+    temperature: 0.3
   });
   
   const [syncMode, setSyncMode] = useState('both');
@@ -209,178 +209,239 @@ const ODRLDemo = () => {
   // INITIALIZATION
   // ============================================
 
-  useEffect(() => {
-    loadProviders();
-    loadCustomModels();
-  }, []);
-
-  const loadProviders = async () => {
-    setLoadingProviders(true);
-    setError(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/available-providers`, { 
-        signal: AbortSignal.timeout(5000) 
-      });
-      
-      if (!response.ok) throw new Error('Backend not responding');
-      
-      const data = await response.json();
-      setProviders(data.providers || []);
-      setBackendConnected(true);
-      showToast('Successfully connected to backend', 'success');
-      
-      if (data.default_model) {
-        setSelectedModel(data.default_model);
-      } else if (data.providers && data.providers.length > 0 && data.providers[0].models.length > 0) {
-        setSelectedModel(data.providers[0].models[0].value);
-      }
-    } catch (err) {
-      console.error('Provider detection failed:', err);
-      setError('Backend not connected. Start: cd backend && uvicorn main:app --reload');
-      setBackendConnected(false);
-      showToast('Backend connection failed', 'error');
+ // Add this with your other useEffect hooks
+useEffect(() => {
+  const initializeApp = async () => {
+    // Load providers first
+    await loadProviders();
+    
+    // Load custom models
+    await loadCustomModels();
+    
+    // Then restore selected model from localStorage
+    const savedModel = localStorage.getItem('selectedModel');
+    if (savedModel) {
+      setSelectedModel(savedModel);
+      console.log('Restored selected model:', savedModel);
     }
-    setLoadingProviders(false);
   };
+  
+  initializeApp();
+}, []);
 
-  const loadCustomModels = async () => {
-    try {
-      const localModels = loadFromLocalStorage();
-      let backendModels = [];
-      if (backendConnected) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/custom-models`);
-          if (response.ok) {
-            const data = await response.json();
-            backendModels = data.models || [];
-            console.log(`Loaded ${backendModels.length} models from backend`);
-          }
-        } catch (err) {
-          console.log('Backend custom models not available, using localStorage only');
+
+const loadProviders = async () => {
+  setLoadingProviders(true);
+  setError(null);
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
+      signal: AbortSignal.timeout(5000) 
+    });
+    
+    if (!response.ok) throw new Error('Backend not responding');
+    
+    const data = await response.json();
+    setProviders(data.providers || []);
+    setBackendConnected(true);
+    showToast('Successfully connected to backend', 'success');
+    
+    if (data.default_model) {
+      setSelectedModel(data.default_model);
+    } else if (data.providers && data.providers.length > 0 && data.providers[0].models.length > 0) {
+      setSelectedModel(data.providers[0].models[0].value);
+    }
+  } catch (err) {
+    console.error('Provider detection failed:', err);
+    setError('Backend not connected. Start: cd backend && uvicorn main:app --reload');
+    setBackendConnected(false);
+    showToast('Backend connection failed', 'error');
+  }
+  setLoadingProviders(false);
+};
+
+const loadCustomModels = async () => {
+  try {
+    const localModels = loadFromLocalStorage();
+    let backendModels = [];
+    
+    if (backendConnected) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/custom-models`);
+        if (response.ok) {
+          const data = await response.json();
+          backendModels = data.models || [];
+          console.log(`Loaded ${backendModels.length} models from backend`);
         }
+      } catch (err) {
+        console.log('Backend custom models not available, using localStorage only');
       }
-      const merged = mergeModels(localModels, backendModels);
-      setCustomModels(merged);
-      console.log(`Total custom models loaded: ${merged.length}`);
-    } catch (err) {
-      console.error('Error loading custom models:', err);
-      showToast('Failed to load custom models', 'error');
     }
-  };
+    
+    const merged = mergeModels(localModels, backendModels);
+    setCustomModels(merged);
+    console.log(`Total custom models loaded: ${merged.length}`);
+  } catch (err) {
+    console.error('Error loading custom models:', err);
+    showToast('Failed to load custom models', 'error');
+  }
+};
 
-  const loadFromLocalStorage = () => {
-    try {
-      const saved = localStorage.getItem('customModels');
-      if (saved) {
-        const models = JSON.parse(saved);
-        console.log(`Loaded ${models.length} models from localStorage`);
-        return models;
-      }
-    } catch (err) {
-      console.error('Error loading from localStorage:', err);
+const loadFromLocalStorage = () => {
+  try {
+    const saved = localStorage.getItem('customModels');
+    if (saved) {
+      const models = JSON.parse(saved);
+      console.log(`Loaded ${models.length} models from localStorage`);
+      return models;
     }
-    return [];
-  };
+  } catch (err) {
+    console.error('Error loading from localStorage:', err);
+  }
+  return [];
+};
 
-  const saveToLocalStorage = (models) => {
-    try {
-      localStorage.setItem('customModels', JSON.stringify(models));
-      console.log(`Saved ${models.length} models to localStorage`);
-    } catch (err) {
-      console.error('Error saving to localStorage:', err);
-    }
-  };
+const saveToLocalStorage = (models) => {
+  try {
+    localStorage.setItem('customModels', JSON.stringify(models));
+    console.log(`Saved ${models.length} models to localStorage`);
+  } catch (err) {
+    console.error('Error saving to localStorage:', err);
+  }
+};
 
-  const saveToBackend = async (model) => {
-    if (!backendConnected) {
-      console.log('Backend not connected, skipping backend save');
+const saveToBackend = async (model) => {
+  if (!backendConnected) {
+    console.log('Backend not connected');
+    return false;
+  }
+  
+  try {
+    console.log('📤 Sending to backend:', JSON.stringify(model, null, 2));
+    
+    const response = await fetch(`${API_BASE_URL}/api/custom-models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(model)
+    });
+    
+    if (response.ok) {
+      console.log('✅ Model saved to backend');
+      return true;
+    } else {
+      const error = await response.json();
+      console.error('❌ Backend validation error:', JSON.stringify(error, null, 2));
       return false;
     }
+  } catch (err) {
+    console.error('❌ Error saving to backend:', err);
+    return false;
+  }
+};
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/custom-models`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(model)
+const mergeModels = (local, backend) => {
+  const map = new Map();
+  [...local, ...backend].forEach(model => {
+    map.set(model.value, model);
+  });
+  return Array.from(map.values());
+};
+
+const addOrUpdateCustomModel = async (modelData) => {
+  console.log('📥 Input modelData:', modelData);
+  
+  // Prepare model for FRONTEND (with value/label)
+  const frontendModel = {
+    value: `custom:${modelData.model_id}`,
+    label: modelData.name,
+    provider_type: modelData.provider_type,
+    base_url: modelData.base_url,
+    api_key: modelData.api_key,
+    model_id: modelData.model_id,
+    context_length: modelData.context_length || 4096,
+    temperature: modelData.temperature || 0.3
+  };
+  
+  console.log('📤 Prepared for frontend:', frontendModel);
+  
+  // Update frontend state
+  let updated = [...customModels];
+  const existingIndex = updated.findIndex(m => m.value === frontendModel.value);
+  
+  if (existingIndex >= 0) {
+    updated[existingIndex] = frontendModel;
+  } else {
+    updated.push(frontendModel);
+  }
+  
+  setCustomModels(updated);
+  
+  // Save to localStorage
+  if (syncMode === 'localStorage' || syncMode === 'both') {
+    saveToLocalStorage(updated);
+  }
+  
+  // Prepare DIFFERENT payload for BACKEND (without value/label)
+  if (syncMode === 'backend' || syncMode === 'both') {
+    const backendPayload = {
+      name: modelData.name,
+      provider_type: modelData.provider_type,
+      base_url: modelData.base_url,
+      model_id: modelData.model_id,
+      api_key: modelData.api_key,
+      context_length: modelData.context_length || 4096,
+      temperature: modelData.temperature || 0.3
+    };
+    
+    console.log('📤 Sending to backend:', backendPayload);
+    
+    const success = await saveToBackend(backendPayload);
+    if (success) {
+      showToast(`Model ${existingIndex >= 0 ? 'updated' : 'added'} successfully`, 'success');
+    } else {
+      showToast('Failed to save to backend', 'error');
+    }
+  }
+  
+  console.log(`✅ Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${frontendModel.label}`);
+};
+
+const deleteCustomModel = async (modelValue) => {
+  try {
+    // Normalize to custom: format for deletion
+    const modelId = modelValue.split(':').slice(1).join(':');
+    const customValue = `custom:${modelId}`;
+    
+    console.log('🗑️ Deleting:', customValue);
+    
+    // Delete from state
+    const updated = customModels.filter(m => m.value !== modelValue);
+    setCustomModels(updated);
+    
+    // Delete from localStorage
+    if (syncMode === 'localStorage' || syncMode === 'both') {
+      saveToLocalStorage(updated);
+    }
+    
+    // Delete from backend
+    if (syncMode === 'backend' || syncMode === 'both') {
+      const response = await fetch(`${API_BASE_URL}/api/custom-models/${encodeURIComponent(customValue)}`, {
+        method: 'DELETE'
       });
       
       if (response.ok) {
-        console.log('Model saved to backend');
-        return true;
+        console.log('✅ Deleted from backend');
+        showToast('Model deleted successfully', 'success');
       } else {
-        console.error('Failed to save model to backend');
-        return false;
-      }
-    } catch (err) {
-      console.error('Error saving to backend:', err);
-      return false;
-    }
-  };
-
-  const mergeModels = (local, backend) => {
-    const map = new Map();
-    [...local, ...backend].forEach(model => {
-      map.set(model.value, model);
-    });
-    return Array.from(map.values());
-  };
-
-  const addOrUpdateCustomModel = async (modelData) => {
-    const newModel = {
-      value: `${modelData.provider_type}:${modelData.model_id}`,
-      label: modelData.name,
-      provider_type: modelData.provider_type,
-      base_url: modelData.base_url,
-      api_key: modelData.api_key,
-      model_id: modelData.model_id,
-      context_length: modelData.context_length || 4096,
-      temperature_default: modelData.temperature_default || 0.3
-    };
-
-    let updated = [...customModels];
-    const existingIndex = updated.findIndex(m => m.value === newModel.value);
-    
-    if (existingIndex >= 0) {
-      updated[existingIndex] = newModel;
-    } else {
-      updated.push(newModel);
-    }
-
-    setCustomModels(updated);
-
-    if (syncMode === 'localStorage' || syncMode === 'both') {
-      saveToLocalStorage(updated);
-    }
-    if (syncMode === 'backend' || syncMode === 'both') {
-      await saveToBackend(newModel);
-    }
-
-    console.log(`Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${newModel.label}`);
-  };
-
-  const deleteCustomModel = async (modelValue) => {
-    const updated = customModels.filter(m => m.value !== modelValue);
-    setCustomModels(updated);
-
-    if (syncMode === 'localStorage' || syncMode === 'both') {
-      saveToLocalStorage(updated);
-    }
-    if (syncMode === 'backend' || syncMode === 'both') {
-      try {
-        await fetch(`${API_BASE_URL}/custom-models/${modelValue}`, {
-          method: 'DELETE'
-        });
-      } catch (err) {
-        console.error('Error deleting from backend:', err);
+        const error = await response.json();
+        console.error('❌ Delete failed:', error);
+        showToast('Failed to delete from backend', 'error');
       }
     }
-
-    if (selectedModel === modelValue) {
-      if (providers.length > 0 && providers[0].models.length > 0) {
-        setSelectedModel(providers[0].models[0].value);
-      }
-    }
-  };
+  } catch (err) {
+    console.error('❌ Delete error:', err);
+    showToast('Failed to delete model', 'error');
+  }
+};
 
   const countTokens = (text) => {
     try {
@@ -394,37 +455,42 @@ const ODRLDemo = () => {
   };
 
   const callAPI = async (endpoint, body, signal = null) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal  
-      });
-
-      if (response.status === 499) {
-        throw new Error('Request cancelled by user');
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
-      }
-
-      return await response.json();
-      
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Request cancelled by user');
-      }
-      
-      if (error.message === 'Failed to fetch') {
-        throw new Error('Network error - check if backend is running');
-      }
-      
-      throw error;
+  try {
+    // ✅ ADD /api/ prefix if not already present
+    const url = endpoint.startsWith('/api/') 
+      ? `${API_BASE_URL}${endpoint}` 
+      : `${API_BASE_URL}/api/${endpoint}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal  
+    });
+    
+    if (response.status === 499) {
+      throw new Error('Request cancelled by user');
     }
-  };
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
+    }
+    
+    return await response.json();
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Request cancelled by user');
+    }
+    
+    if (error.message === 'Failed to fetch') {
+      throw new Error('Network error - check if backend is running');
+    }
+    
+    throw error;
+  }
+};
 
   const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
@@ -742,7 +808,7 @@ const handleGenerate = async () => {
 
     // Call backend API
     console.log('[Generator] Sending generate request...');
-    const response = await fetch(`${API_BASE_URL}/generate`, {
+    const response = await fetch(`${API_BASE_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -930,7 +996,7 @@ const handleRegenerate = async () => {
     console.log('[Regenerate] Model:', regenerateModel);
     console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
 
-    const response = await fetch(`${API_BASE_URL}/generate`, {
+    const response = await fetch(`${API_BASE_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -942,7 +1008,7 @@ const handleRegenerate = async () => {
         attempt_number: (generatedODRL.attempt_number || 1) + 1,
         model: regenerateModel,
         temperature,
-        custom_config: regenerateCustomConfig  // ✅ FIXED
+        custom_config: regenerateCustomConfig  
       }),
       signal: abortControllerRef.current.signal
     });
@@ -1235,12 +1301,15 @@ const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
                 </span>
               </div>
 
-              {/* Model Info */}
-              {backendConnected && selectedModel && (
-                <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
-                  {providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label || 'Llama 3.3 70B'}
-                </div>
-              )}
+              {/* Model Info in Header */}
+            {backendConnected && selectedModel && (
+              <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
+                {/* Show custom model label if it's a custom model */}
+                {customModels.find(m => m.value === selectedModel)?.label ||
+                providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
+                'Unknown Model'}
+              </div>
+            )}
 
               {/* Settings Button */}
               <button
@@ -1783,59 +1852,82 @@ Or drag and drop a .txt, .md, or .json file here"
     onRegenerate={handleRegenerate}        
     onEditInput={handleEditFromValidator}   
     isRegenerating={regenerating}  
-    originalText={inputText}  // ✅ Pass original user input
+    originalText={inputText}  
          
   />
-)}
-
-        
+)}   
       </div>
 
-      {/* SETTINGS MODAL*/}
-      {settingsOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto`}>
-            {/* [Keep all existing settings modal content] */}
-            <div className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10`}>
-              <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-                <Settings className="w-5 h-5" />
-                Settings & Configuration
-              </h2>
-              <button
-                onClick={() => setSettingsOpen(false)}
-                className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Model Selection */}
-              <div>
-                <h3 className={`text-lg font-bold ${textClass} mb-3`}>Default Model</h3>
-                <select
-                  value={selectedModel || ''}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-                  disabled={!backendConnected}
-                >
-                  {!backendConnected && <option>Backend not connected</option>}
-                  {providers.map(provider => (
-                    <optgroup key={provider.name} label={provider.name}>
-                      {provider.models.map(model => (
-                        <option key={model.value} value={model.value}>
-                          {model.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  {customModels.map(model => (
-                    <option key={model.value} value={model.value}>
-                      {model.label} (Custom)
-                    </option>
-                  ))}
-                </select>
-              </div>
+     {/* SETTINGS MODAL*/}
+{settingsOpen && (
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto`}>
+      <div className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10`}>
+        <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
+          <Settings className="w-5 h-5" />
+          Settings & Configuration
+        </h2>
+        <button
+          onClick={() => setSettingsOpen(false)}
+          className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      
+      <div className="p-6 space-y-6">
+        {/* Model Selection - UPDATED */}
+        <div>
+          <h3 className={`text-lg font-bold ${textClass} mb-3`}>Default Model</h3>
+          <select
+            value={selectedModel || ''}
+            onChange={(e) => {
+              const newModel = e.target.value;
+              setSelectedModel(newModel);
+              localStorage.setItem('selectedModel', newModel);  // ✅ Save to localStorage
+              showToast('Model updated', 'success');
+            }}
+            className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+            disabled={!backendConnected}
+          >
+            {!backendConnected && <option>Backend not connected</option>}
+            
+            {/* Default Providers */}
+            {providers.map(provider => (
+              <optgroup key={provider.name} label={provider.name}>
+                {provider.models.map(model => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            
+            {/* Custom Models - UPDATED to show context length */}
+            {customModels.length > 0 && (
+              <optgroup label="━━ Your Custom Models ━━">
+                {customModels.map(model => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                    {' '}
+                    ({model.context_length >= 1000000 
+                      ? `${(model.context_length / 1000000).toFixed(1)}M` 
+                      : `${(model.context_length / 1024).toFixed(0)}K`} ctx)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          
+          {/* ✅ NEW: Show current selection */}
+          <div className={`mt-2 text-sm ${mutedTextClass}`}>
+            Currently selected: {
+              customModels.find(m => m.value === selectedModel)?.label ||
+              providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
+              'None'
+            }
+          </div>
+        </div>
 
               {/* Temperature Slider */}
               <div>
@@ -1884,138 +1976,166 @@ Or drag and drop a .txt, .md, or .json file here"
                 </div>
               </div>
 
-              {/* Custom Model Form */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className={`text-lg font-bold ${textClass}`}>Custom Models</h3>
-                  <button
-                    onClick={() => setShowCustomForm(!showCustomForm)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Model
-                  </button>
-                </div>
-
-                {showCustomForm && (
-                  <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4 space-y-3`}>
-                    <input
-                      type="text"
-                      placeholder="Model Name (e.g., My GPT-4)"
-                      value={customForm.name}
-                      onChange={(e) => setCustomForm({...customForm, name: e.target.value})}
-                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-                    />
-
-                    <select
-                      value={customForm.provider_type}
-                      onChange={(e) => setCustomForm({...customForm, provider_type: e.target.value})}
-                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-                    >
-                      <option value="ollama">Ollama (Local)</option>
-                      <option value="openai-compatible">OpenAI Compatible API</option>
-                      <option value="google-genai">Google GenAI</option>
-                      <option value="custom">Custom Provider</option>
-                    </select>
-
-                    {customForm.provider_type !== 'google-genai' && (
-                      <input
-                        type="text"
-                        placeholder="Base URL (e.g., http://localhost:11434)"
-                        value={customForm.base_url}
-                        onChange={(e) => setCustomForm({...customForm, base_url: e.target.value})}
-                        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-                      />
-                    )}
-
-                    <input
-                      type="text"
-                      placeholder="Model ID (e.g., llama3.3, gpt-4)"
-                      value={customForm.model_id}
-                      onChange={(e) => setCustomForm({...customForm, model_id: e.target.value})}
-                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-                    />
-
-                    <div>
-                      <label className={`block text-sm font-medium mb-2 ${textClass}`}>
-                        Context Length: {customForm.context_length.toLocaleString()} tokens
-                      </label>
-                      <input
-                        type="number"
-                        value={customForm.context_length}
-                        onChange={(e) => setCustomForm({
-                          ...customForm, 
-                          context_length: parseInt(e.target.value) || 4096
-                        })}
-                        placeholder="Context length in tokens"
-                        min="1024"
-                        max="2000000"
-                        step="1024"
-                        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-                      />
-                      <p className={`text-xs ${mutedTextClass} mt-1`}>
-                        💡 Tip: DeepSeek-v3=64K, GPT-OSS=8K, Gemini=1M+
-                      </p>
-                    </div>
-
-                    <input
-                      type="password"
-                      placeholder="API Key (optional for local models)"
-                      value={customForm.api_key}
-                      onChange={(e) => setCustomForm({...customForm, api_key: e.target.value})}
-                      className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg font-mono text-sm`}
-                    />
-
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={() => {
-                          setShowCustomForm(false);
-                          setCustomForm({
-                            name: '',
-                            provider_type: 'ollama',
-                            base_url: 'http://localhost:11434',
-                            api_key: '',
-                            model_id: '',
-                            context_length: 4096,
-                            temperature_default: 0.3
-                          });
-                        }}
-                        className={`flex-1 px-4 py-2 rounded-lg transition ${
-                          darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
-                        }`}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={async () => {
-                          const isValid = customForm.name && customForm.model_id && 
-                            (customForm.provider_type === 'google-genai' || customForm.base_url);
-                          
-                          if (isValid) {
-                            await addOrUpdateCustomModel(customForm);
-                            setShowCustomForm(false);
-                            setCustomForm({
-                              name: '',
-                              provider_type: 'ollama',
-                              base_url: 'http://localhost:11434',
-                              api_key: '',
-                              model_id: '',
-                              context_length: 4096,
-                              temperature_default: 0.3
-                            });
-                          }
-                        }}
-                        disabled={!customForm.name || !customForm.model_id}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                      >
-                        <Save className="w-4 h-4" />
-                        Save Model
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+             {/* Custom Model Form */}
+<div>
+  <div className="flex items-center justify-between mb-3">
+    <h3 className={`text-lg font-bold ${textClass}`}>Custom Models</h3>
+    <button
+      onClick={() => setShowCustomForm(!showCustomForm)}
+      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+    >
+      <Plus className="w-4 h-4" />
+      Add Model
+    </button>
+  </div>
+  
+  {showCustomForm && (
+    <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4 space-y-3`}>
+      {/* Model Name */}
+      <input
+        type="text"
+        placeholder="Model Name (e.g., My GPT-4)"
+        value={customForm.name}
+        onChange={(e) => setCustomForm({...customForm, name: e.target.value})}
+        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+      />
+      
+      {/* Provider Type */}
+      <select
+        value={customForm.provider_type}
+        onChange={(e) => setCustomForm({...customForm, provider_type: e.target.value})}
+        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+      >
+        <option value="ollama">Ollama (Local)</option>
+        <option value="openai-compatible">OpenAI Compatible API</option>
+        <option value="google-genai">Google GenAI</option>
+        <option value="custom">Custom Provider</option>
+      </select>
+      
+      {/* Base URL (hide for google-genai) */}
+      {customForm.provider_type !== 'google-genai' && (
+        <input
+          type="text"
+          placeholder="Base URL (e.g., http://localhost:11434)"
+          value={customForm.base_url}
+          onChange={(e) => setCustomForm({...customForm, base_url: e.target.value})}
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+        />
+      )}
+      
+      {/* Model ID */}
+      <input
+        type="text"
+        placeholder="Model ID (e.g., llama3.3, gpt-4)"
+        value={customForm.model_id}
+        onChange={(e) => setCustomForm({...customForm, model_id: e.target.value})}
+        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+      />
+      
+      {/* Context Length */}
+      <div>
+        <label className={`block text-sm font-medium mb-2 ${textClass}`}>
+          Context Length: {customForm.context_length.toLocaleString()} tokens
+        </label>
+        <input
+          type="number"
+          value={customForm.context_length}
+          onChange={(e) => setCustomForm({
+            ...customForm, 
+            context_length: parseInt(e.target.value) || 4096
+          })}
+          placeholder="Context length in tokens"
+          min="1024"
+          max="2000000"
+          step="1024"
+          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
+        />
+        <p className={`text-xs ${mutedTextClass} mt-1`}>
+          Tip: DeepSeek-v3=64K, GPT-OSS=8K, Gemini=1M+
+        </p>
+      </div>
+      
+      {/* ✅ FIXED: Default Temperature Slider */}
+      <div>
+        <label className={`block text-sm font-medium mb-2 ${textClass}`}>
+          Default Temperature: {customForm.temperature || 0.3}
+        </label>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.1"
+          value={customForm.temperature || 0.3}
+          onChange={(e) => setCustomForm({
+            ...customForm, 
+            temperature: parseFloat(e.target.value)
+          })}
+          className="w-full"
+        />
+        <p className={`text-xs ${mutedTextClass} mt-1`}>
+          Lower = more focused, Higher = more creative
+        </p>
+      </div>
+      
+      {/* API Key */}
+      <input
+        type="password"
+        placeholder="API Key (optional for local models)"
+        value={customForm.api_key}
+        onChange={(e) => setCustomForm({...customForm, api_key: e.target.value})}
+        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg font-mono text-sm`}
+      />
+      
+      {/* Cancel & Save Buttons */}
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={() => {
+            setShowCustomForm(false);
+            setCustomForm({
+              name: '',
+              provider_type: 'ollama',
+              base_url: 'http://localhost:11434',
+              api_key: '',
+              model_id: '',
+              context_length: 4096,
+              temperature: 0.3  // ← FIXED: Use "temperature" not "temperature_default"
+            });
+          }}
+          className={`flex-1 px-4 py-2 rounded-lg transition ${
+            darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+          }`}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={async () => {
+            const isValid = customForm.name && customForm.model_id && 
+              (customForm.provider_type === 'google-genai' || customForm.base_url);
+            
+            if (isValid) {
+              await addOrUpdateCustomModel(customForm);
+              setShowCustomForm(false);
+              setCustomForm({
+                name: '',
+                provider_type: 'ollama',
+                base_url: 'http://localhost:11434',
+                api_key: '',
+                model_id: '',
+                context_length: 4096,
+                temperature: 0.3  // ← FIXED: Use "temperature" not "temperature_default"
+              });
+            }
+          }}
+          disabled={!customForm.name || !customForm.model_id}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          <Save className="w-4 h-4" />
+          Save Model
+        </button>
+      </div>
+    </div>
+  )}
+</div>
               {/* Custom Models List */}
               {customModels.length > 0 && (
                 <div>
