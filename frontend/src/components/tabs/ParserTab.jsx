@@ -4,7 +4,7 @@ import { FileText, Copy, Download, CheckCircle, Info } from 'lucide-react';
 
 /**
  * Parser Results Visualization Component
- * Displays parsed ODRL policies with Visual/JSON toggle
+ * Displays parsed ODRL policies with JSON first, then Visual toggle
  */
 export const ParserTab = ({ 
   parsedData, 
@@ -12,9 +12,9 @@ export const ParserTab = ({
   onCopy = () => {},
   onDownload = () => {}
 }) => {
-  const [viewMode, setViewMode] = useState('visual');
+  const [viewMode, setViewMode] = useState('json');  // ✅ CHANGED: Default to JSON
   const [copied, setCopied] = useState(false);
-  const [jsonCollapsed, setJsonCollapsed] = useState(false);   // ✅ CHANGE #1
+  const [jsonCollapsed, setJsonCollapsed] = useState(false);
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -41,9 +41,8 @@ export const ParserTab = ({
             <FileText className="w-6 h-6" />
             Parsed Results
           </h2>
-
           <div className="flex gap-2">
-            {/* View Toggle */}
+            {/* View Toggle - JSON FIRST */}
             <div className={`flex items-center gap-1 p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <button
                 onClick={() => setViewMode('json')}
@@ -55,7 +54,6 @@ export const ParserTab = ({
               >
                 {'{}'} JSON
               </button>
-
               <button
                 onClick={() => setViewMode('visual')}
                 className={`px-3 py-1.5 rounded text-sm font-medium transition ${
@@ -67,7 +65,6 @@ export const ParserTab = ({
                 👁️ Visual
               </button>
             </div>
-
             {/* Copy */}
             <button
               onClick={handleCopy}
@@ -78,7 +75,6 @@ export const ParserTab = ({
               {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
-
             {/* Download */}
             <button
               onClick={handleDownload}
@@ -94,29 +90,36 @@ export const ParserTab = ({
       {/* Content Area */}
       <div className="p-6">
         {viewMode === 'json' ? (
-          // JSON View
+          // JSON View (DEFAULT)
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-
-            {/* ✅ CHANGE #2 — COLLAPSIBLE JSON */}
-            <div className="mb-2 flex justify-end">
+            {/* Collapsible JSON */}
+            <div className="mb-2 flex justify-between items-center">
+              <span className={`text-xs ${mutedTextClass}`}>
+                Parsed policy structure in JSON format
+              </span>
               <button
                 onClick={() => setJsonCollapsed((c) => !c)}
-                className={`px-2 py-1 text-xs rounded-md ${
-                  darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-200 text-gray-700"
+                className={`px-3 py-1 text-xs rounded-md font-medium transition ${
+                  darkMode ? "bg-gray-700 hover:bg-gray-600 text-gray-300" : "bg-gray-200 hover:bg-gray-300 text-gray-700"
                 }`}
               >
                 {jsonCollapsed ? "Expand JSON ▼" : "Collapse JSON ▲"}
               </button>
             </div>
-
             {!jsonCollapsed && (
               <pre className={`text-sm ${textClass}`}>
                 {JSON.stringify(parsedData, null, 2)}
               </pre>
             )}
+            {jsonCollapsed && (
+              <div className={`text-center py-8 ${mutedTextClass}`}>
+                <Info className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">JSON collapsed. Click "Expand JSON" to view.</p>
+              </div>
+            )}
           </div>
         ) : (
-          // Visual View
+          // Visual View (SECONDARY)
           <div className="space-y-4">
             <div className={`p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -169,6 +172,7 @@ const PolicyCard = ({ policy, darkMode, textClass, mutedTextClass }) => {
       icon: '!' 
     }
   };
+
   const colors = ruleColors[policy.rule_type] || ruleColors.permission;
 
   return (
@@ -207,7 +211,7 @@ const PolicyCard = ({ policy, darkMode, textClass, mutedTextClass }) => {
               <span className={`text-sm font-medium ${
                 policy.assigner === 'not_specified' ? 'text-orange-500 italic' : textClass
               }`}>
-                {policy.assigner === 'not_specified' ? '⚠️ Not specified' : policy.assigner}
+                {policy.assigner === 'not_specified' ? '⚠ Not specified' : policy.assigner}
               </span>
             </div>
           </div>
@@ -238,7 +242,7 @@ const PolicyCard = ({ policy, darkMode, textClass, mutedTextClass }) => {
                     }`}
                     title={isVague ? 'Vague action - needs clarification' : 'ODRL-compliant action'}
                   >
-                    {isVague && '⚠️ '}
+                    {isVague && '⚠ '}
                     {action}
                   </span>
                 );
@@ -264,7 +268,7 @@ const PolicyCard = ({ policy, darkMode, textClass, mutedTextClass }) => {
                     }`}
                     title={isNotSpecified ? 'Target not specified' : 'Policy target'}
                   >
-                    {isNotSpecified ? '⚠️ Not specified' : target}
+                    {isNotSpecified ? '⚠ Not specified' : target}
                   </span>
                 );
               })}
@@ -300,7 +304,7 @@ const PolicyCard = ({ policy, darkMode, textClass, mutedTextClass }) => {
         {/* Duties */}
         {policy.duties && policy.duties.length > 0 ? (
           <div>
-            <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>✅ Duties:</div>
+            <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>⚖ Duties:</div>
             <div className="space-y-2">
               {policy.duties.map((duty, i) => (
                 <div key={i} className={`p-3 rounded-lg ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>

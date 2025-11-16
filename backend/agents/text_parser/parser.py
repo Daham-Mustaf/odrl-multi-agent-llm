@@ -1,8 +1,8 @@
 # agents/text_parser/parser.py
 """
-ODRL Policy Parser Agent (PPA) v3.0
-PURE PARSING - No reasoning, just extraction
-Converts heterogeneous policy text into structured ODRL intermediate representation
+ODRL Policy Parser Agent (PPA) v4.0
+PURE PARSING with Conflict-Aware Constraint Extraction
+Extracts mutually exclusive constraints within single policy for Reasoner detection
 """
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -34,6 +34,7 @@ class Constraint(BaseModel):
     rightOperand: str
     unit: Optional[str] = None
     dataType: Optional[str] = None
+    constraint_group: Optional[int] = None
 
 class Duty(BaseModel):
     """ODRL Duty"""
@@ -50,8 +51,9 @@ class TemporalExpression(BaseModel):
 class Metadata(BaseModel):
     """Simple metadata"""
     sentence_index: int = 0
-    parser_version: str = "3.0.0"
+    parser_version: str = "4.0.0"
     timestamp: str = ""
+    has_conflicting_constraints: bool = False
 
 class ParsedPolicy(BaseModel):
     """Single ODRL Policy - Pure structure"""
@@ -75,199 +77,123 @@ class ParsedPolicies(BaseModel):
     total_policies: int
 
 # ===== PURE EXTRACTION PROMPT =====
-PURE_PARSER_PROMPT = """You are an ODRL Policy Extractor. Extract structured information from policy text.
+PURE_EXTRACTION_PROMPT = """You are a pure ODRL policy extractor. Your ONLY job is to extract and structure information from policy text.
 
-## YOUR ONLY JOB: EXTRACTION
-Extract what the user explicitly states. Do NOT:
-- Judge if it's good or bad
-- Decide if it's complete
-- Add missing information
-- Evaluate quality
+## CRITICAL RULES:
 
-Just extract and structure.
+1. **ONE INPUT = ONE POLICY** - Always return exactly one policy per input text
+2. **NO REASONING** - Do not judge, analyze, or evaluate the policy
+3. **NO MODIFICATION** - Extract exactly what is stated
+4. **MARK CONFLICTS** - When same constraint type appears multiple times with different values, assign different constraint_group numbers
+
+## YOUR ONLY TASK: EXTRACT AND STRUCTURE
+
+Extract ALL information from the input text into a single policy structure:
+- Actors (assigner, assignee)
+- Actions (map to ODRL vocabulary)
+- Targets (assets/resources)
+- Constraints (temporal, purpose, count, location, etc.)
+- If the SAME constraint type appears MULTIPLE times with DIFFERENT values, mark each with a different constraint_group number
+
+## CONSTRAINT GROUPING (MECHANICAL RULE):
+
+When you extract constraints, check if the same leftOperand appears multiple times:
+
+**If YES and values are different:**
+- Assign constraint_group=1 to first occurrence
+- Assign constraint_group=2 to second occurrence
+- Assign constraint_group=3 to third occurrence (if present)
+- Set has_conflicting_constraints=true
+
+**Examples:**
+- "for research" + "for backup" → purpose with group 1, purpose with group 2
+- "30 times" + "unlimited" → count with group 1, count with group 2
+- "until 2025" + "indefinitely" → temporal with group 1, temporal with group 2
+
+**If NO (single value or different constraint types):**
+- Do not use constraint_group
+- Set has_conflicting_constraints=false
 
 ## EXTRACTION RULES:
 
 ### 1. POLICY TYPE
-- Generic statement ("Users can...") → "odrl:Set"
-- Named provider + recipients ("Netflix offers...") → "odrl:Offer"
-- Both parties named ("Museum grants User123...") → "odrl:Agreement"
+- Generic: "Users can..." → "odrl:Set"
+- Named provider: "Company offers..." → "odrl:Offer"
+- Both parties: "Company X grants User Y..." → "odrl:Agreement"
 
 ### 2. ACTORS
-
-**Assigner (Provider):**
-- Look for: "granted by", "provided by", "from", "offered by", organization names
-- Extract exact name if present
+**Assigner:** Look for organization names, "offered by", "provided by", "from"
 - If not mentioned → "not_specified"
 
-**Assignee (Recipient):**
-- Look for: "to", "for", subjects of "can/may/must"
-- Normalize: "users" → ["user"], "researchers" → ["researcher"]
-- Multiple: "users and admins" → ["user", "admin"]
+**Assignee:** Look for "to", "for", subjects of "can/may/must"
+- Normalize plurals: "users" → ["user"]
 - If not mentioned → ["not_specified"]
 
 ### 3. RULE TYPE
-Identify based on modal verbs:
-- "can", "may", "allowed", "permitted" → "permission"
-- "cannot", "must not", "prohibited", "forbidden" → "prohibition"
-- "must", "shall", "required", "obligated" → "duty"
+- "can", "may", "allowed" → "permission"
+- "cannot", "must not", "prohibited" → "prohibition"
+- "must", "shall", "required" → "duty"
 
-### 4. ACTIONS - Map to ODRL vocabulary:
-
-**READ Actions:**
-- read, view, access, see, consult → **odrl:read**
-
-**MODIFY Actions:**
-- write, edit, update, change, modify, alter → **odrl:modify**
-
-**COPY Actions:**
-- download, copy, duplicate, reproduce, save → **odrl:reproduce**
-
-**SHARE Actions:**
-- share, send, transfer, distribute, redistribute → **odrl:distribute**
-
-**DELETE Actions:**
-- delete, remove, erase, destroy → **odrl:delete**
-
-**PRINT Actions:**
-- print, output → **odrl:print**
-
-**EXECUTE Actions:**
-- execute, run, launch → **odrl:execute**
-
-**PLAY Actions:**
-- play, stream, listen, watch → **odrl:play**
-
-**USE Actions:**
-- use, utilize, employ → **odrl:use**
-
-**ARCHIVE Actions:**
-- archive, store, keep → **odrl:archive**
-
-**DERIVE Actions:**
-- derive, adapt, transform, modify → **odrl:derive**
-
-**ATTRIBUTE Actions:**
-- attribute, credit, cite → **odrl:attribute**
-
-**INFORM Actions:**
-- inform, notify, report → **odrl:inform**
-
-**COMPENSATE Actions:**
-- compensate, pay, fee → **odrl:compensate**
-
-**Vague terms (keep as-is):**
-- "do", "things", "stuff", "something", "everything" → keep original text
+### 4. ACTIONS (Map to ODRL vocabulary)
+- read, view, access → **odrl:read**
+- modify, edit, change → **odrl:modify**
+- download, copy, save → **odrl:reproduce**
+- share, distribute → **odrl:distribute**
+- delete, remove → **odrl:delete**
+- print → **odrl:print**
+- execute, run → **odrl:execute**
+- play, stream → **odrl:play**
+- use, utilize → **odrl:use**
+- archive, store, backup → **odrl:archive**
 
 ### 5. TARGETS
-Extract asset/resource names:
-- Specific: "document.pdf", "dataset_2024", "MuseumArtifact" → exact name
-- Generic: "the document", "data", "files" → keep as-is
-- URLs: keep exact
+- Extract exact names: "document.pdf", "dataset_2024"
+- Keep URLs exact
 - If not mentioned → ["not_specified"]
 
-### 6. CONSTRAINTS - Extract conditions:
+### 6. CONSTRAINTS (Extract ALL)
 
 **Temporal:**
-- "expires on DATE" → leftOperand: "odrl:dateTime", operator: "odrl:lteq", rightOperand: "DATE"
-- "from DATE" → leftOperand: "odrl:dateTime", operator: "odrl:gteq", rightOperand: "DATE"
-- "for X days" → leftOperand: "odrl:delayPeriod", operator: "odrl:eq", rightOperand: "PXD"
-- "between DATE1 and DATE2" → TWO constraints (gteq and lteq)
+- "expires on 2025-12-31" → leftOperand="odrl:dateTime", operator="odrl:lteq", rightOperand="2025-12-31"
+- "from 2025-01-01" → leftOperand="odrl:dateTime", operator="odrl:gteq", rightOperand="2025-01-01"
 
 **Purpose:**
-- "for research" → leftOperand: "odrl:purpose", operator: "odrl:eq", rightOperand: "research"
-- "for educational purposes" → rightOperand: "education"
-- "non-commercial" → operator: "odrl:neq", rightOperand: "commercial"
-
-**Location:**
-- "in Germany" → leftOperand: "odrl:spatial", operator: "odrl:eq", rightOperand: "Germany"
-- "within EU" → leftOperand: "odrl:spatial", operator: "odrl:isPartOf", rightOperand: "EU"
+- "for research" → leftOperand="odrl:purpose", operator="odrl:eq", rightOperand="research"
+- "for backup" → leftOperand="odrl:purpose", operator="odrl:eq", rightOperand="archival_backup"
 
 **Count:**
-- "up to 5 times" → leftOperand: "odrl:count", operator: "odrl:lteq", rightOperand: "5"
-- "maximum 100 MB" → leftOperand: "odrl:fileSize", operator: "odrl:lteq", rightOperand: "100", unit: "MB"
+- "up to 30 times" → leftOperand="odrl:count", operator="odrl:lteq", rightOperand="30"
+- "unlimited" → leftOperand="odrl:count", operator="odrl:eq", rightOperand="unlimited"
+
+**Location:**
+- "in Germany" → leftOperand="odrl:spatial", operator="odrl:eq", rightOperand="Germany"
 
 **Role:**
-- "only for researchers" → leftOperand: "odrl:role", operator: "odrl:eq", rightOperand: "researcher"
-
-**System:**
-- "via connector X" → leftOperand: "odrl:system", operator: "odrl:eq", rightOperand: "X"
-
-Valid operators: odrl:eq, odrl:neq, odrl:lt, odrl:lteq, odrl:gt, odrl:gteq, odrl:isA, odrl:hasPart, odrl:isPartOf, odrl:isAllOf, odrl:isAnyOf, odrl:isNoneOf
+- "for researchers" → leftOperand="odrl:role", operator="odrl:eq", rightOperand="researcher"
 
 ### 7. TEMPORAL OBJECT
-If temporal constraints exist, also populate:
-- start_date: "YYYY-MM-DD" (from "from DATE")
-- end_date: "YYYY-MM-DD" (from "until/expires DATE")
-- duration: "PXD" (from "for X days")
+If temporal constraints exist:
+- start_date: "YYYY-MM-DD"
+- end_date: "YYYY-MM-DD"
+- duration: "PXD"
 
 ### 8. DUTIES
-Extract obligations:
-- "must attribute" → {{action: "odrl:attribute"}}
-- "must delete after use" → {{action: "odrl:delete"}}
-- "required to notify" → {{action: "odrl:inform"}}
-- "shall compensate" → {{action: "odrl:compensate"}}
-
-### 9. MULTI-POLICY SPLITTING
-Split into separate policies when:
-1. Different rule types: "can X but cannot Y" → 2 policies
-2. Different actors: "Users can X. Admins can Y." → 2 policies
-3. Distinct statements with different targets
-
-Do NOT split:
-- "can X and Y" → 1 policy with 2 actions
-- "can X and must Y" → 1 policy with permission + duty
+- "must attribute" → {{"action": "odrl:attribute"}}
+- "must delete" → {{"action": "odrl:delete"}}
+- "must notify" → {{"action": "odrl:inform"}}
 
 ## OUTPUT FORMAT:
 
-{{
-  "policies": [
-    {{
-      "policy_id": "policy-1",
-      "policy_type": "odrl:Set|Offer|Agreement",
-      "assigner": "string or not_specified",
-      "assignee": ["string"],
-      "rule_type": "permission|prohibition|duty",
-      "actions": ["odrl:action"],
-      "targets": ["string"],
-      "constraints": [
-        {{
-          "leftOperand": "odrl:term",
-          "operator": "odrl:operator",
-          "rightOperand": "value",
-          "unit": "optional"
-        }}
-      ],
-      "duties": [
-        {{
-          "action": "odrl:action",
-          "constraints": []
-        }}
-      ],
-      "temporal": {{
-        "start_date": "YYYY-MM-DD or null",
-        "end_date": "YYYY-MM-DD or null",
-        "duration": "ISO 8601 or null"
-      }},
-      "source_text": "text snippet this policy came from",
-      "metadata": {{
-        "sentence_index": 0,
-        "parser_version": "3.0.0",
-        "timestamp": "ISO timestamp"
-      }}
-    }}
-  ],
-  "raw_text": "original input",
-  "total_policies": number
-}}
+Always return:
+- total_policies: 1
+- policies: [single policy with all extracted information]
+- raw_text: original input
 
-## CRITICAL RULES:
-1. Extract exactly what's stated - don't invent
-2. Map to ODRL vocabulary when possible
-3. Keep vague terms as-is
-4. Split contradictory rules into separate policies
-5. Populate both constraints array AND temporal object for dates
-6. If field not mentioned → use "not_specified" or empty list
+## REMEMBER:
+- Extract, don't evaluate
+- One input = one policy
+- Mark constraint groups mechanically when same type appears multiple times
+- Let the Reasoner handle analysis
 
 Extract from this text:
 {text}
@@ -275,11 +201,11 @@ Extract from this text:
 {format_instructions}
 """
 
-# ===== PURE PARSER CLASS =====
+# ===== PARSER CLASS =====
 class TextParser:
     """
     Pure ODRL Policy Parser
-    Only extracts and structures - NO reasoning
+    Extracts and structures - NO reasoning
     """
     
     def __init__(self, model=None, temperature=0.0, custom_config=None):
@@ -295,24 +221,23 @@ class TextParser:
     
     def parse(self, text: str) -> Dict[str, Any]:
         """
-        Parse policy text into ODRL structure
         Pure extraction - no judgment
         
         Args:
             text: Natural language policy description
             
         Returns:
-            Dict with parsed policies (pure data)
+            Dict with single parsed policy
         """
         
-        logger.info(f"[Parser] Starting extraction...")
+        logger.info(f"[Parser] Starting pure extraction...")
         logger.info(f"[Parser] Input: {text[:100]}...")
         
         try:
             parser = PydanticOutputParser(pydantic_object=ParsedPolicies)
             
             prompt = ChatPromptTemplate.from_messages([
-                ("system", PURE_PARSER_PROMPT),
+                ("system", PURE_EXTRACTION_PROMPT),
                 ("human", "{text}\n\n{format_instructions}")
             ])
             
@@ -328,11 +253,16 @@ class TextParser:
             for policy in result.policies:
                 policy.metadata.timestamp = timestamp
             
-            logger.info(f"[Parser] ✓ Extraction complete")
-            logger.info(f"[Parser] Found {result.total_policies} policies")
+            logger.info(f"[Parser] Extraction complete")
+            logger.info(f"[Parser] Total policies: {result.total_policies}")
             
-            for i, policy in enumerate(result.policies, 1):
-                logger.info(f"  [{i}] {policy.rule_type}: {', '.join(policy.actions)}")
+            if result.total_policies > 0:
+                policy = result.policies[0]
+                logger.info(f"[Parser] Rule type: {policy.rule_type}")
+                logger.info(f"[Parser] Actions: {', '.join(policy.actions)}")
+                logger.info(f"[Parser] Constraints: {len(policy.constraints)}")
+                if policy.metadata.has_conflicting_constraints:
+                    logger.info(f"[Parser] Conflict markers present")
             
             return result.dict()
             

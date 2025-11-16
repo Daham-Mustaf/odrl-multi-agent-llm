@@ -113,8 +113,8 @@ DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 - ✅ Works on any computer
 
 **Cons:**
-- ⚠️ Requires internet
-- ⚠️ Rate limited (30 requests/minute)
+-  Requires internet
+-  Rate limited (30 requests/minute)
 
 ---
 
@@ -156,8 +156,8 @@ DEFAULT_MODEL=ollama:llama3.1:8b
 - ✅ Unlimited usage
 
 **Cons:**
-- ⚠️ Requires powerful hardware
-- ⚠️ Slower than cloud
+-  Requires powerful hardware
+-  Slower than cloud
 
 ---
 
@@ -188,8 +188,8 @@ DEFAULT_MODEL=ollama:llama3.1:70b
 - ✅ Institutional support
 
 **Cons:**
-- ⚠️ Requires institutional access
-- ⚠️ May have usage policies
+-  Requires institutional access
+-  May have usage policies
 
 ---
 
@@ -231,8 +231,8 @@ DEFAULT_MODEL=anthropic:claude-3-sonnet-20240229
 - ✅ No hardware needed
 
 **Cons:**
-- ⚠️ Costs money ($)
-- ⚠️ Usage tracking
+-  Costs money ($)
+-  Usage tracking
 
 ---
 
@@ -529,11 +529,11 @@ ENABLE_GROQ=true
 4. ✅ ODRL basics (helpful but not required)
 
 ### You DON'T need to know:
-- ❌ Programming/coding
-- ❌ Machine learning
-- ❌ LLM internals
-- ❌ Docker/Kubernetes
-- ❌ Database management
+-  Programming/coding
+-  Machine learning
+-  LLM internals
+-  Docker/Kubernetes
+-  Database management
 
 ---
 

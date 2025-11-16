@@ -1,0 +1,54 @@
+{
+  "name": "drk_universal_prohibition_policy",
+  "description": "",
+  "saved_at": "2025-11-16T16:40:54.549113",
+  "reasoning_result": {
+    "decision": "reject",
+    "confidence": 0.96,
+    "issues": [
+      {
+        "category": "vague_term",
+        "severity": "high",
+        "field": "assignee",
+        "policy_id": "policy_1",
+        "message": "Actor specified as \"Nobody\" is an unmeasurable universal quantifier and cannot be enforced.",
+        "suggestion": "Replace \"Nobody\" with a concrete list of actors or roles (e.g., \"no users\", \"no external partners\")."
+      },
+      {
+        "category": "overly_broad_policy",
+        "severity": "high",
+        "field": "policy",
+        "policy_id": "policy_1",
+        "message": "Policy prohibits all actions for all actors on all assets, making it unimplementable and too broad.",
+        "suggestion": "Scope the prohibition to specific actors, actions, and assets (e.g., \"User X is prohibited from deleting file Y\")."
+      },
+      {
+        "category": "missing_field",
+        "severity": "low",
+        "field": "actions",
+        "policy_id": "policy_1",
+        "message": "No actions are listed in the prohibition; it is unclear what is prohibited.",
+        "suggestion": "Specify the prohibited actions (e.g., \"read\", \"write\", \"delete\")."
+      },
+      {
+        "category": "missing_field",
+        "severity": "low",
+        "field": "targets",
+        "policy_id": "policy_1",
+        "message": "No target assets are defined; the policy does not indicate which resources are affected.",
+        "suggestion": "Provide explicit target identifiers or asset types."
+      }
+    ],
+    "recommendations": [
+      "Define concrete actors (e.g., specific user IDs or roles) instead of using \"Nobody\".",
+      "Limit the prohibition to particular actions and assets rather than \"anything\" on \"not_specified\".",
+      "Add explicit action and target definitions to make the policy enforceable.",
+      "Review the policy purpose to ensure it aligns with organizational requirements and does not unintentionally block all legitimate activity."
+    ],
+    "reasoning": "The policy contains unmeasurable/vague terms and is overly broad, both of which are classified as HIGH severity issues. The actor is expressed as \"Nobody\", which is an undefined universal quantifier that cannot be enforced. Additionally, the policy prohibits \"anything\" for \"nobody\" on an unspecified target, resulting in a total prohibition without any scope, making it unimplementable. These high‑severity problems require the policy to be rewritten before it can be accepted.",
+    "risk_level": "high",
+    "policies_analyzed": 1,
+    "processing_time_ms": 12685,
+    "model_used": "custom:gpt-oss:120b"
+  }
+}

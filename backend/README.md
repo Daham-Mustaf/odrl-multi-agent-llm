@@ -13,7 +13,7 @@ Transform natural language descriptions into valid ODRL (Open Digital Rights Lan
 ## ✨ Features
 
 - 🤖 **Multi-Agent Architecture**: Four specialized agents (Parser, Reasoner, Generator, Validator)
-- 🔄 **Flexible LLM Support**: Works with Ollama, Groq, OpenAI, Claude, and custom models
+-  **Flexible LLM Support**: Works with Ollama, Groq, OpenAI, Claude, and custom models
 - 🎨 **Modern GUI**: Interactive dashboard with real-time processing visualization
 - ⚡ **Performance Metrics**: Track timing, tokens, and efficiency
 - 🌙 **Dark Mode**: Professional aesthetic for demos and presentations

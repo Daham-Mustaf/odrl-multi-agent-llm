@@ -1,0 +1,37 @@
+{
+  "name": "drk_universal_access_music_policy",
+  "description": "",
+  "saved_at": "2025-11-16T16:39:15.711076",
+  "reasoning_result": {
+    "decision": "reject",
+    "confidence": 0.95,
+    "issues": [
+      {
+        "category": "vague_term",
+        "severity": "high",
+        "field": "assignee",
+        "policy_id": "policy_1",
+        "message": "The policy uses the unmeasurable actor term \"everyone\", which cannot be objectively enforced.",
+        "suggestion": "Replace \"everyone\" with a specific, measurable role or group such as \"registered users\", \"research staff\", or define explicit eligibility criteria."
+      },
+      {
+        "category": "overly_broad_policy",
+        "severity": "high",
+        "field": "actions/targets",
+        "policy_id": "policy_1",
+        "message": "The policy grants unrestricted read access to all music files in the archive, making it overly broad and unenforceable.",
+        "suggestion": "Add precise constraints (e.g., time windows, purpose limitations, user roles) and clearly define the asset scope."
+      }
+    ],
+    "recommendations": [
+      "Define specific actor groups instead of using \"everyone\".",
+      "Introduce constraints such as purpose, time, or usage limits to narrow the permission.",
+      "Explicitly identify the target assets (e.g., list of collections or identifiers) rather than using a generic description."
+    ],
+    "reasoning": "The policy uses the unmeasurable actor term \"everyone\", which is a vague and unenforceable specification according to the ODRL contradiction detection rules. This constitutes a HIGH severity issue. Additionally, the policy is overly broad by granting unrestricted read access to all music files in the archive without any constraints, which further raises enforceability concerns. Both issues require concrete, measurable definitions before the policy can be considered enforceable.",
+    "risk_level": "high",
+    "policies_analyzed": 1,
+    "processing_time_ms": 10121,
+    "model_used": "custom:gpt-oss:120b"
+  }
+}

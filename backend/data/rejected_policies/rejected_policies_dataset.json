@@ -1,18 +1,28 @@
 [
-    {
-       "policy_id":"drk_universal_access_policy",
-       "policy_text":"Everyone can access everything.",
-       "expected_outcome": "REJECTED",
-       "rejection_category":"overly_broad_policy",
-       "rejection_category_description":"Policy uses extremely vague terms without specific actors, assets, or constraints",
-       "specific_contradiction":"Policy lacks definition of actors, assets, and access limitations necessary for implementation",
-       "recommendation":"Define specific actors, assets, access types, and appropriate constraints",
-       "rejection_reason_detailed":"The policy uses universally quantified terms ('everyone', 'everything') without any specificity, making it impossible to implement in practice. A real-world system cannot grant unlimited access to all assets without violating basic security principles, privacy requirements, and regulatory constraints. The policy needs to define who can access what resources, under what conditions, and with what limitations."
-    },
+         {
+      "policy_id": "drk_medieval_mss_purpose_conflict",
+      "policy_text": "The Daten Raumkultur project offers access to the Medieval Manuscripts Collection (dataset ID: drk:dataset:medieval_mss_2024) for UC4 Partner. The partner may use the dataset ONLY for research purposes. The partner may also use the dataset ONLY for archival backup purposes.",
+      "expected_outcome": "REJECTED",
+      "rejection_category": "internal_purpose_contradiction",
+      "rejection_category_description": "The policy assigns mutually exclusive 'ONLY' purpose constraints to the same actor, asset, and action.",
+      "specific_contradiction": "The dataset may be used ONLY for research (implying backup use is prohibited), while simultaneously it may be used ONLY for archival backup (implying research use is prohibited). Both exclusive permissions cannot be satisfied concurrently.",
+      "recommendation": "Define a single allowed purpose or separate the uses into distinct policies with clearly non-exclusive constraints. Remove 'ONLY' from at least one permission if multiple purposes are intended to be allowed.",
+      "rejection_reason_detailed": "The use of 'ONLY' in both permissions introduces implicit prohibitions: 'only for research' forbids archival backup, and 'only for archival backup' forbids research. Because both rules apply to the same dataset, actor, and action, the policy imposes incompatible exclusivity constraints. A system cannot enforce both simultaneously. The policy must be rewritten to clarify whether multiple purposes are allowed or to remove the exclusivity language."
+      },
+      {
+         "policy_id":"drk_universal_access_policy",
+         "policy_text":"Everyone can access everything.",
+         "expected_outcome": "REJECTED/REVISION_REQUIRED",
+         "rejection_category":"overly_broad_policy",
+         "rejection_category_description":"Policy uses extremely vague terms without specific actors, assets, or constraints",
+         "specific_contradiction":"Policy lacks definition of actors, assets, and access limitations necessary for implementation",
+         "recommendation":"Define specific actors, assets, access types, and appropriate constraints",
+         "rejection_reason_detailed":"The policy uses universally quantified terms ('everyone', 'everything') without any specificity, making it impossible to implement in practice. A real-world system cannot grant unlimited access to all assets without violating basic security principles, privacy requirements, and regulatory constraints. The policy needs to define who can access what resources, under what conditions, and with what limitations."
+      },
     {
         "policy_id": "drk_ambiguous_condition_policy",
         "policy_text": "If researchers submit access requests for restricted manuscripts, then curators will review the request. If the request is approved, users can download high-resolution images. If the request is urgent, it will be expedited.",
-        "expected_outcome": "REJECTED",
+        "expected_outcome": "REJECTED/APPROVE_WITH_WARNINGS",
         "rejection_category": "conditional_ambiguity",
         "specific_contradiction": "Policy fails to define what constitutes an 'urgent' request, leaving a critical decision point unmeasurable",
         "recommendation": "Define specific, measurable criteria for what qualifies as an 'urgent' request (e.g., needed within 48 hours, required for pending publication)",

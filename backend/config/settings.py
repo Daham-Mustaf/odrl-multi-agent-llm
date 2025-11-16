@@ -140,24 +140,24 @@ def validate_configuration():
     
     # Check if at least one provider is enabled
     if not any([ENABLE_OLLAMA, ENABLE_FITS, ENABLE_GROQ, ENABLE_OPENAI, ENABLE_ANTHROPIC]):
-        errors.append("⚠️  No providers enabled! Enable at least one in .env")
+        errors.append("  No providers enabled! Enable at least one in .env")
     
     # Check API keys for enabled cloud providers
     if ENABLE_GROQ and not GROQ_API_KEY:
-        errors.append("⚠️  GROQ_API_KEY missing but ENABLE_GROQ=true")
+        errors.append("  GROQ_API_KEY missing but ENABLE_GROQ=true")
     
     if ENABLE_OPENAI and not OPENAI_API_KEY:
-        errors.append("⚠️  OPENAI_API_KEY missing but ENABLE_OPENAI=true")
+        errors.append("  OPENAI_API_KEY missing but ENABLE_OPENAI=true")
     
     if ENABLE_ANTHROPIC and not ANTHROPIC_API_KEY:
-        errors.append("⚠️  ANTHROPIC_API_KEY missing but ENABLE_ANTHROPIC=true")
+        errors.append("  ANTHROPIC_API_KEY missing but ENABLE_ANTHROPIC=true")
     
     return errors
 
 # Run validation on import
 _validation_errors = validate_configuration()
 if _validation_errors:
-    print("\n⚠️  CONFIGURATION WARNINGS:")
+    print("\n  CONFIGURATION WARNINGS:")
     for error in _validation_errors:
         print(f"  {error}")
     print()

@@ -1,0 +1,37 @@
+{
+  "name": "drk_temporal_music_contradiction",
+  "description": "",
+  "saved_at": "2025-11-16T16:37:15.789197",
+  "reasoning_result": {
+    "decision": "reject",
+    "confidence": 0.97,
+    "issues": [
+      {
+        "category": "constraint_conflict",
+        "severity": "high",
+        "field": "constraints.odrl:dateTime",
+        "policy_id": "policy_1",
+        "message": "Multiple dateTime constraints with different constraint_group values (>= 2025-01-01 group 1 and >= 2024-01-01 group 2) create an intra‑policy conflict.",
+        "suggestion": "Combine the constraints into a single logical expression or separate them into distinct policies with clear conditional logic."
+      },
+      {
+        "category": "temporal_conflict",
+        "severity": "high",
+        "field": "constraints.odrl:dateTime",
+        "policy_id": "policy_1",
+        "message": "The policy states the track is available only after 2025, but also allows use in 2024 for educational purposes, which are mutually exclusive time windows.",
+        "suggestion": "Clarify the temporal rule: either allow use after 2025 for all purposes, or create a separate exception permitting educational use in 2024, expressed as a distinct policy."
+      }
+    ],
+    "recommendations": [
+      "Rewrite the policy to eliminate contradictory temporal constraints.",
+      "If an educational exception for 2024 is required, model it as a separate permission with its own purpose and time constraint.",
+      "Ensure that each leftOperand appears only once per policy unless groups are intentionally used and clearly defined."
+    ],
+    "reasoning": "The single policy contains an intra‑policy conflict flagged by metadata (has_conflicting_constraints = true). Two dateTime constraints on the same leftOperand use different constraint_group values, which is a high‑severity contradiction. Moreover, the textual meaning creates a temporal conflict: the rule states the track is available only after 2025, yet also permits use in 2024 for educational purposes. These contradictions make the policy unenforceable. No vague or unmeasurable terms were found, but the identified conflicts are sufficient to reject the policy set.",
+    "risk_level": "high",
+    "policies_analyzed": 1,
+    "processing_time_ms": 13698,
+    "model_used": "custom:gpt-oss:120b"
+  }
+}

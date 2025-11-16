@@ -1,0 +1,45 @@
+{
+  "name": "drk_ambiguous_condition_policy",
+  "description": "",
+  "saved_at": "2025-11-16T16:29:06.964441",
+  "reasoning_result": {
+    "decision": "approve",
+    "confidence": 0.94,
+    "issues": [
+      {
+        "category": "vague_term",
+        "severity": "low",
+        "field": "odrl:purpose",
+        "policy_id": "policy_1",
+        "message": "The purpose constraint uses the term \"urgent\", which is not defined, making enforcement ambiguous.",
+        "suggestion": "Define clear criteria for what constitutes an \"urgent\" purpose (e.g., time‑sensitivity thresholds) or replace it with a measurable attribute."
+      },
+      {
+        "category": "incomplete_condition_handling",
+        "severity": "low",
+        "field": "duties",
+        "policy_id": "policy_1",
+        "message": "The source text states that curators must review access requests, but the policy does not include a duty representing this obligation.",
+        "suggestion": "Add a duty assigning curators the obligation to review requests before the permission to reproduce high‑resolution images is granted."
+      },
+      {
+        "category": "vague_term",
+        "severity": "low",
+        "field": "source_text",
+        "policy_id": "policy_1",
+        "message": "The term \"expedited\" is used without definition, leading to unclear expectations for how urgent requests are handled.",
+        "suggestion": "Specify the exact process or time frame that constitutes expedited handling (e.g., \"process within 2 business hours\")."
+      }
+    ],
+    "recommendations": [
+      "Define the meaning of \"urgent\" in the context of purpose.",
+      "Add a duty for curators to review access requests before granting permission.",
+      "Clarify the expected turnaround time or steps for \"expedited\" handling of urgent requests."
+    ],
+    "reasoning": "The single policy contains no high‑severity logical contradictions. All constraints are internally consistent, and there are no conflicting permissions or prohibitions, temporal, spatial, or quantitative conflicts. The identified issues are low‑severity concerns about vague terminology and missing representation of a required review step, which can be resolved by adding definitions and duties.",
+    "risk_level": "low",
+    "policies_analyzed": 1,
+    "processing_time_ms": 14702,
+    "model_used": "custom:gpt-oss:120b"
+  }
+}

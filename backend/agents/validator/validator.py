@@ -60,7 +60,7 @@ class Validator:
                     'summary': 'All SHACL constraints passed'
                 }
             else:
-                print(f"[Validator] ❌ Found {len(report.issues)} issues")
+                print(f"[Validator]  Found {len(report.issues)} issues")
                 
                 # Convert issues to frontend format
                 issues = []
@@ -87,7 +87,7 @@ class Validator:
                 }
                 
         except Exception as e:
-            print(f"[Validator] ❌ Error: {e}")
+            print(f"[Validator]  Error: {e}")
             import traceback
             traceback.print_exc()
             
@@ -140,5 +140,5 @@ Provide:
             return explanation
             
         except Exception as e:
-            print(f"[Validator] ⚠️  LLM explanation failed: {e}")
+            print(f"[Validator]   LLM explanation failed: {e}")
             return None

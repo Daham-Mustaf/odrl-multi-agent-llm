@@ -20,7 +20,7 @@ export const GeneratorTab = ({
   generatedODRL,
   darkMode = false,
   onCopy = () => {},
-  onSave = () => {},  // ✅ Changed from onDownload to onSave
+  onSave = () => {},  //  Changed from onDownload to onSave
   onValidate = () => {},
   onUpdateODRL = () => {},
   isValidating = false,
@@ -30,9 +30,9 @@ export const GeneratorTab = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);  // ✅ Added
-  const [policyName, setPolicyName] = useState('');  // ✅ Added
-  const [policyDescription, setPolicyDescription] = useState('');  // ✅ Added
+  const [showSaveDialog, setShowSaveDialog] = useState(false);  //  Added
+  const [policyName, setPolicyName] = useState('');  //  Added
+  const [policyDescription, setPolicyDescription] = useState('');  //  Added
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -46,7 +46,7 @@ export const GeneratorTab = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ✅ NEW: Handle save to backend
+  //  NEW: Handle save to backend
   const handleSave = () => {
     const metadata = {
       name: policyName || `ODRL_Policy_${new Date().toISOString().split('T')[0]}`,
@@ -79,7 +79,7 @@ export const GeneratorTab = ({
     onUpdateODRL(editedContent, true);
     setIsEditing(false);
     setEditedContent('');
-    showToast('✅ ODRL Turtle updated. Please validate.', 'success');
+    showToast(' ODRL Turtle updated. Please validate.', 'success');
   };
 
   if (!generatedODRL) {
@@ -162,7 +162,7 @@ export const GeneratorTab = ({
                     {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
-                  {/* ✅ Changed Download to Save */}
+                  {/*  Changed Download to Save */}
                   <button
                     onClick={() => setShowSaveDialog(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
@@ -236,7 +236,7 @@ export const GeneratorTab = ({
         )}
       </div>
 
-      {/* ✅ SAVE DIALOG */}
+      {/*  SAVE DIALOG */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md p-6`}>

@@ -28,10 +28,10 @@ def test_compatibility():
     print("\n1. Testing Parser Interface")
     print("-"*40)
     parser = TextParser(model="groq:llama-3.3-70b-versatile", temperature=0.0)
-    print("  ✓ TextParser instantiation works")
-    print("  ✓ Accepts model parameter")
-    print("  ✓ Accepts temperature parameter")
-    print("  ✓ Accepts custom_config parameter (optional)")
+    print("   TextParser instantiation works")
+    print("   Accepts model parameter")
+    print("   Accepts temperature parameter")
+    print("   Accepts custom_config parameter (optional)")
     
     # Test 2: Parser output structure
     print("\n2. Testing Parser Output")
@@ -39,22 +39,22 @@ def test_compatibility():
     parsed = parser.parse(text)
     
     assert type(parsed) == dict, "Parser must return dict"
-    print("  ✓ Returns dict")
+    print("   Returns dict")
     
     assert 'policies' in parsed, "Must have 'policies' key"
-    print("  ✓ Has 'policies' key")
+    print("   Has 'policies' key")
     
     assert 'raw_text' in parsed, "Must have 'raw_text' key"
-    print("  ✓ Has 'raw_text' key")
+    print("   Has 'raw_text' key")
     
     assert 'total_policies' in parsed, "Must have 'total_policies' key"
-    print("  ✓ Has 'total_policies' key")
+    print("   Has 'total_policies' key")
     
     assert type(parsed['policies']) == list, "Policies must be list"
-    print("  ✓ Policies is a list")
+    print("   Policies is a list")
     
     assert len(parsed['policies']) > 0, "Must extract at least one policy"
-    print(f"  ✓ Extracted {len(parsed['policies'])} policies")
+    print(f"   Extracted {len(parsed['policies'])} policies")
     
     # Test 3: Policy structure
     print("\n3. Testing Policy Structure")
@@ -69,7 +69,7 @@ def test_compatibility():
     
     for field in required_fields:
         assert field in policy, f"Policy must have '{field}' field"
-        print(f"  ✓ Has '{field}' field")
+        print(f"   Has '{field}' field")
     
     # Test 4: Reasoner compatibility
     print("\n4. Testing Reasoner Compatibility")
@@ -78,11 +78,11 @@ def test_compatibility():
     
     try:
         reasoning = reasoner.reason(parsed, text)
-        print("  ✓ Reasoner accepts parsed data")
-        print(f"  ✓ Decision: {reasoning['decision']}")
-        print(f"  ✓ Confidence: {reasoning['confidence']:.0%}")
-        print(f"  ✓ Issues: {len(reasoning['issues'])}")
-        print("  ✓ REASONER FULLY COMPATIBLE")
+        print("   Reasoner accepts parsed data")
+        print(f"   Decision: {reasoning['decision']}")
+        print(f"   Confidence: {reasoning['confidence']:.0%}")
+        print(f"   Issues: {len(reasoning['issues'])}")
+        print("   REASONER FULLY COMPATIBLE")
     except Exception as e:
         print(f"  ✗ Reasoner compatibility failed: {e}")
         raise
@@ -90,17 +90,17 @@ def test_compatibility():
     # Test 5: Backend endpoint compatibility
     print("\n5. Testing Backend Endpoint Compatibility")
     print("-"*40)
-    print("  ✓ parse(text: str) method exists")
-    print("  ✓ Returns Dict[str, Any]")
-    print("  ✓ Can add 'processing_time_ms' key")
-    print("  ✓ Can add 'model_used' key")
+    print("   parse(text: str) method exists")
+    print("   Returns Dict[str, Any]")
+    print("   Can add 'processing_time_ms' key")
+    print("   Can add 'model_used' key")
     parsed['processing_time_ms'] = 1000  # Simulate backend addition
     parsed['model_used'] = "test-model"   # Simulate backend addition
-    print("  ✓ Dict is mutable for backend additions")
+    print("   Dict is mutable for backend additions")
     
     print("\n" + "="*80)
-    print("✓ ALL COMPATIBILITY CHECKS PASSED")
-    print("✓ SAFE TO USE IN PRODUCTION BACKEND")
+    print(" ALL COMPATIBILITY CHECKS PASSED")
+    print(" SAFE TO USE IN PRODUCTION BACKEND")
     print("="*80)
     
     return True
@@ -365,13 +365,13 @@ def main():
         test_multi_action_extraction()
         
         print("\n" + "="*80)
-        print("✓ ALL TESTS PASSED")
+        print(" ALL TESTS PASSED")
         print("="*80)
         print("\nSummary:")
-        print("  ✓ Backend compatibility: PASSED")
-        print("  ✓ Reasoner compatibility: PASSED")
-        print("  ✓ Extraction accuracy: PASSED")
-        print("  ✓ Edge cases: PASSED")
+        print("   Backend compatibility: PASSED")
+        print("   Reasoner compatibility: PASSED")
+        print("   Extraction accuracy: PASSED")
+        print("   Edge cases: PASSED")
         print("\n✅ Safe to deploy to production backend")
         print("="*80)
         

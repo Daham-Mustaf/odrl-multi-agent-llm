@@ -127,13 +127,7 @@ const handleSave = () => {
               Save
             </button>
             
-            {/* <button
-              onClick={() => onDownload(reasoningResult, 'reasoning-analysis.json')}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-            >
-              <Download className="w-4 h-4" />
-              Download
-            </button> */}
+        
           </div>
         </div>
       </div>
@@ -141,7 +135,7 @@ const handleSave = () => {
       {/* Content Area */}
       <div className="p-6 space-y-4">
         
-        {/* 🎯 STATUS BANNER - Compact */}
+        {/* STATUS BANNER - Compact */}
         <div className={`border-2 rounded-lg p-4 ${
           hasIssues 
             ? darkMode ? 'bg-yellow-900/20 border-yellow-700' : 'bg-yellow-50 border-yellow-300'
@@ -227,7 +221,7 @@ const handleSave = () => {
           )}
         </div>
 
-        {/* ⚠️ ISSUES SECTION - Collapsible */}
+        {/*  ISSUES SECTION - Collapsible */}
         {(criticalIssues.length > 0 || warningIssues.length > 0) && (
           <div className={`border rounded-lg overflow-hidden ${
             darkMode ? 'border-red-700 bg-red-900/10' : 'border-red-200 bg-red-50'
@@ -399,7 +393,7 @@ const handleSave = () => {
           
           {hasIssues && (
             <p className={`text-xs ${mutedTextClass} text-center mt-2`}>
-              ⚠️ Continuing with issues may result in invalid ODRL policies
+               Continuing with issues may result in invalid ODRL policies
             </p>
           )}
         </div>

@@ -76,7 +76,7 @@ async def run_with_disconnect_check(
     while not task.done():
         # Check if client disconnected
         if await request.is_disconnected():
-            logger.warning(f"⚠️  Client disconnected during {func.__name__} - cancelling")
+            logger.warning(f"  Client disconnected during {func.__name__} - cancelling")
             
             # Cancel the task
             task.cancel()
@@ -124,7 +124,7 @@ async def run_async_with_disconnect_check(
     # Poll for disconnect
     while not task.done():
         if await request.is_disconnected():
-            logger.warning(f"⚠️  Client disconnected during {async_func.__name__}")
+            logger.warning(f"  Client disconnected during {async_func.__name__}")
             task.cancel()
             try:
                 await task
@@ -194,7 +194,7 @@ def with_disconnect_check(check_interval: float = 0.5):
         async def wrapper(request: Request, *args, **kwargs):
             # Check disconnect before starting
             if await request.is_disconnected():
-                logger.warning(f"⚠️  Client disconnected before {func.__name__} started")
+                logger.warning(f"  Client disconnected before {func.__name__} started")
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
                     status_code=499,
@@ -251,8 +251,8 @@ if __name__ == "__main__":
     """)
     print()
     print("Benefits:")
-    print("  ✓ Saves server resources")
-    print("  ✓ Stops LLM calls when user cancels")
-    print("  ✓ Clean error handling")
-    print("  ✓ Reusable across endpoints")
+    print("   Saves server resources")
+    print("   Stops LLM calls when user cancels")
+    print("   Clean error handling")
+    print("   Reusable across endpoints")
     print()

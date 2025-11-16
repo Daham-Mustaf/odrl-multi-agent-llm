@@ -234,7 +234,7 @@ User clicks "Start Processing"
 │ ─────────────────────────────────────────────────────────│
 │ Decision: NEEDS_INPUT                                     │
 │ Issues:   2 critical (vague action "everything")         │
-│ Status:   ⚠️  Requires Review                            │
+│ Status:     Requires Review                            │
 └───────────────────────────────────────────────────────────┘
         ↓
     🛑 STOP - Show user the issues
@@ -243,11 +243,11 @@ User clicks "Start Processing"
 │           USER REVIEWS REASONER OUTPUT                    │
 │ ─────────────────────────────────────────────────────────│
 │                                                           │
-│ ❌ Critical Issue:                                        │
+│  Critical Issue:                                        │
 │    Action "everything" is too vague                      │
 │    Suggestion: Use odrl:read, odrl:write, odrl:modify    │
 │                                                           │
-│ ⚠️  Warning:                                              │
+│   Warning:                                              │
 │    No expiration date specified                          │
 │    Suggestion: Add temporal constraint                   │
 │                                                           │

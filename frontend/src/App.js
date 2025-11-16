@@ -326,7 +326,7 @@ const saveToBackend = async (model) => {
     });
     
     if (response.ok) {
-      console.log('✅ Model saved to backend');
+      console.log(' Model saved to backend');
       return true;
     } else {
       const error = await response.json();
@@ -403,7 +403,7 @@ const addOrUpdateCustomModel = async (modelData) => {
     }
   }
   
-  console.log(`✅ Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${frontendModel.label}`);
+  console.log(` Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${frontendModel.label}`);
 };
 
 const deleteCustomModel = async (modelValue) => {
@@ -430,7 +430,7 @@ const deleteCustomModel = async (modelValue) => {
       });
       
       if (response.ok) {
-        console.log('✅ Deleted from backend');
+        console.log(' Deleted from backend');
         showToast('Model deleted successfully', 'success');
       } else {
         const error = await response.json();
@@ -457,7 +457,7 @@ const deleteCustomModel = async (modelValue) => {
 
   const callAPI = async (endpoint, body, signal = null) => {
   try {
-    // ✅ ADD /api/ prefix if not already present
+    //  ADD /api/ prefix if not already present
     const url = endpoint.startsWith('/api/') 
       ? `${API_BASE_URL}${endpoint}` 
       : `${API_BASE_URL}/api/${endpoint}`;
@@ -1762,6 +1762,16 @@ const handleSaveGenerator = async (metadata) => {
                 </div>
               </div>
             </div>
+        
+             {/* ADD THIS BLOCK HERE - BEFORE THE FOOTER */}
+            {parsedData && (
+              <ParserTab
+                parsedData={parsedData}
+                darkMode={darkMode}
+                onCopy={copyToClipboard}
+                onDownload={downloadJSON}
+              />
+            )}
 
             
             {/* Model Info Footer */}
@@ -1904,7 +1914,7 @@ const handleSaveGenerator = async (metadata) => {
             onChange={(e) => {
               const newModel = e.target.value;
               setSelectedModel(newModel);
-              localStorage.setItem('selectedModel', newModel);  // ✅ Save to localStorage
+              localStorage.setItem('selectedModel', newModel);  //  Save to localStorage
               showToast('Model updated', 'success');
             }}
             className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
@@ -1939,7 +1949,7 @@ const handleSaveGenerator = async (metadata) => {
             )}
           </select>
           
-          {/* ✅ NEW: Show current selection */}
+          {/*  NEW: Show current selection */}
           <div className={`mt-2 text-sm ${mutedTextClass}`}>
             Currently selected: {
               customModels.find(m => m.value === selectedModel)?.label ||
@@ -2075,7 +2085,7 @@ const handleSaveGenerator = async (metadata) => {
         </p>
       </div>
       
-      {/* ✅ FIXED: Default Temperature Slider */}
+      {/*  FIXED: Default Temperature Slider */}
       <div>
         <label className={`block text-sm font-medium mb-2 ${textClass}`}>
           Default Temperature: {customForm.temperature || 0.3}

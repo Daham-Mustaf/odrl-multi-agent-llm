@@ -21,7 +21,7 @@ export const ValidatorTab = ({
   generatedODRL = null,
   onRegenerate = null,
   isRegenerating = false,
-  originalText = null  // ✅ NEW: Original user input
+  originalText = null  //  NEW: Original user input
 }) => {
   const [showPolicy, setShowPolicy] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -196,7 +196,7 @@ export const ValidatorTab = ({
             <div className="px-6 py-4">
               <div className={`rounded-lg p-4 ${darkMode ? 'bg-green-900/20 border border-green-800' : 'bg-green-50 border border-green-200'}`}>
                 <p className={`text-sm ${mutedTextClass}`}>
-                  ✅ No violations found. All SHACL constraints are satisfied.
+                   No violations found. All SHACL constraints are satisfied.
                 </p>
                 <p className={`text-sm ${mutedTextClass} mt-2`}>
                   Your ODRL policy is valid and ready for deployment!
@@ -217,7 +217,7 @@ export const ValidatorTab = ({
         </div>
       )}
 
-      {/* ✅ NEW: Collapsible Original Statement */}
+      {/*  NEW: Collapsible Original Statement */}
       {!isRegenerating && originalText && (
         <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
           <button
@@ -251,7 +251,7 @@ export const ValidatorTab = ({
         </div>
       )}
 
-      {/* ✅ NEW: Collapsible Generated Policy */}
+      {/*  NEW: Collapsible Generated Policy */}
       {!isRegenerating && generatedODRL && generatedODRL.odrl_turtle && (
         <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
           <button
