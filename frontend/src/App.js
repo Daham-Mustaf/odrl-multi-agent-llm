@@ -11,7 +11,8 @@ import { ReasonerTab } from './components/tabs/ReasonerTab';
 import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
-import MetricsBar from './components/MetricsBar';
+import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
+
 
 // API Configuration
 // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -1042,7 +1043,7 @@ const handleRegenerate = async () => {
 };
 
 // ============================================
-// handleEditFromValidator Function (NEW)
+// handleEditFromValidator Function 
 // ============================================
 const handleEditFromValidator = () => {
   console.log('[App] User wants to edit input from validator');
@@ -1244,6 +1245,24 @@ const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
   setValidationResult(null);
 
   showToast('ODRL updated. Please validate the changes.', 'info');
+};
+
+const handleSaveReasoning = async (metadata) => {
+  try {
+    const result = await saveReasoningAnalysis(metadata);
+    showToast(` Saved to backend: ${result.filename}`, 'success');
+  } catch (error) {
+    showToast(`Failed to save: ${error.message}`, 'error');
+  }
+};
+
+const handleSaveGenerator = async (metadata) => {
+  try {
+    const result = await saveGeneratedPolicy(metadata);
+    showToast(`Saved to backend: ${result.filename}`, 'success');
+  } catch (error) {
+    showToast(`Failed to save: ${error.message}`, 'error');
+  }
 };
   // ============================================
   // RENDER UI
@@ -1813,6 +1832,7 @@ Or drag and drop a .txt, .md, or .json file here"
             setActiveTab('parser');
             showToast('Edit your policy text and click "Start Processing" again', 'info');
           }}
+          onSave={handleSaveReasoning}
         />
 
         {/* Footer */}
@@ -1834,6 +1854,7 @@ Or drag and drop a .txt, .md, or .json file here"
         darkMode={darkMode}
         onCopy={copyToClipboard}
         onDownload={downloadJSON}
+        onSave={handleSaveGenerator} 
         onValidate={handleValidate}
         onUpdateODRL={handleUpdateODRL} 
         isValidating={validating}

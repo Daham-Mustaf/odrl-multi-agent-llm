@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { 
   Code, 
   Copy, 
-  Download, 
   CheckCircle,
   Shield,
   Loader2,
@@ -15,28 +14,30 @@ import {
 } from 'lucide-react';
 
 /**
- * Generator Tab - Shows ODRL Turtle only with EDIT capability and collapsible content
+ * Generator Tab - Shows ODRL Turtle with EDIT and SAVE TO BACKEND capability
  */
 export const GeneratorTab = ({ 
   generatedODRL,
   darkMode = false,
   onCopy = () => {},
-  onDownload = () => {},
+  onSave = () => {},  // ✅ Changed from onDownload to onSave
   onValidate = () => {},
-  onUpdateODRL = () => {},  // Callback to update ODRL
+  onUpdateODRL = () => {},
   isValidating = false,
   showToast = () => {} 
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
-  const [isCollapsed, setIsCollapsed] = useState(false); // Collapsible state
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);  // ✅ Added
+  const [policyName, setPolicyName] = useState('');  // ✅ Added
+  const [policyDescription, setPolicyDescription] = useState('');  // ✅ Added
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 
-  // Show Turtle only
   const displayContent = generatedODRL?.odrl_turtle || '';
 
   const handleCopy = () => {
@@ -45,12 +46,25 @@ export const GeneratorTab = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
-    const content = isEditing ? editedContent : displayContent;
-    onDownload(content, 'odrl-policy.ttl');
+  // ✅ NEW: Handle save to backend
+  const handleSave = () => {
+    const metadata = {
+      name: policyName || `ODRL_Policy_${new Date().toISOString().split('T')[0]}`,
+      description: policyDescription,
+      odrl_turtle: isEditing ? editedContent : displayContent,
+      metadata: {
+        attempt_number: generatedODRL.attempt_number,
+        processing_time_ms: generatedODRL.processing_time_ms,
+        model_used: generatedODRL.model_used
+      }
+    };
+    
+    onSave(metadata);
+    setShowSaveDialog(false);
+    setPolicyName('');
+    setPolicyDescription('');
   };
 
-  // Edit mode handlers
   const handleStartEdit = () => {
     setEditedContent(displayContent);
     setIsEditing(true);
@@ -62,7 +76,7 @@ export const GeneratorTab = ({
   };
 
   const handleSaveEdit = () => {
-    onUpdateODRL(editedContent, true); // Save as Turtle
+    onUpdateODRL(editedContent, true);
     setIsEditing(false);
     setEditedContent('');
     showToast('✅ ODRL Turtle updated. Please validate.', 'success');
@@ -148,12 +162,13 @@ export const GeneratorTab = ({
                     {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
+                  {/* ✅ Changed Download to Save */}
                   <button
-                    onClick={handleDownload}
+                    onClick={() => setShowSaveDialog(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
                   >
-                    <Download className="w-4 h-4" />
-                    Download
+                    <Save className="w-4 h-4" />
+                    Save to Backend
                   </button>
                 </>
               )}
@@ -220,6 +235,70 @@ export const GeneratorTab = ({
           <span>{generatedODRL.processing_time_ms}ms • {generatedODRL.model_used}</span>
         )}
       </div>
+
+      {/* ✅ SAVE DIALOG */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl w-full max-w-md p-6`}>
+            <h3 className={`text-xl font-bold ${textClass} mb-4`}>
+              Save ODRL Policy
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium ${textClass} mb-1`}>
+                  Policy Name *
+                </label>
+                <input
+                  type="text"
+                  value={policyName}
+                  onChange={(e) => setPolicyName(e.target.value)}
+                  placeholder="e.g., MobilityData_ODRL_v1"
+                  className={`w-full px-3 py-2 border rounded-lg ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  }`}
+                />
+              </div>
+              
+              <div>
+                <label className={`block text-sm font-medium ${textClass} mb-1`}>
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={policyDescription}
+                  onChange={(e) => setPolicyDescription(e.target.value)}
+                  placeholder="Brief description of this ODRL policy..."
+                  rows={3}
+                  className={`w-full px-3 py-2 border rounded-lg ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  }`}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!policyName.trim()}
+                className={`flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2 ${
+                  !policyName.trim() ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                <Save className="w-4 h-4" />
+                Save Policy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -67,9 +67,17 @@ try:
     AGENTS_AVAILABLE = True
     print("[INFO] All agents loaded successfully")
     
+    print("[DEBUG] Importing storage router...")
+    from api.storage_api import router as storage_router
+    print("[DEBUG] Storage router imported")
+    STORAGE_ROUTER_AVAILABLE = True
+    
 except ImportError as e:
     AGENTS_AVAILABLE = False
     print(f"[ERROR] Failed to import agents: {e}")
+    import traceback
+    STORAGE_ROUTER_AVAILABLE = False
+    print(f"[ERROR] Failed to import storage router: {e}")
     import traceback
     traceback.print_exc()
     
@@ -707,7 +715,7 @@ async def validate_odrl(request: ValidateRequest):
         logger.error(f"Validate error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-
+app.include_router(storage_router)
 # Add this debug endpoint temporarily
 
 @app.get("/api/debug/config")
