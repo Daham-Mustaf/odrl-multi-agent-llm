@@ -1511,10 +1511,8 @@ const handleSaveGenerator = async (metadata) => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     placeholder="Describe your policy in natural language... 
-
-Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.
-
-Or drag and drop a .txt, .md, or .json file here"
+                    Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.
+                    Or drag and drop a .txt, .md, or .json file here"
                     className={`w-full h-64 px-4 py-3 bg-transparent rounded-lg resize-none focus:outline-none ${textClass}`}
                     disabled={loading}
                   />
@@ -1706,7 +1704,6 @@ Or drag and drop a .txt, .md, or .json file here"
   )}
 </div>
 
-
                 {/* Auto-progress Setting - Moved to bottom */}
                 <div className="flex items-center justify-between pt-2">
                   <label className={`flex items-center gap-2 cursor-pointer ${autoProgress ? 'text-green-600 dark:text-green-400 font-medium' : ''}`}>
@@ -1765,6 +1762,8 @@ Or drag and drop a .txt, .md, or .json file here"
                 </div>
               </div>
             </div>
+
+            
             {/* Model Info Footer */}
             <div className={`flex items-center justify-between ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               <div className="flex items-center gap-4 text-sm">
@@ -2262,15 +2261,6 @@ Or drag and drop a .txt, .md, or .json file here"
         darkMode={darkMode}
       />
       
-
-      {activeTab === 'parser' && parsedData && (
-  <ParserTab
-    parsedData={parsedData}
-    darkMode={darkMode}
-    onCopy={copyToClipboard}
-    onDownload={downloadJSON}
-  />
-)}
 
       <style>{`
   @keyframes fade-in {

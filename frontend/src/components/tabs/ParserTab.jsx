@@ -14,6 +14,7 @@ export const ParserTab = ({
 }) => {
   const [viewMode, setViewMode] = useState('visual');
   const [copied, setCopied] = useState(false);
+  const [jsonCollapsed, setJsonCollapsed] = useState(false);   // ✅ CHANGE #1
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -40,19 +41,10 @@ export const ParserTab = ({
             <FileText className="w-6 h-6" />
             Parsed Results
           </h2>
+
           <div className="flex gap-2">
             {/* View Toggle */}
             <div className={`flex items-center gap-1 p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-              <button
-                onClick={() => setViewMode('visual')}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition ${
-                  viewMode === 'visual'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                👁️ Visual
-              </button>
               <button
                 onClick={() => setViewMode('json')}
                 className={`px-3 py-1.5 rounded text-sm font-medium transition ${
@@ -63,8 +55,20 @@ export const ParserTab = ({
               >
                 {'{}'} JSON
               </button>
+
+              <button
+                onClick={() => setViewMode('visual')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition ${
+                  viewMode === 'visual'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                👁️ Visual
+              </button>
             </div>
-            
+
+            {/* Copy */}
             <button
               onClick={handleCopy}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
@@ -74,6 +78,8 @@ export const ParserTab = ({
               {copied ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
+
+            {/* Download */}
             <button
               onClick={handleDownload}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -90,14 +96,28 @@ export const ParserTab = ({
         {viewMode === 'json' ? (
           // JSON View
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-            <pre className={`text-sm ${textClass}`}>
-              {JSON.stringify(parsedData, null, 2)}
-            </pre>
+
+            {/* ✅ CHANGE #2 — COLLAPSIBLE JSON */}
+            <div className="mb-2 flex justify-end">
+              <button
+                onClick={() => setJsonCollapsed((c) => !c)}
+                className={`px-2 py-1 text-xs rounded-md ${
+                  darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-200 text-gray-700"
+                }`}
+              >
+                {jsonCollapsed ? "Expand JSON ▼" : "Collapse JSON ▲"}
+              </button>
+            </div>
+
+            {!jsonCollapsed && (
+              <pre className={`text-sm ${textClass}`}>
+                {JSON.stringify(parsedData, null, 2)}
+              </pre>
+            )}
           </div>
         ) : (
           // Visual View
           <div className="space-y-4">
-            {/* Summary */}
             <div className={`p-4 rounded-lg ${darkMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Info className="w-5 h-5 text-blue-500" />
@@ -109,7 +129,6 @@ export const ParserTab = ({
               </p>
             </div>
 
-            {/* Policies */}
             {(parsedData.policies || [parsedData]).map((policy, idx) => (
               <PolicyCard 
                 key={idx} 
