@@ -11,6 +11,7 @@ import { ReasonerTab } from './components/tabs/ReasonerTab';
 import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
+import StatusTab from "./components/tabs/StatusTab";
 import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 
 
@@ -97,6 +98,9 @@ const ODRLDemo = () => {
 
   // Create abort controller ref for cancellation
   const abortControllerRef = useRef(new AbortController());
+  const [sseConnected, setSseConnected] = useState(false);
+  const sessionId = useRef(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+
   // Reset abort controller when needed
   const resetAbortController = () => {
     abortControllerRef.current = new AbortController();
@@ -167,7 +171,7 @@ const ODRLDemo = () => {
   
   // Processing progress state
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingStage, setProcessingStage] = useState('');
+  const [processingStage, setProcessingStage] = useState('idle'); // 'idle' | 'parsing' | 'reasoning' | 'generating' | 'validating'
   const [reasonerLoading, setReasonerLoading] = useState(false);
 
   // ============================================
@@ -183,6 +187,7 @@ const ODRLDemo = () => {
       setToasts(prev => prev.filter(toast => toast.id !== id));
     }, 4000);
   };
+
   // ============================================
   // HELPER: Get Custom Model Config
   // ============================================
@@ -209,8 +214,6 @@ const ODRLDemo = () => {
   // ============================================
   // INITIALIZATION
   // ============================================
-
- // Add this with your other useEffect hooks
 useEffect(() => {
   const initializeApp = async () => {
     // Load providers first
@@ -465,6 +468,7 @@ const deleteCustomModel = async (modelValue) => {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      'X-Session-ID': sessionId,
       body: JSON.stringify(body),
       signal  
     });
@@ -493,7 +497,80 @@ const deleteCustomModel = async (modelValue) => {
   }
 };
 
-  const updateAgentState = (agent, state) => {
+// ============================================
+// SSE CONNECTION FOR REAL-TIME STATUS
+// ============================================
+useEffect(() => {
+  if (!backendConnected) {
+    console.log('[SSE] Waiting for backend connection...');
+    setSseConnected(false);
+    return;
+  }
+  
+  console.log('[SSE] Connecting to status stream...', sessionId.current);
+  
+  const eventSource = new EventSource(
+    `${API_BASE_URL}/api/agent-status/${sessionId.current}`
+  );
+  
+  // Track if we've confirmed connection
+  let connectionConfirmed = false;
+  
+  eventSource.onopen = () => {
+    console.log('[SSE] ✅ Connected to status stream');
+    setSseConnected(true);
+    connectionConfirmed = true;
+  };
+  
+  eventSource.onmessage = (event) => {
+    try {
+      // Fallback: confirm connection on first message if onopen didn't fire
+      if (!connectionConfirmed) {
+        console.log('[SSE] ✅ Connection confirmed via first message');
+        setSseConnected(true);
+        connectionConfirmed = true;
+      }
+      
+      const status = JSON.parse(event.data);
+      console.log('[SSE] Status update:', status);
+      
+      // Update agent state
+      setAgentStates(prev => ({
+        ...prev,
+        [status.agent]: status.status
+      }));
+      
+      // Update progress bar
+      if (status.progress !== undefined) {
+        setProcessingProgress(status.progress);
+      }
+      
+      // Update stage message
+      if (status.message) {
+        setProcessingStage(status.message);
+      }
+      
+    } catch (e) {
+      console.error('[SSE] Parse error:', e);
+    }
+  };
+  
+  eventSource.onerror = (error) => {
+    console.error('[SSE] Connection error:', error);
+    setSseConnected(false);
+    connectionConfirmed = false;
+    eventSource.close();
+  };
+  
+  return () => {
+    console.log('[SSE] Closing connection');
+    setSseConnected(false);
+    eventSource.close();
+  };
+}, [backendConnected]);
+
+
+const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
  // ============================================
@@ -774,7 +851,6 @@ const handleProcess = async () => {
     setProcessingStage('');
   }
 };
-
 // ============================================
 // handleGenerate Function
 // ============================================
@@ -797,21 +873,26 @@ const handleGenerate = async () => {
 
   const startTime = Date.now();
   const signal = abortControllerRef.current.signal;
+
   try {
     // Update generator agent state
     updateAgentState('generator', 'processing');
 
-    const generatorModel = advancedMode && agentModels.generator
-      ? agentModels.generator
-      : selectedModel;
+    const generatorModel =
+      advancedMode && agentModels.generator
+        ? agentModels.generator
+        : selectedModel;
 
     const generatorCustomConfig = getModelConfig(generatorModel?.value);
 
-    // Call backend API
     console.log('[Generator] Sending generate request...');
+
     const response = await fetch(`${API_BASE_URL}/api/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionId.current     // ← Added for pipeline tracking
+      },
       body: JSON.stringify({
         parsed_data: parsedData,
         original_text: inputText,
@@ -831,7 +912,7 @@ const handleGenerate = async () => {
     const genResult = await response.json();
     console.log('[Generator] Generation complete');
 
-    // Save generated ODRL
+    // Store generated policy
     setGeneratedODRL(genResult);
 
     // Store context for regeneration
@@ -841,15 +922,23 @@ const handleGenerate = async () => {
       reasoning: reasoningResult
     });
 
-    // Update metrics & agent state
-    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTime }));
+    // Update metrics
+    setMetrics(prev => ({
+      ...prev,
+      generateTime: Date.now() - startTime
+    }));
+
+    // Agent state success
     updateAgentState('generator', 'completed');
 
-    // Update progress & notify
+    // Final UI progress
     setProcessingProgress(100);
-    showToast('ODRL policy generated!', 'success');
+    setProcessingStage('generating_done');
 
-    // Switch to generator tab
+    // Notify user
+    showToast('ODRL generated! Click "Validate Policy" to verify', 'success');
+
+    // Move to generator tab
     setActiveTab('generator');
 
   } catch (error) {
@@ -858,7 +947,7 @@ const handleGenerate = async () => {
       showToast('Generation cancelled', 'info');
     } else {
       console.error('[Generator] Error:', error);
-      showToast('Generation failed: ' + error.message, 'error');
+      showToast(`Generation failed: ${error.message}`, 'error');
       updateAgentState('generator', 'error');
     }
   } finally {
@@ -867,6 +956,7 @@ const handleGenerate = async () => {
     setProcessingStage('');
   }
 };
+
 // ============================================
 // handleValidate Function
 // ============================================
@@ -943,6 +1033,9 @@ const handleValidate = async () => {
     } else {
       showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
     }
+    setProcessingStage('complete');
+    setActiveTab('validator');
+    showToast('Complete! All stages finished', 'success');
     
   } catch (error) {
     console.error('[Validator] Error:', error);
@@ -1195,6 +1288,7 @@ const handleLoadHistory = (historyItem) => {
     setValidationResult(null);
     setError(null);
     setActiveTab('parser');
+    setProcessingStage('idle');
     setAgentStates({
       parser: 'idle',
       reasoner: 'idle',
@@ -1203,7 +1297,6 @@ const handleLoadHistory = (historyItem) => {
     });
     setFileName('');
   };
-
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
@@ -1218,6 +1311,103 @@ const handleLoadHistory = (historyItem) => {
     };
     return icons[agent] || FileText;
   };
+
+  // ============================================
+// STEP-BY-STEP PROCESSING HANDLERS
+// ============================================
+
+const handleParse = async () => {
+  if (!inputText.trim()) {
+    showToast('Please enter a policy description', 'warning');
+    return;
+  }
+
+  setLoading(true);
+  setProcessingStage('parsing');
+  setError(null);
+  setParsedData(null);
+  
+  const startTime = Date.now();
+  const signal = getSignal();
+
+  try {
+    updateAgentState('parser', 'processing');
+    
+    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+    const parserCustomConfig = getModelConfig(parserModel);
+    
+    const parseResult = await callAPI('parse', {
+      text: inputText,
+      model: parserModel,
+      temperature,
+      custom_model: parserCustomConfig
+    }, signal);
+    
+    setParsedData(parseResult);
+    setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTime }));
+    updateAgentState('parser', 'completed');
+    
+    setProcessingStage('parsing_done');
+    setActiveTab('parser');
+    showToast('Parsing complete! Click "Start Reasoning" to continue', 'success');
+    
+  } catch (err) {
+    const errorMessage = err?.message || 'Parsing failed';
+    setError(errorMessage);
+    showToast(`Parse error: ${errorMessage}`, 'error');
+    updateAgentState('parser', 'error');
+    setProcessingStage('idle');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleReason = async () => {
+  if (!parsedData) {
+    showToast('Please parse text first!', 'warning');
+    return;
+  }
+
+  setLoading(true);
+  setProcessingStage('reasoning');
+  setReasoningResult(null);
+  
+  const startTime = Date.now();
+  const signal = getSignal();
+
+  try {
+    updateAgentState('reasoner', 'processing');
+    
+    const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
+    const reasonerCustomConfig = getModelConfig(reasonerModel);
+    
+    const reasonResult = await callAPI('reason', {
+      parsed_data: parsedData,
+      original_text: inputText,
+      model: reasonerModel,
+      temperature,
+      custom_model: reasonerCustomConfig
+    }, signal);
+    
+    setReasoningResult(reasonResult);
+    setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTime }));
+    updateAgentState('reasoner', 'completed');
+    
+    setProcessingStage('reasoning_done');
+    setActiveTab('reasoner');
+    showToast('Analysis complete! Review results or click "Generate ODRL"', 'success');
+    
+  } catch (err) {
+    const errorMessage = err?.message || 'Reasoning failed';
+    setError(errorMessage);
+    showToast(`Reasoning error: ${errorMessage}`, 'error');
+    updateAgentState('reasoner', 'error');
+    setProcessingStage('parsing_done'); // Go back
+  } finally {
+    setLoading(false);
+  }
+};
+
   // ============================================
   // handleUpdateODRL Function 
   // ============================================
@@ -1319,6 +1509,23 @@ const handleSaveGenerator = async (metadata) => {
                   {backendConnected ? 'Backend Connected' : 'Backend Offline'}
                 </span>
               </div>
+              {/* ✅ ADD SSE STATUS HERE */}
+              {backendConnected && (
+                <button
+                  onClick={() => setActiveTab('status')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm transition ${
+                    sseConnected
+                      ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600'
+                      : 'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${sseConnected ? 'bg-white animate-pulse' : 'bg-white/50'}`} />
+                  <span className="text-xs font-semibold">
+                    {sseConnected ? 'Live Status' : 'Status Idle'}
+                  </span>
+                  <Activity className="w-3 h-3 ml-1" />
+                </button>
+              )}
 
               {/* Model Info in Header */}
             {backendConnected && selectedModel && (
@@ -1370,7 +1577,6 @@ const handleSaveGenerator = async (metadata) => {
       </div>
 
       {/* PROGRESS BAR */}
-      
       {/* Processing Progress Bar */}
       {loading && processingProgress > 0 && (
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -1384,6 +1590,80 @@ const handleSaveGenerator = async (metadata) => {
         </div>
       )}
 
+{/* STATUS BAR HERE */}
+<div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
+  <div className="max-w-7xl mx-auto px-6 py-3">
+    <div className="flex items-center justify-between">
+      
+      {/* Left: Overall Progress */}
+      <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-center gap-2">
+          <Activity className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+          <span className={`font-semibold ${textClass}`}>Pipeline Status</span>
+        </div>
+        
+        {processingProgress > 0 && (
+          <div className="flex-1 max-w-xs">
+            <div className="flex items-center gap-2">
+              <div className={`flex-1 h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                  style={{ width: `${processingProgress}%` }}
+                />
+              </div>
+              <span className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                {processingProgress}%
+              </span>
+            </div>
+          </div>
+        )}
+        
+        {processingStage && (
+          <span className={`text-sm ${mutedTextClass}`}>
+            {processingStage}
+          </span>
+        )}
+      </div>
+      
+      {/* Right: SSE Connection + View Details */}
+      <div className="flex items-center gap-3">
+        {/* SSE Status Indicator */}
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+          sseConnected 
+            ? 'bg-green-500/10 border border-green-500' 
+            : 'bg-gray-500/10 border border-gray-500'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${
+            sseConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
+          }`} />
+          <span className={`text-xs font-medium ${
+            sseConnected ? 'text-green-600 dark:text-green-400' : mutedTextClass
+          }`}>
+            {sseConnected ? 'Live' : 'Idle'}
+          </span>
+        </div>
+        
+        {/* View Full Status Button */}
+        <button
+          onClick={() => setActiveTab('status')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition ${
+            activeTab === 'status'
+              ? 'bg-indigo-600 text-white'
+              : darkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+          }`}
+        >
+          <Activity className="w-4 h-4" />
+          <span className="text-sm font-medium">View Details</span>
+        </button>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+{/*AGENT TABS NAVIGATION STARTS HERE */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -1421,6 +1701,13 @@ const handleSaveGenerator = async (metadata) => {
                   text: 'text-orange-600 dark:text-orange-400',
                   border: 'border-orange-500',
                   icon: 'text-orange-500'
+                },
+                 status: {  
+                  bg: 'from-indigo-500 to-purple-500',
+                  bgLight: darkMode ? 'bg-indigo-900/30' : 'bg-indigo-50',
+                  text: 'text-indigo-600 dark:text-indigo-400',
+                  border: 'border-indigo-500',
+                  icon: 'text-indigo-500'
                 }
               };
 
@@ -1450,8 +1737,8 @@ const handleSaveGenerator = async (metadata) => {
                     </div>
                     <div className="text-left">
                       <div className={`font-semibold text-sm ${isActive ? colors.text : textClass}`}>
-                        {idx + 1}. {agent.charAt(0).toUpperCase() + agent.slice(1)}
-                      </div>
+  {idx + 1}. {agent.charAt(0).toUpperCase() + agent.slice(1)}
+</div>
                       {showMetrics && metrics[`${agent === 'generator' ? 'generate' : agent === 'reasoner' ? 'reason' : agent === 'validator' ? 'validate' : 'parse'}Time`] > 0 && (
                         <div className={`text-xs flex items-center gap-1 ${isActive ? colors.text : mutedTextClass}`}>
                           <Clock className="w-3 h-3" />
@@ -1513,7 +1800,7 @@ const handleSaveGenerator = async (metadata) => {
                     placeholder="Describe your policy in natural language... 
                     Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.
                     Or drag and drop a .txt, .md, or .json file here"
-                    className={`w-full h-64 px-4 py-3 bg-transparent rounded-lg resize-none focus:outline-none ${textClass}`}
+                    className={`w-full h-32 px-4 py-3 bg-transparent rounded-lg resize-y focus:outline-none ${textClass}`}
                     disabled={loading}
                   />
                   {dragActive && (
@@ -1703,7 +1990,6 @@ const handleSaveGenerator = async (metadata) => {
     </div>
   )}
 </div>
-
                 {/* Auto-progress Setting - Moved to bottom */}
                 <div className="flex items-center justify-between pt-2">
                   <label className={`flex items-center gap-2 cursor-pointer ${autoProgress ? 'text-green-600 dark:text-green-400 font-medium' : ''}`}>
@@ -1714,7 +2000,7 @@ const handleSaveGenerator = async (metadata) => {
                       onChange={(e) => setAutoProgress(e.target.checked)}
                       className="w-4 h-4 text-green-600 rounded"
                     />
-                    <span className={`text-sm ${textClass}`}>Auto-progress through agents</span>
+                    <span className={`text-sm ${textClass}`}>Auto-Agent Pipeline</span>
                     {autoProgress && (
                       <span className="text-xs px-2 py-0.5 rounded bg-green-500 text-white">ON</span>
                     )}
@@ -1733,33 +2019,51 @@ const handleSaveGenerator = async (metadata) => {
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={handleProcess}
-                    disabled={loading || !inputText.trim()}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
-                  >
-                    {loading ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-5 h-5" />
-                        Start Processing
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={resetDemo}
-                    className={`px-6 py-3 rounded-lg font-medium transition ${
-                      darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-                    }`}
-                  >
-                    Reset
-                  </button>
-                </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    if (processingStage === 'idle') {
+                      handleParse();  // Start with parsing only
+                    } else if (processingStage === 'parsing_done') {
+                      handleReason();  // Then reasoning
+                    } else if (processingStage === 'reasoning_done') {
+                      handleGenerate();  // Then generation
+                    } else if (processingStage === 'generating_done') {
+                      handleValidate();  // Finally validation
+                    }
+                  }}
+                  disabled={loading || !inputText.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                      {processingStage === 'parsing' && 'Parsing...'}
+                      {processingStage === 'reasoning' && 'Analyzing...'}
+                      {processingStage === 'generating' && 'Generating...'}
+                      {processingStage === 'validating' && 'Validating...'}
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle className="w-5 h-5" />
+                      {processingStage === 'idle' && 'Start Parsing'}
+                      {processingStage === 'parsing_done' && 'Start Reasoning'}
+                      {processingStage === 'reasoning_done' && 'Generate ODRL'}
+                      {processingStage === 'generating_done' && 'Validate Policy'}
+                      {processingStage === 'complete' && 'Complete! Start Over'}
+                    </>
+                  )}
+                </button>
+                
+                <button
+                  onClick={resetDemo}
+                  className={`px-6 py-3 rounded-lg font-medium transition ${
+                    darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+                  }`}
+                >
+                  Reset
+                </button>
+              </div>
               </div>
             </div>
         
@@ -1821,7 +2125,7 @@ const handleSaveGenerator = async (metadata) => {
         <div className={`p-12 text-center ${mutedTextClass}`}>
           <Brain className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p>Please parse text first</p>
-          <p className="text-sm mt-2">Go to Parser tab and click "Start Processing"</p>
+          <p className="text-sm mt-2">Go to Parser tab and click "Start Parsing"</p>
         </div>
       </div>
     ) : (
@@ -1839,7 +2143,7 @@ const handleSaveGenerator = async (metadata) => {
           onEdit={() => {
             console.log('[App] User wants to edit - returning to Parser');
             setActiveTab('parser');
-            showToast('Edit your policy text and click "Start Processing" again', 'info');
+            showToast('Edit your policy text and click "Start Parsing" again', 'info');
           }}
           onSave={handleSaveReasoning}
         />
@@ -1885,7 +2189,20 @@ const handleSaveGenerator = async (metadata) => {
     originalText={inputText}  
          
   />
-)}   
+)}  
+ 
+{/* Status Tab */}
+{activeTab === 'status' && (
+  <StatusTab
+    agentStates={agentStates}
+    metrics={metrics}
+    processingProgress={processingProgress}
+    processingStage={processingStage}
+    sseConnected={sseConnected}
+    sessionId={sessionId.current}
+    darkMode={darkMode}
+  />
+)}
       </div>
 
      {/* SETTINGS MODAL*/}
@@ -1917,7 +2234,8 @@ const handleSaveGenerator = async (metadata) => {
               localStorage.setItem('selectedModel', newModel);  //  Save to localStorage
               showToast('Model updated', 'success');
             }}
-            className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+            // className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+            className={`w-full h-2 px-2 py-2 bg-transparent rounded-lg resize-none focus:outline-none ${textClass}`}
             disabled={!backendConnected}
           >
             {!backendConnected && <option>Backend not connected</option>}

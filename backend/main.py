@@ -16,8 +16,10 @@ from fastapi import UploadFile, File
 from fastapi import FastAPI, HTTPException, Request  
 from fastapi.responses import JSONResponse 
 from urllib.parse import unquote
+from fastapi.responses import StreamingResponse
+from asyncio import Queue
+import asyncio
 
-# Add this import
 from utils.request_utils import run_with_disconnect_check
 from utils.rdf_converter import jsonld_to_turtle   
 from utils.logger_utils import log_request, logger
@@ -212,6 +214,41 @@ class CustomModelRequest(BaseModel):
     api_key: Optional[str] = None
     context_length: Optional[int] = 4096
     temperature: Optional[float] = 0.3 
+    
+    
+    
+# Global status tracker
+status_queues = {}
+
+@app.get("/api/agent-status/{session_id}")
+async def agent_status_stream(session_id: str):
+    """Stream agent status updates"""
+    queue = Queue()
+    status_queues[session_id] = queue
+    
+    async def event_generator():
+        try:
+            while True:
+                status = await queue.get()
+                yield f"data: {json.dumps(status)}\n\n"
+        except asyncio.CancelledError:
+            del status_queues[session_id]
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream"
+    )
+
+# Helper to broadcast status
+async def update_agent_status(session_id: str, agent: str, status: str, progress: int = 0):
+    """Send status update to frontend"""
+    if session_id in status_queues:
+        await status_queues[session_id].put({
+            "agent": agent,
+            "status": status,  # "pending" | "active" | "done" | "error"
+            "progress": progress,
+            "timestamp": time.time()
+        })
 
 # ============================================
 # BASIC ENDPOINTS
@@ -527,25 +564,36 @@ async def import_custom_models(data: Dict[str, Any]):
 # AGENT ENDPOINTS
 # ============================================
 @app.post("/api/parse")
-async def parse_text(request: Request, data: ParseRequest): 
+async def parse_text(request: Request, data: ParseRequest):
     """Agent 1: Parse text with disconnect detection"""
     if not AGENTS_AVAILABLE:
         raise HTTPException(status_code=503, detail="Agents not available")
-    
+
+    # Check if client disconnected before starting
     if await request.is_disconnected():
         logger.warning("Client disconnected before parsing started")
         return JSONResponse(
             status_code=499,  # Client Closed Request
             content={"detail": "Request cancelled by client"}
         )
-    
+
     logger.info(f"Parse request: model={data.model}")
     start = time.time()
-    
+
+    # Session ID for agent status
+    session_id = request.headers.get("X-Session-ID", "default")
+
+    # --- Agent status: ACTIVE ---
+    await update_agent_status(session_id, "parser", "active", 10)
+
     try:
-        # Create parser
+        # --- Create parser ---
         if data.custom_model:
-            logger.info(f"Using custom model: {data.custom_model.get('provider_type')} - {data.custom_model.get('model_id')}")
+            logger.info(
+                f"Using custom model: "
+                f"{data.custom_model.get('provider_type')} - "
+                f"{data.custom_model.get('model_id')}"
+            )
             parser = TextParser(
                 model=data.model,
                 temperature=data.temperature,
@@ -553,29 +601,33 @@ async def parse_text(request: Request, data: ParseRequest):
             )
         else:
             parser = TextParser(model=data.model, temperature=data.temperature)
-        
+
+        # --- Execute parsing with disconnect detection ---
         result = await run_with_disconnect_check(
             parser.parse,
             request,
             data.text
         )
-        
+
+        # If cancelled mid-processing
         if result is None:
             logger.warning("Parsing cancelled by client")
+            await update_agent_status(session_id, "parser", "cancelled", 0)
             return JSONResponse(
                 status_code=499,
                 content={"detail": "Request cancelled by client"}
             )
-        
         elapsed_ms = int((time.time() - start) * 1000)
-        result['processing_time_ms'] = elapsed_ms
-        result['model_used'] = data.model or DEFAULT_MODEL
-        
+        result["processing_time_ms"] = elapsed_ms
+        result["model_used"] = data.model or DEFAULT_MODEL
         logger.info(f"Parse complete: {elapsed_ms}ms")
+        await update_agent_status(session_id, "parser", "done", 100)
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Parse error: {e}")
+        await update_agent_status(session_id, "parser", "error", 0)
         raise HTTPException(status_code=500, detail=str(e))
 
 

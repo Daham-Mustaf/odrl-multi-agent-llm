@@ -1,0 +1,11 @@
+{
+  "name": "ppppp",
+  "description": "",
+  "saved_at": "2025-11-17T13:03:37.392867",
+  "odrl_turtle": "@prefix odrl: <http://www.w3.org/ns/odrl/2/> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix dct: <http://purl.org/dc/terms/> .\n@prefix ex: <http://example.com/> .\n\nex:policy:6ea2b92d a odrl:Policy, odrl:Set ;\n    odrl:uid ex:policy:6ea2b92d ;\n    dct:title \"Document Access Policy\"@en ;\n    dct:description \"Users can read and print the document but cannot modify or distribute it until December 31, 2025.\"@en ;\n    dct:creator ex:organization:example ;\n    dct:created \"2025-01-16T00:00:00Z\"^^xsd:dateTime ;\n    odrl:permission [\n        a odrl:Permission ;\n        odrl:action odrl:read ;\n        odrl:target ex:document ;\n        odrl:assignee ex:user ;\n        odrl:constraint [\n            a odrl:Constraint ;\n            odrl:leftOperand odrl:dateTime ;\n            odrl:operator odrl:lteq ;\n            odrl:rightOperand \"2025-12-31\"^^xsd:date ;\n            rdfs:comment \"Policy expires on December 31, 2025.\"@en ;\n        ] ;\n    ] ;\n    odrl:permission [\n        a odrl:Permission ;\n        odrl:action odrl:print ;\n        odrl:target ex:document ;\n        odrl:assignee ex:user ;\n        odrl:constraint [\n            a odrl:Constraint ;\n            odrl:leftOperand odrl:dateTime ;\n            odrl:operator odrl:lteq ;\n            odrl:rightOperand \"2025-12-31\"^^xsd:date ;\n            rdfs:comment \"Policy expires on December 31, 2025.\"@en ;\n        ] ;\n    ] ;\n    odrl:prohibition [\n        a odrl:Prohibition ;\n        odrl:action odrl:modify ;\n        odrl:target ex:document ;\n        odrl:assignee ex:user ;\n    ] ;\n    odrl:prohibition [\n        a odrl:Prohibition ;\n        odrl:action odrl:distribute ;\n        odrl:target ex:document ;\n        odrl:assignee ex:user ;\n    ] .",
+  "metadata": {
+    "attempt_number": 1,
+    "processing_time_ms": 16595,
+    "model_used": "default"
+  }
+}

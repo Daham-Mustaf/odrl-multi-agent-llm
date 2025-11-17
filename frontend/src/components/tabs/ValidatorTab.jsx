@@ -217,78 +217,48 @@ export const ValidatorTab = ({
         </div>
       )}
 
-      {/*  NEW: Collapsible Original Statement */}
-      {!isRegenerating && originalText && (
-        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-          <button
-            onClick={() => setShowOriginal(!showOriginal)}
-            className={`w-full px-6 py-4 flex items-center justify-between transition ${
-              darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <FileText className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-              <h3 className={`text-lg font-bold ${textClass}`}>
-                Original Policy Statement
-              </h3>
-            </div>
-            {showOriginal ? (
-              <ChevronUp className={`w-5 h-5 ${mutedTextClass}`} />
-            ) : (
-              <ChevronDown className={`w-5 h-5 ${mutedTextClass}`} />
-            )}
-          </button>
-          
-          {showOriginal && (
-            <div className="px-6 pb-6">
-              <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4`}>
-                <p className={`text-sm ${textClass}`}>
-                  {originalText}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Original Statement (always visible, not collapsible) */}
+{!isRegenerating && originalText && (
+  <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+    <div className="px-6 py-4 flex items-start gap-3">
+      <FileText className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+      <div className="flex-1">
+        <h3 className={`text-lg font-bold ${textClass} mb-2`}>
+          Original Policy Statement:
+        </h3>
+        <p className={`text-sm ${textClass}`}>
+          {originalText}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
-      {/*  NEW: Collapsible Generated Policy */}
-      {!isRegenerating && generatedODRL && generatedODRL.odrl_turtle && (
-        <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-          <button
-            onClick={() => setShowPolicy(!showPolicy)}
-            className={`w-full px-6 py-4 flex items-center justify-between transition ${
-              darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Code className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-              <h3 className={`text-lg font-bold ${textClass}`}>
-                Generated Policy (Turtle)
-              </h3>
-              {generatedODRL.attempt_number && generatedODRL.attempt_number > 1 && (
-                <span className="text-xs px-2 py-1 bg-orange-500 text-white rounded">
-                  Attempt #{generatedODRL.attempt_number}
-                </span>
-              )}
-            </div>
-            {showPolicy ? (
-              <ChevronUp className={`w-5 h-5 ${mutedTextClass}`} />
-            ) : (
-              <ChevronDown className={`w-5 h-5 ${mutedTextClass}`} />
-            )}
-          </button>
-          
-          {showPolicy && (
-            <div className="px-6 pb-6">
-              <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-96`}>
-                <pre className={`text-sm ${textClass} font-mono`}>
-                  {generatedODRL.odrl_turtle}
-                </pre>
-              </div>
-            </div>
-          )}
+
+     {/* Generated Policy (always visible, not collapsible) */}
+{!isRegenerating && generatedODRL && generatedODRL.odrl_turtle && (
+  <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+    <div className="px-6 py-4 flex items-start gap-3">
+      <Code className={`w-5 h-5 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+      <div className="flex-1">
+        <h3 className={`text-lg font-bold ${textClass} mb-2`}>
+          Generated Policy (Turtle)
+        </h3>
+        {generatedODRL.attempt_number && generatedODRL.attempt_number > 1 && (
+          <span className="text-xs px-2 py-1 bg-orange-500 text-white rounded">
+            Attempt #{generatedODRL.attempt_number}
+          </span>
+        )}
+        <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 mt-2 overflow-auto max-h-96`}>
+          <pre className={`text-sm ${textClass} font-mono`}>
+            {generatedODRL.odrl_turtle}
+          </pre>
         </div>
-      )}
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Footer */}
       <div className={`flex items-center justify-between text-xs ${mutedTextClass}`}>
