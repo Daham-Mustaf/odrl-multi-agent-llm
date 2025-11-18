@@ -934,6 +934,7 @@ const handleGenerate = async () => {
     // Final UI progress
     setProcessingProgress(100);
     setProcessingStage('generating_done');
+    setProcessingProgress(0);
 
     // Notify user
     showToast('ODRL generated! Click "Validate Policy" to verify', 'success');
@@ -1035,6 +1036,7 @@ const handleValidate = async () => {
     }
     setProcessingStage('complete');
     setActiveTab('validator');
+    setProcessingProgress(0);
     showToast('Complete! All stages finished', 'success');
     
   } catch (error) {
@@ -1324,6 +1326,7 @@ const handleParse = async () => {
 
   setLoading(true);
   setProcessingStage('parsing');
+  setProcessingProgress(25);
   setError(null);
   setParsedData(null);
   
@@ -1348,6 +1351,7 @@ const handleParse = async () => {
     updateAgentState('parser', 'completed');
     
     setProcessingStage('parsing_done');
+    setProcessingProgress(0); 
     setActiveTab('parser');
     showToast('Parsing complete! Click "Start Reasoning" to continue', 'success');
     
@@ -1357,6 +1361,7 @@ const handleParse = async () => {
     showToast(`Parse error: ${errorMessage}`, 'error');
     updateAgentState('parser', 'error');
     setProcessingStage('idle');
+    setProcessingProgress(0); 
   } finally {
     setLoading(false);
   }
@@ -1394,6 +1399,7 @@ const handleReason = async () => {
     updateAgentState('reasoner', 'completed');
     
     setProcessingStage('reasoning_done');
+    setProcessingProgress(0); 
     setActiveTab('reasoner');
     showToast('Analysis complete! Review results or click "Generate ODRL"', 'success');
     

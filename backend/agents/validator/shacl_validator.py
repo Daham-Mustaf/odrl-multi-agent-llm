@@ -588,7 +588,7 @@ class ODRLValidationTool:
         self.validators = [
             PolicyStructureValidator(),
             ConstraintStructureValidator(),
-            # ConstraintCompatibilityValidator(),
+            ConstraintCompatibilityValidator(),
             LogicalConstraintValidator(),
             # ============================================
             # TODO: ADD NEW VALIDATORS HERE
