@@ -225,13 +225,22 @@ useEffect(() => {
     // Then restore selected model from localStorage
     const savedModel = localStorage.getItem('selectedModel');
     if (savedModel) {
+      console.log('[Init] Restoring saved model:', savedModel);
       setSelectedModel(savedModel);
-      console.log('Restored selected model:', savedModel);
+    } else {
+      console.log('[Init] No saved model, using default');
     }
   };
   
   initializeApp();
 }, []);
+
+
+useEffect(() => {
+  console.log('[Debug] Selected Model Changed:', selectedModel);
+  console.log('[Debug] Available Custom Models:', customModels.map(m => m.value));
+  console.log('[Debug] Available Provider Models:', providers.flatMap(p => p.models).map(m => m.value));
+}, [selectedModel, customModels, providers]);
 
 
 const loadProviders = async () => {
@@ -1535,13 +1544,21 @@ const handleSaveGenerator = async (metadata) => {
 
               {/* Model Info in Header */}
             {backendConnected && selectedModel && (
-              <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
-                {/* Show custom model label if it's a custom model */}
-                {customModels.find(m => m.value === selectedModel)?.label ||
-                providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
-                'Unknown Model'}
-              </div>
-            )}
+  <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
+    {(() => {
+      // Try custom models first
+      const customModel = customModels.find(m => m.value === selectedModel);
+      if (customModel) return customModel.label;
+      
+      // Then provider models
+      const providerModel = providers.flatMap(p => p.models).find(m => m.value === selectedModel);
+      if (providerModel) return providerModel.label;
+      
+      // Fallback
+      return selectedModel;
+    })()}
+  </div>
+)}
 
               {/* Settings Button */}
               <button
@@ -1930,41 +1947,35 @@ const handleSaveGenerator = async (metadata) => {
         </p>
       </div>
 
-      {/* Agent model selectors */}
       {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
-        <div key={agent}>
-          <label
-            className={`block text-sm font-medium mb-2 ${textClass} capitalize`}
-          >
-            {agent} Model
-          </label>
-
-          <select
-            value={agentModels[agent] || ''}
-            onChange={(e) =>
-              setAgentModels({
-                ...agentModels,
-                [agent]: e.target.value || null,
-              })
-            }
-            className={`w-full px-3 py-2 ${
-              darkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300'
-            } border rounded-lg text-sm`}
-          >
-            {/* Default Option */}
-            <option value="">
-              Use default (
-              {selectedModel
-                ? providers
-                    .flatMap((p) => p.models)
-                    .find((m) => m.value === selectedModel)?.label ||
-                  customModels.find((m) => m.value === selectedModel)?.label ||
-                  'llama3.3'
-                : 'llama3.3'}
-              )
-            </option>
+  <div key={agent}>
+    <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
+      {agent} Model
+    </label>
+    <select
+      value={agentModels[agent] || ''}
+      onChange={(e) => {
+        const newValue = e.target.value || null;
+        console.log(`[Advanced] ${agent} model changed to:`, newValue);
+        setAgentModels({
+          ...agentModels,
+          [agent]: newValue,
+        });
+      }}
+      className={`w-full px-3 py-2 ${
+        darkMode
+          ? 'bg-gray-700 border-gray-600 text-white'
+          : 'bg-white border-gray-300'
+      } border rounded-lg text-sm`}
+    >
+      {/* Default Option */}
+      <option value="">
+        Use default ({selectedModel
+          ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
+            customModels.find(m => m.value === selectedModel)?.label ||
+            'Unknown'
+          : 'llama3.3'})
+      </option>
 
             {/* Default Provider Models */}
             {providers.length > 0 && (
@@ -2236,12 +2247,12 @@ const handleSaveGenerator = async (metadata) => {
             value={selectedModel || ''}
             onChange={(e) => {
               const newModel = e.target.value;
+              console.log('[Settings] Model changed to:', newModel);
               setSelectedModel(newModel);
-              localStorage.setItem('selectedModel', newModel);  //  Save to localStorage
-              showToast('Model updated', 'success');
+              localStorage.setItem('selectedModel', newModel);
+              showToast(`Model updated: ${providers.flatMap(p => p.models).find(m => m.value === newModel)?.label || customModels.find(m => m.value === newModel)?.label || 'Unknown'}`, 'success');
             }}
-            // className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-            className={`w-full h-2 px-2 py-2 bg-transparent rounded-lg resize-none focus:outline-none ${textClass}`}
+            className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
             disabled={!backendConnected}
           >
             {!backendConnected && <option>Backend not connected</option>}

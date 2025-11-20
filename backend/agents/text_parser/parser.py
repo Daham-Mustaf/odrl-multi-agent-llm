@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from enum import Enum
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 from utils.llm_factory import LLMFactory
 import logging
 
