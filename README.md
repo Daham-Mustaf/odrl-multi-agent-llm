@@ -18,6 +18,21 @@ A demo project showcasing a **multi-agent LLM framework** for **ODRL policy gene
 git clone https://github.com/Daham-Mustaf/odrl-multi-agent-llm.git
 cd odrl-multi-agent-llm
 ```
+2. ## Run Backend
+
+The backend is built with **Python** and **FastAPI**. It is located in the `backend` directory.  
+
+### Development
+
+```bash
+cd backend
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload
 
 
 ## Version
