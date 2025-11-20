@@ -94,7 +94,7 @@ async def test_parse_empty_file_fails(mock_empty_file):
     
     assert exc_info.value.status_code == 400
     assert "empty" in str(exc_info.value.detail).lower()
-    print("✅ Empty file validation test passed")
+    print(" Empty file validation test passed")
 
 @pytest.mark.asyncio
 async def test_parse_large_file_fails(mock_large_file):

@@ -287,7 +287,7 @@ class TextParser:
             logger.info(f"[Parser] Extraction complete")
             logger.info(f"[Parser] Total policies: {result.total_policies}")
             
-            # ✅ FIXED LOGGING
+            #  FIXED LOGGING
             if result.total_policies > 0:
                 policy = result.policies[0]
                 

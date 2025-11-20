@@ -10,7 +10,7 @@ Transform natural language descriptions into valid ODRL (Open Digital Rights Lan
 
 ---
 
-## ✨ Features
+## Features
 
 - 🤖 **Multi-Agent Architecture**: Four specialized agents (Parser, Reasoner, Generator, Validator)
 -  **Flexible LLM Support**: Works with Ollama, Groq, OpenAI, Claude, and custom models
@@ -19,11 +19,11 @@ Transform natural language descriptions into valid ODRL (Open Digital Rights Lan
 - 🌙 **Dark Mode**: Professional aesthetic for demos and presentations
 - 📊 **SHACL Validation**: Automatic validation against ODRL specifications
 - 🔧 **Zero-Configuration**: Auto-detects available LLM providers
-- 💰 **FREE Options**: Full support for Groq's free tier
+-  **FREE Options**: Full support for Groq's free tier
 
 ---
 
-## 🎯 Quick Start (2 Minutes)
+## Quick Start (2 Minutes)
 
 ### Prerequisites
 - Python 3.8+
@@ -207,11 +207,11 @@ Interactive API docs: `http://localhost:8000/docs`
 ```
 
 ### Key Features for Papers
-- ✅ Multi-agent architecture demonstration
-- ✅ LLM flexibility (local, cloud, custom)
-- ✅ Performance metrics collection
-- ✅ SHACL validation integration
-- ✅ Real-world policy examples
+-  Multi-agent architecture demonstration
+-  LLM flexibility (local, cloud, custom)
+-  Performance metrics collection
+-  SHACL validation integration
+-  Real-world policy examples
 
 ---
 

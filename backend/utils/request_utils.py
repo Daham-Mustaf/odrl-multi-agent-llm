@@ -85,7 +85,7 @@ async def run_with_disconnect_check(
                 # Wait for cancellation to complete
                 await task
             except asyncio.CancelledError:
-                logger.info(f"✅ {func.__name__} cancelled successfully")
+                logger.info(f" {func.__name__} cancelled successfully")
             
             return None
         
@@ -129,7 +129,7 @@ async def run_async_with_disconnect_check(
             try:
                 await task
             except asyncio.CancelledError:
-                logger.info(f"✅ {async_func.__name__} cancelled")
+                logger.info(f" {async_func.__name__} cancelled")
             return None
         
         await asyncio.sleep(check_interval)

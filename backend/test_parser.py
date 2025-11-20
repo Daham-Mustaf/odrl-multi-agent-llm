@@ -372,7 +372,7 @@ def main():
         print("   Reasoner compatibility: PASSED")
         print("   Extraction accuracy: PASSED")
         print("   Edge cases: PASSED")
-        print("\n✅ Safe to deploy to production backend")
+        print("\n Safe to deploy to production backend")
         print("="*80)
         
     except AssertionError as e:

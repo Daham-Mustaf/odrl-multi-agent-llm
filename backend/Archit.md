@@ -165,10 +165,10 @@
 ┌────────────────────────────────────────────────────────────────┐
 │                    FINAL OUTPUT                                 │
 │  ────────────────────────────────────────────────────────────  │
-│  ✅ Valid ODRL JSON-LD policy                                  │
-│  ✅ SHACL validation report                                    │
-│  ✅ Processing metrics                                         │
-│  ✅ Audit trail (original text → parsed → reasoned → ODRL)    │
+│   Valid ODRL JSON-LD policy                                  │
+│   SHACL validation report                                    │
+│   Processing metrics                                         │
+│   Audit trail (original text → parsed → reasoned → ODRL)    │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -186,7 +186,7 @@ User clicks "Start Processing"
 │ ─────────────────────────────────────────────────────────│
 │ Input:  "Users can read documents until 2025"            │
 │ Output: Structured entities (2 policies extracted)       │
-│ Status: ✅ Complete                                       │
+│ Status:  Complete                                       │
 └───────────────────────────────────────────────────────────┘
         ↓ (auto-continue)
 ┌───────────────────────────────────────────────────────────┐
@@ -195,7 +195,7 @@ User clicks "Start Processing"
 │ Analysis: Policy complete, no conflicts                  │
 │ Decision: APPROVE (confidence: 0.95)                     │
 │ Issues:   1 warning (no explicit document URI)           │
-│ Status:   ✅ Approved                                     │
+│ Status:    Approved                                     │
 └───────────────────────────────────────────────────────────┘
         ↓ (auto-continue if approved)
 ┌───────────────────────────────────────────────────────────┐
@@ -203,15 +203,15 @@ User clicks "Start Processing"
 │ ─────────────────────────────────────────────────────────│
 │ Template: odrl:Set with permission + temporal constraint │
 │ Output:   Valid ODRL JSON-LD (256 lines)                 │
-│ Status:   ✅ Generated                                    │
+│ Status:    Generated                                    │
 └───────────────────────────────────────────────────────────┘
         ↓ (auto-continue)
 ┌───────────────────────────────────────────────────────────┐
 │ VALIDATE (1s)                                             │
 │ ─────────────────────────────────────────────────────────│
-│ SHACL:    ✅ Conforms to ODRL 2.2                        │
+│ SHACL:     Conforms to ODRL 2.2                        │
 │ Issues:   0 violations, 1 recommendation                 │
-│ Status:   ✅ Valid                                        │
+│ Status:    Valid                                        │
 └───────────────────────────────────────────────────────────┘
         ↓
     DONE! (Total: 8 seconds)
@@ -226,7 +226,7 @@ User clicks "Start Processing"
         ↓
 ┌───────────────────────────────────────────────────────────┐
 │ PARSE (2s)                                                │
-│ Status: ✅ Complete                                       │
+│ Status:  Complete                                       │
 └───────────────────────────────────────────────────────────┘
         ↓
 ┌───────────────────────────────────────────────────────────┐
@@ -377,8 +377,8 @@ const parsedData = await parseResponse.json()
 const reasonResponse = await fetch('/api/reason', {
   method: 'POST',
   body: JSON.stringify({
-    parsed_data: parsedData,           // ✅ Pass parser output
-    original_text: "Users can read...", // ✅ Pass original text
+    parsed_data: parsedData,           //  Pass parser output
+    original_text: "Users can read...", //  Pass original text
     model: "ollama:llama3.3",
     temperature: 0.3
   })
@@ -426,9 +426,9 @@ if (manualMode && reasoningResult.decision !== "approve") {
 const generateResponse = await fetch('/api/generate', {
   method: 'POST',
   body: JSON.stringify({
-    parsed_data: parsedData,           // ✅ Original parser output
-    original_text: "Users can read...", // ✅ Original text
-    reasoning: reasoningResult,         // ✅ Optional context
+    parsed_data: parsedData,           //  Original parser output
+    original_text: "Users can read...", //  Original text
+    reasoning: reasoningResult,         //  Optional context
     model: "ollama:llama3.3",
     temperature: 0.3
   })
@@ -475,7 +475,7 @@ const validationResult = await validateResponse.json()
 // ====================================
 // DONE!
 // ====================================
-console.log("✅ Complete workflow finished!")
+console.log(" Complete workflow finished!")
 console.log(`Total time: ${
   parsedData.processing_time_ms +
   reasoningResult.processing_time_ms +
@@ -519,8 +519,8 @@ async def reason(request: Request, data: Dict):
         result = await run_with_disconnect_check(
             reasoner.reason,
             request,
-            data['parsed_data'],      # ✅ Parser output
-            data['original_text']      # ✅ Original text
+            data['parsed_data'],      #  Parser output
+            data['original_text']      #  Original text
         )
         
         return result
@@ -559,9 +559,9 @@ async def generate(request: Request, data: Dict):
         odrl = await run_with_disconnect_check(
             generator.generate,
             request,
-            data['parsed_data'],       # ✅ Parser output
-            data['original_text'],     # ✅ Original text
-            data.get('reasoning')      # ✅ Optional reasoning
+            data['parsed_data'],       #  Parser output
+            data['original_text'],     #  Original text
+            data.get('reasoning')      #  Optional reasoning
         )
         
         return {

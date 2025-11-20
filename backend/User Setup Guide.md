@@ -107,10 +107,10 @@ DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
 **Pros:**
-- ✅ Completely FREE
-- ✅ Very fast (optimized hardware)
-- ✅ No installation needed
-- ✅ Works on any computer
+-  Completely FREE
+-  Very fast (optimized hardware)
+-  No installation needed
+-  Works on any computer
 
 **Cons:**
 -  Requires internet
@@ -151,9 +151,9 @@ DEFAULT_MODEL=ollama:llama3.1:8b
 ```
 
 **Pros:**
-- ✅ Completely private/offline
-- ✅ No API keys needed
-- ✅ Unlimited usage
+-  Completely private/offline
+-  No API keys needed
+-  Unlimited usage
 
 **Cons:**
 -  Requires powerful hardware
@@ -183,9 +183,9 @@ DEFAULT_MODEL=ollama:llama3.1:70b
 ```
 
 **Pros:**
-- ✅ Access to powerful models (70B, 405B)
-- ✅ Fast processing
-- ✅ Institutional support
+-  Access to powerful models (70B, 405B)
+-  Fast processing
+-  Institutional support
 
 **Cons:**
 -  Requires institutional access
@@ -226,9 +226,9 @@ DEFAULT_MODEL=anthropic:claude-3-sonnet-20240229
 ```
 
 **Pros:**
-- ✅ Highest quality models
-- ✅ Very reliable
-- ✅ No hardware needed
+-  Highest quality models
+-  Very reliable
+-  No hardware needed
 
 **Cons:**
 -  Costs money ($)
@@ -300,7 +300,7 @@ uvicorn main:app --reload
 # You should see:
 # 🚀 Starting ODRL Policy Generator API
 # 📍 API: http://localhost:8000
-# ✅ Backend Connected
+#  Backend Connected
 ```
 
 ### Step 2: Open GUI
@@ -505,7 +505,7 @@ ENABLE_GROQ=true
 - Any OS (Windows/Mac/Linux)
 - 2GB RAM
 - No GPU needed
-- ✅ **Easiest option!**
+-  **Easiest option!**
 
 **For Local Ollama:**
 - 8GB RAM (16GB recommended)
@@ -523,10 +523,10 @@ ENABLE_GROQ=true
 ## 🎓 What Users Should Know
 
 ### Before Starting:
-1. ✅ Basic terminal/command line usage
-2. ✅ How to edit text files (`.env`)
-3. ✅ Web browser basics
-4. ✅ ODRL basics (helpful but not required)
+1.  Basic terminal/command line usage
+2.  How to edit text files (`.env`)
+3.  Web browser basics
+4.  ODRL basics (helpful but not required)
 
 ### You DON'T need to know:
 -  Programming/coding
@@ -606,7 +606,7 @@ uvicorn main:app --reload  # Watch console output
 
 ---
 
-## ✅ Success Checklist
+##  Success Checklist
 
 Before using the system, verify:
 
@@ -624,11 +624,11 @@ Before using the system, verify:
 
 ## 🎯 Next Steps
 
-1. ✅ Complete setup using this guide
-2. ✅ Try all 4 example policies
-3. ✅ Write your first custom policy
-4. ✅ Experiment with different models
-5. ✅ Export and use generated ODRL policies
-6. ✅ Read ODRL documentation for advanced usage
+1.  Complete setup using this guide
+2.  Try all 4 example policies
+3.  Write your first custom policy
+4.  Experiment with different models
+5.  Export and use generated ODRL policies
+6.  Read ODRL documentation for advanced usage
 
 **Happy policy generating! 🚀**

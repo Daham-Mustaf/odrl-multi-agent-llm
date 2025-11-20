@@ -28,7 +28,7 @@ class Validator:
     
     def validate(
         self, 
-        odrl_turtle: str,  # ✅ Now accepts Turtle string directly
+        odrl_turtle: str,  #  Now accepts Turtle string directly
         original_text: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -53,7 +53,7 @@ class Validator:
             )
             
             if report.is_valid:
-                print("[Validator] ✅ Policy is valid!")
+                print("[Validator]  Policy is valid!")
                 return {
                     'is_valid': True,
                     'issues': [],

@@ -245,8 +245,8 @@
 #     logger.info("=" * 60)
 #     logger.info(f"📍 API: http://localhost:8000")
 #     logger.info(f"📚 Docs: http://localhost:8000/docs")
-#     logger.info(f"✅ Agents: {AGENTS_AVAILABLE}")
-#     logger.info(f"✅ Factory: {FACTORY_AVAILABLE}")
+#     logger.info(f" Agents: {AGENTS_AVAILABLE}")
+#     logger.info(f" Factory: {FACTORY_AVAILABLE}")
 #     logger.info("=" * 60)
 
 # if __name__ == "__main__":

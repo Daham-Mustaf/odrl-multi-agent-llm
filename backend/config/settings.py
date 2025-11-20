@@ -116,15 +116,15 @@ def log_configuration():
     print()
     print("🔌 ENABLED PROVIDERS:")
     if ENABLE_OLLAMA:
-        print(f"  ✅ Ollama (Local): {OLLAMA_BASE_URL}")
+        print(f"   Ollama (Local): {OLLAMA_BASE_URL}")
     if ENABLE_FITS:
-        print(f"  ✅ FITS Server: {FITS_SERVER_URL}")
+        print(f"   FITS Server: {FITS_SERVER_URL}")
     if ENABLE_GROQ:
-        print(f"  ✅ Groq Cloud: {GROQ_BASE_URL}")
+        print(f"   Groq Cloud: {GROQ_BASE_URL}")
     if ENABLE_OPENAI:
-        print(f"  ✅ OpenAI: {OPENAI_BASE_URL}")
+        print(f"   OpenAI: {OPENAI_BASE_URL}")
     if ENABLE_ANTHROPIC:
-        print(f"  ✅ Anthropic: {ANTHROPIC_BASE_URL}")
+        print(f"   Anthropic: {ANTHROPIC_BASE_URL}")
     print()
     print(f"🎯 Default Model: {DEFAULT_MODEL}")
     print(f"🌡️  Default Temperature: {DEFAULT_TEMPERATURE}")
