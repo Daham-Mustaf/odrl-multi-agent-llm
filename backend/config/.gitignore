@@ -4,5 +4,5 @@ custom_models.json
 # Keep backups out of git too
 *.backup_*
 
-# But keep the example template
+# Allow example template (DO NOT IGNORE IT)
 !custom_models.example.json
