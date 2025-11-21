@@ -6,6 +6,7 @@
 [![LangGraph](https://img.shields.io/badge/🕸️_LangGraph-121212?style=flat)](https://langchain-ai.github.io/langgraph/)
 [![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)](https://reactjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17670391.svg)](https://doi.org/10.5281/zenodo.17670391)
 
 > **Transform natural language into validated ODRL policies using multi-agent AI**
 
@@ -75,13 +76,35 @@ Developed at **Fraunhofer FIT** & **RWTH Aachen University** for:
 - Daten-Raum-Kultur (DRK)
 - Cultural Heritage Dataspaces
 
+
+## Authors
+
+
+- **Daham M. Mustafa** - Fraunhofer FIT, Sankt Augustin, Germany
+- **Diego Collarana** - Fraunhofer FIT, Sankt Augustin, Germany
+- **Christoph Lange** - Fraunhofer FIT & RWTH Aachen University, Germany
+- **Christoph Quix** - Fraunhofer FIT & RWTH Aachen University, Germany
+- **Stefan Decker** - Fraunhofer FIT & RWTH Aachen University, Germany
+
 ## Citation
+
+If you use this software in your research, please cite:
+
+**BibTeX:**
 ```bibtex
-@inproceedings{mustaf2026odrl,
-  title={ODRL Multi-Agent LLM: Automated Policy Generation with Human-in-the-Loop Validation},
-  author={Mustaf, Daham and others},
-  booktitle={TheWebConf 2026},
-  year={2026}
+@software{mustafa_2025_odrl,
+  author       = {Mustafa, Daham M. and
+                  Collarana, Diego and
+                  Lange, Christoph and
+                  Quix, Christoph and
+                  Decker, Stefan},
+  title        = {ODRL Multi-Agent LLM: A Multi-Agent System for 
+                  ODRL Policy Generation},
+  year         = 2025,
+  publisher    = {Zenodo},
+  version      = {v2.1.0},
+  doi          = {10.5281/zenodo.17670391},
+  url          = {https://doi.org/10.5281/zenodo.17670391}
 }
 ```
 
