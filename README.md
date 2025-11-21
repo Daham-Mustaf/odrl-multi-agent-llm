@@ -2,7 +2,7 @@
 
 Multi-agent system for generating, reasoning about, and validating ODRL policies using Large Language Models.
 
-## 🎯 Overview
+## Overview
 
 Transform natural language into validated ODRL policies through a 4-agent pipeline:
 
@@ -28,11 +28,11 @@ npm start
 
 Access at: http://localhost:3000
 
-**Production Deployment:** See [Deployment Guide →](docs/DEPLOYMENT.md)
+**Production Deployment:** See [Deployment Guide →](docs/README-DEPLOYMENT.md)
 
 ## Documentation
 
-- **[ Deployment Guide](docs/DEPLOYMENT.md)** - Production setup on Ubuntu
+- **[ Deployment Guide](docs/README-DEPLOYMENT.md)** - Production setup on Ubuntu
 - **[ Configuration](docs/CONFIGURATION.md)** - Environment variables and settings
 - **[ Docker Setup](docs/DOCKER.md)** - Container deployment
 - **[ Development](docs/DEVELOPMENT.md)** - Local development setup
