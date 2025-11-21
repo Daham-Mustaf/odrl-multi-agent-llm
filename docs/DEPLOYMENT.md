@@ -1,3 +1,4 @@
+```bash
 # Ubuntu Deployment Guide - ODRL Multi-Agent System
 
 ## Prerequisites
@@ -54,3 +55,4 @@ http://YOUR_SERVER_IP:3000
 ## Manage Services
 tmux attach -s odrl        # View services
 tmux kill-session -s odrl  # Stop services
+```
