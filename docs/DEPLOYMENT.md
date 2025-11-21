@@ -48,13 +48,22 @@ DEFAULT_TEMPERATURE=0.3
 uv sync
 ```
 
-### 5. Setup Frontend
+### 5. Configure Frontend
 ```bash
 cd ../frontend
-cat > .env << 'EOF'
+
+# Copy example file
+cp .env.example .env
+
+# Edit with your server IP
+nano .env
+```
+
+Update `REACT_APP_API_URL`:
+```bash
 REACT_APP_API_URL=http://YOUR_SERVER_IP:8000
 DISABLE_ESLINT_PLUGIN=true
-EOF
+```
 
 npm install
 ```
