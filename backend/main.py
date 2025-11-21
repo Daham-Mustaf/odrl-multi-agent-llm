@@ -19,9 +19,9 @@ from urllib.parse import unquote
 from fastapi.responses import StreamingResponse
 from asyncio import Queue
 import asyncio
+from contextlib import asynccontextmanager
 
 from utils.request_utils import run_with_disconnect_check
-from utils.rdf_converter import jsonld_to_turtle   
 from utils.logger_utils import log_request, logger
 
 
@@ -144,6 +144,62 @@ def save_custom_models_to_file(models: List[Dict]):
         import traceback
         logger.error(traceback.format_exc())
         return False
+    
+
+# ============================================
+# LIFESPAN EVENTS
+# ============================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan - runs on startup and shutdown
+    Uses modern async context manager instead of deprecated @app.on_event
+    """
+    import socket
+    
+    # ============================================
+    # STARTUP
+    # ============================================
+    
+    # Get server IP
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        local_ip = "localhost"
+    
+    logger.info("=" * 80)
+    logger.info("ODRL Policy Generator API Starting v2.1.0")
+    logger.info("=" * 80)
+    logger.info(f"🌐 Local:    http://localhost:8000")
+    logger.info(f"🌐 Network:  http://{local_ip}:8000")
+    logger.info(f"📚 API Docs: http://{local_ip}:8000/docs")
+    logger.info(f"📁 Config:   {CONFIG_DIR}")
+    logger.info(f"💾 Storage:  {CUSTOM_MODELS_FILE.name}")
+    logger.info(f"🤖 Agents:   {'✅' if AGENTS_AVAILABLE else '❌'}")
+    logger.info(f"🏭 Factory:  {'✅' if FACTORY_AVAILABLE else '❌'}")
+    
+    # Load custom models
+    custom_models = load_custom_models_from_file()
+    logger.info(f"Custom Models: {len(custom_models)} loaded")
+    
+    # Log configuration
+    log_configuration()
+    
+    logger.info("=" * 80)
+    logger.info("API Ready!")
+    logger.info("=" * 80)
+    
+    # Application runs here
+    yield
+    
+    # ============================================
+    # SHUTDOWN (Optional cleanup code)
+    # ============================================
+    logger.info("=" * 80)
+    logger.info("🔴 Shutting down ODRL API...")
+    logger.info("=" * 80)
 
 # ============================================
 # FASTAPI APP
@@ -152,7 +208,8 @@ def save_custom_models_to_file(models: List[Dict]):
 app = FastAPI(
     title="ODRL Policy Generator API",
     version="2.1.0",
-    description="Multi-agent LLM system for ODRL policy generation with custom model support"
+    description="Multi-agent LLM system for ODRL policy generation with custom model support",
+    lifespan=lifespan
 )
 
 # CORS (now using config)
@@ -791,28 +848,7 @@ async def debug_config():
 # STARTUP
 # ============================================
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("=" * 80)
-    logger.info("ODRL Policy Generator API Starting v2.1.0")
-    logger.info("=" * 80)
-    logger.info(f"API: http://localhost:8000")
-    logger.info(f"Docs: http://localhost:8000/docs")
-    logger.info(f"Config: {CONFIG_DIR}")
-    logger.info(f"Models Storage: {CUSTOM_MODELS_FILE.name}")
-    logger.info(f"Agents: {AGENTS_AVAILABLE}")
-    logger.info(f"Factory: {FACTORY_AVAILABLE}")
-    
-    # Load custom models
-    custom_models = load_custom_models_from_file()
-    logger.info(f"Custom Models: {len(custom_models)} loaded")
-    
-    # Log configuration
-    log_configuration()
-    
-    logger.info("=" * 80)
-    logger.info("API Ready!")
-    logger.info("=" * 80)
+# 
 
 if __name__ == "__main__":
     import uvicorn
