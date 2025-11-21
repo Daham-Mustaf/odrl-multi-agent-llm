@@ -11,7 +11,7 @@
 
 Automated generation of machine-readable data usage policies through a four-agent pipeline with human-in-the-loop validation.
 
-## Key Features
+##  Key Features
 
 - **4-Stage Pipeline**: Parser → Reasoner → Generator → Validator
 - **Dual Checkpoints**: Semantic conflict detection + SHACL validation
@@ -33,7 +33,7 @@ cd frontend && npm install && npm start
 
 **Production:** [📖 Deployment Guide →](docs/DEPLOYMENT.md)
 
-<!-- ## 🏗️ Architecture
+## Architecture
 ```mermaid
 graph LR
     A[Natural Language] --> B[Parser Agent]
@@ -44,7 +44,7 @@ graph LR
     F --> G{Checkpoint II}
     G -->|✓ Valid| H[ODRL Policy]
     G -->|✗ Invalid| F
-``` -->
+```
 
 ## Documentation
 
