@@ -1796,14 +1796,12 @@ const handleSaveGenerator = async (metadata) => {
 
                 <div className="p-6 space-y-4">
                   {/* Example Cards - Using Component */}
-                  {!inputText && (
-                    <ExamplePolicies
-                      onSelectExample={(text) => setInputText(text)}
-                      darkMode={darkMode}
-                      textClass={textClass}
-                      mutedTextClass={mutedTextClass}
-                    />
-                  )}
+                 <ExamplePolicies
+  onSelectExample={(text) => setInputText(text)}
+  darkMode={darkMode}
+  textClass={textClass}
+  mutedTextClass={mutedTextClass}
+/>
                 {/* Drag and Drop Text Area */}
                 <div
                   onDragEnter={handleDrag}
