@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { encodingForModel } from 'js-tiktoken';
-import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { AlertCircle, FileText, Brain, Code, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import DebugPanel from './components/DebugPanel'; 
 import { useAbortController } from './hooks/useAbortController';
 import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
@@ -329,7 +329,7 @@ const saveToBackend = async (model) => {
   }
   
   try {
-    console.log('📤 Sending to backend:', JSON.stringify(model, null, 2));
+    console.log(' Sending to backend:', JSON.stringify(model, null, 2));
     
     const response = await fetch(`${API_BASE_URL}/api/custom-models`, {
       method: 'POST',
@@ -342,11 +342,11 @@ const saveToBackend = async (model) => {
       return true;
     } else {
       const error = await response.json();
-      console.error('❌ Backend validation error:', JSON.stringify(error, null, 2));
+      console.error(' Backend validation error:', JSON.stringify(error, null, 2));
       return false;
     }
   } catch (err) {
-    console.error('❌ Error saving to backend:', err);
+    console.error(' Error saving to backend:', err);
     return false;
   }
 };
@@ -360,7 +360,7 @@ const mergeModels = (local, backend) => {
 };
 
 const addOrUpdateCustomModel = async (modelData) => {
-  console.log('📥 Input modelData:', modelData);
+  console.log(' Input modelData:', modelData);
   
   // Prepare model for FRONTEND (with value/label)
   const frontendModel = {
@@ -374,7 +374,7 @@ const addOrUpdateCustomModel = async (modelData) => {
     temperature: modelData.temperature || 0.3
   };
   
-  console.log('📤 Prepared for frontend:', frontendModel);
+  console.log(' Prepared for frontend:', frontendModel);
   
   // Update frontend state
   let updated = [...customModels];
@@ -405,7 +405,7 @@ const addOrUpdateCustomModel = async (modelData) => {
       temperature: modelData.temperature || 0.3
     };
     
-    console.log('📤 Sending to backend:', backendPayload);
+    console.log(' Sending to backend:', backendPayload);
     
     const success = await saveToBackend(backendPayload);
     if (success) {
@@ -424,7 +424,7 @@ const deleteCustomModel = async (modelValue) => {
     const modelId = modelValue.split(':').slice(1).join(':');
     const customValue = `custom:${modelId}`;
     
-    console.log('🗑️ Deleting:', customValue);
+    console.log(' Deleting:', customValue);
     
     // Delete from state
     const updated = customModels.filter(m => m.value !== modelValue);
@@ -446,12 +446,12 @@ const deleteCustomModel = async (modelValue) => {
         showToast('Model deleted successfully', 'success');
       } else {
         const error = await response.json();
-        console.error('❌ Delete failed:', error);
+        console.error(' Delete failed:', error);
         showToast('Failed to delete from backend', 'error');
       }
     }
   } catch (err) {
-    console.error('❌ Delete error:', err);
+    console.error(' Delete error:', err);
     showToast('Failed to delete model', 'error');
   }
 };
@@ -526,7 +526,7 @@ useEffect(() => {
   let connectionConfirmed = false;
   
   eventSource.onopen = () => {
-    console.log('[SSE] ✅ Connected to status stream');
+    console.log('[SSE]  Connected to status stream');
     setSseConnected(true);
     connectionConfirmed = true;
   };
@@ -535,7 +535,7 @@ useEffect(() => {
     try {
       // Fallback: confirm connection on first message if onopen didn't fire
       if (!connectionConfirmed) {
-        console.log('[SSE] ✅ Connection confirmed via first message');
+        console.log('[SSE]  Connection confirmed via first message');
         setSseConnected(true);
         connectionConfirmed = true;
       }
@@ -1524,7 +1524,7 @@ const handleSaveGenerator = async (metadata) => {
                   {backendConnected ? 'Backend Connected' : 'Backend Offline'}
                 </span>
               </div>
-              {/* ✅ ADD SSE STATUS HERE */}
+              {/*  ADD SSE STATUS HERE */}
               {backendConnected && (
                 <button
                   onClick={() => setActiveTab('status')}

@@ -308,3 +308,4 @@ class TextParser:
         except Exception as e:
             logger.error(f"[Parser] Error: {e}")
             raise
+

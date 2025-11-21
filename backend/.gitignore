@@ -20,8 +20,8 @@ env/
 # =====================================
 # All environment files (never commit secrets)
 .env
-.env.*
-!.env.example  # Keep the example env file
+.env.*       # ignores everything like .env.local, .env.production
+!.env.example  # allow the template file
 
 # Custom model storage (local data)
 config/llm_custom_models.json

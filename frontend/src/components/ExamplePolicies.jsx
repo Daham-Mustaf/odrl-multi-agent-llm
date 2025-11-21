@@ -7,7 +7,7 @@ const ExamplePolicies = ({ onSelectExample, darkMode, textClass, mutedTextClass 
   const examples = [
     { 
       title: "Document Policy",
-      text: "Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.",
+      text: "Users can read and print the document but cannot modify or distribute it. However, users are allowed to share modified versions with attribution. The policy expires on December 31, 2025.",
     },
     { 
       title: "Academic Dataset",
