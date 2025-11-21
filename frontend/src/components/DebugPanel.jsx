@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { EyeOff, Bug, Copy, CheckCircle } from 'lucide-react';
+import { API_URL } from '../config/api';
 
 const DebugPanel = ({
   darkMode,
@@ -351,7 +352,7 @@ return (
                       <span className={`ml-2 font-mono text-xs ${
                         darkMode ? 'text-gray-400' : 'text-gray-600'
                       }`}>
-                        {call.url.replace('http://localhost:8000', '')}
+                        {call.url.replace(API_URL, '')}
                       </span>
                     </div>
                     <button

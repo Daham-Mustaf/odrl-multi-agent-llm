@@ -1,257 +1,132 @@
-# ODRL Multi-Agent LLM - Ubuntu Deployment Guide (uv)
+# ODRL Multi-Agent LLM - Deployment Guide
 
-## Prerequisites
+## Quick Deployment (Ubuntu with UV)
+
+### Prerequisites
 - Ubuntu 22.04+
-- Python 3.11+ (avoid 3.14 - has Pydantic compatibility issues)
-- Node.js 20.x
-- uv (Python package manager)
 - Git
+- Internet connection
 
-## Quick Start with uv
-
-### Backend Setup
+### Installation
 ```bash
-cd /home/operation/src/odrl-multi-agent-llm/backend
+# 1. Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 
-# uv automatically creates .venv on first sync
-uv sync
+# 2. Clone repository
+git clone https://github.com/Daham-Mustaf/odrl-multi-agent-llm.git
+cd odrl-multi-agent-llm/backend
 
-# Activate virtual environment
-. .venv/bin/activate
-
-# Configure environment
+# 3. Configure environment
 cp .env.example .env
 nano .env  # Add your API keys
 
-# Run backend (accessible from network)
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# 4. Install dependencies
+uv sync
+
+# 5. Run backend
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Frontend Setup
+### Access
+- **API**: http://YOUR_SERVER_IP:8000/docs
+- **Health**: http://YOUR_SERVER_IP:8000/health
+
+### Production Setup
+
+#### Auto-start on Boot
 ```bash
-cd /home/operation/src/odrl-multi-agent-llm/frontend
-
-# Install Node.js 20.x (if not installed)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install dependencies
-npm install
-
-# Run frontend (accessible from network)
-HOST=0.0.0.0 PORT=3000 npm start
+sudo nano /etc/systemd/system/odrl-backend.service
 ```
 
-## Access URLs
-- **Backend API**: http://10.33.42.87:8000/docs
-- **Frontend**: http://10.33.42.87:3000
+**Service file:**
+```ini
+[Unit]
+Description=ODRL Backend API
+After=network.target
 
-## Using tmux (Run Both Together)
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/odrl-multi-agent-llm/backend
+Environment="PATH=/home/YOUR_USERNAME/.local/bin:/usr/local/bin:/usr/bin"
+ExecStart=/home/YOUR_USERNAME/.local/bin/uv run uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable service:**
 ```bash
-# Install tmux
-sudo apt install tmux -y
-
-# Start tmux
-tmux
-
-# Window 1 - Backend
-cd /home/operation/src/odrl-multi-agent-llm/backend
-. .venv/bin/activate
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Create new window: Ctrl+B then C
-
-# Window 2 - Frontend
-cd /home/operation/src/odrl-multi-agent-llm/frontend
-HOST=0.0.0.0 npm start
-
-# Switch windows: Ctrl+B then 0/1
-# Detach: Ctrl+B then D
-# Reattach: tmux attach
+sudo systemctl daemon-reload
+sudo systemctl enable odrl-backend
+sudo systemctl start odrl-backend
 ```
 
-## Firewall Configuration
+### Updates
+```bash
+cd ~/odrl-multi-agent-llm
+git pull origin main
+cd backend
+uv sync
+sudo systemctl restart odrl-backend
+```
+
+### Firewall
 ```bash
 sudo ufw allow 8000/tcp
-sudo ufw allow 3000/tcp
-sudo ufw status
+sudo ufw enable
 ```
 
-## uv Commands Reference
-
+## Docker Deployment (Alternative)
 ```bash
-# Sync dependencies (creates .venv automatically)
-uv sync
+# Build and run
+docker-compose up -d
 
-# Install specific package
-uv pip install package-name
-
-# Install from requirements.txt
-uv pip install -r requirements.txt
-
-# Run command in uv environment
-uv run uvicorn main:app --reload
-
-# Update dependencies
-uv sync --upgrade
+# Access
+# Frontend: http://localhost:3000
+# Backend: http://localhost:8000/docs
 ```
 
-## Troubleshooting
+## Environment Variables
 
-### .venv not created
+Required in `.env`:
 ```bash
-cd backend
-uv sync  # This creates .venv automatically
-```
-
-### Wrong Python version
-```bash
-# Check Python version
-python3 --version
-
-# Use specific Python version with uv
-uv venv --python 3.11
-uv sync
-```
-
-### Backend import errors
-```bash
-# Make sure langchain_core imports are used
-grep -r "from langchain\." agents/ api/ | grep -v "langchain_"
-# Should return nothing
-```
-
-### FITS Server not accessible
-**Problem**: Internal FITS server `dgx.fit.fraunhofer.de` only works on FIT network
-
-**Solution 1** - Use Groq (fast, free):
-```bash
-# In .env
 ENABLE_GROQ=true
 GROQ_API_KEY=your_key_here
 DEFAULT_MODEL=groq:llama-3.3-70b-versatile
 ```
 
-**Solution 2** - Use external Ollama:
+## Troubleshooting
+
+**Backend won't start:**
 ```bash
-# Get API key from https://ollama.fit.fraunhofer.de
-FITS_SERVER_URL=https://ollama.fit.fraunhofer.de/api
-FITS_API_KEY=your_api_key_here
+# Check logs
+sudo journalctl -u odrl-backend -f
+
+# Test manually
+cd ~/odrl-multi-agent-llm/backend
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-## Configuration
-
-### .env File Structure
+**Connection refused:**
 ```bash
-# Provider Toggles
-ENABLE_FITS=true
-ENABLE_GROQ=true
-ENABLE_OLLAMA=false
+# Check firewall
+sudo ufw status
 
-# FITS (Internal - FIT network only)
-FITS_SERVER_URL=http://dgx.fit.fraunhofer.de
-
-# Groq (External - works anywhere)
-GROQ_API_KEY=gsk_xxxxx
-GROQ_BASE_URL=https://api.groq.com
-
-# Default
-DEFAULT_MODEL=ollama:llama3.3:70b
-DEFAULT_TEMPERATURE=0.3
+# Check service
+sudo systemctl status odrl-backend
 ```
 
-## Why .venv Might Not Exist
+## System Requirements
 
-**uv creates .venv on demand:**
-- First `uv sync` creates it automatically
-- Uses Python version from system
-- Stores in `backend/.venv/`
+- **Python**: 3.11+ (managed by UV)
+- **RAM**: 2GB minimum, 4GB recommended
+- **Disk**: 2GB for dependencies
+- **Network**: Port 8000 open
 
-**If missing:**
-```bash
-cd backend
-uv sync  # Creates .venv and installs dependencies
-```
+## Support
 
-## Network Access Issue
-
-Your Ubuntu server **cannot reach** `dgx.fit.fraunhofer.de` because:
-1. It's an **internal-only** endpoint
-2. Your server is not on FIT internal network
-3. Requires VPN or internal network access
-
-**Solutions:**
-- Use Groq (recommended for external servers)
-- Get external Ollama API key
-- Move server to FIT internal network
-```
-
-Save: **Ctrl+X, Y, Enter**
-
----
-
-### 2. **Why No .venv on Ubuntu?**
-
-**Answer**: You need to create it with `uv sync`:
-
-```bash
-cd /home/operation/src/odrl-multi-agent-llm/backend
-
-# This creates .venv automatically
-uv sync
-
-# Verify it exists
-ls -la .venv/
-```
-
----
-
-### 3. **Why FITS Server Doesn't Work?**
-
-```bash
-# Test connection
-ping dgx.fit.fraunhofer.de
-# Result: 100% packet loss ❌
-```
-
-**Problem**: `dgx.fit.fraunhofer.de` is **internal-only**, but your Ubuntu server is **not on FIT internal network**.
-
-**Solution**: Use Groq instead:
-
-```bash
-cd backend
-nano .env
-```
-
-Change:
-```bash
-DEFAULT_MODEL=groq:llama-3.3-70b-versatile
-```
-
----
-
-### 4. **Complete Setup Script**
-
-```bash
-# Backend
-cd /home/operation/src/odrl-multi-agent-llm/backend
-uv sync
-. .venv/bin/activate
-
-# Frontend  
-cd ../frontend
-npm install
-
-# Run with tmux
-tmux
-# Window 1: Backend
-cd /home/operation/src/odrl-multi-agent-llm/backend
-. .venv/bin/activate
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Ctrl+B, C (new window)
-# Window 2: Frontend
-cd /home/operation/src/odrl-multi-agent-llm/frontend
-HOST=0.0.0.0 npm start
-```
-
+For issues, see [GitHub Issues](https://github.com/Daham-Mustaf/odrl-multi-agent-llm/issues)

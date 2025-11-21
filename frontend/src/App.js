@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { encodingForModel } from 'js-tiktoken';
+import { API_URL } from './config/api';
 import { AlertCircle, FileText, Brain, Code, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import DebugPanel from './components/DebugPanel'; 
 import { useAbortController } from './hooks/useAbortController';
@@ -17,7 +18,7 @@ import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 
 // API Configuration
 // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = API_URL;
 
 
 // ============================================
