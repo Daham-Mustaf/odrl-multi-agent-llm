@@ -1,52 +1,67 @@
-# ODRL Multi-Agent LLM Demo
+# ODRL Multi-Agent LLM
 
-A demo project showcasing a **multi-agent LLM framework** for **ODRL policy generation, reasoning, and validation**.
+Multi-agent system for generating, reasoning about, and validating ODRL policies using Large Language Models.
 
-## Features
+## 🎯 Overview
 
-- **Multi-agent system**: Parser, Reasoner, Generator, Validator  
-- **Custom LLM model support** (Groq, Ollama, OpenAI-compatible)  
-- **Persistent custom model storage**  
-- **Backend**: FastAPI  
-- **Frontend**: React (or your JS framework)  
+Transform natural language into validated ODRL policies through a 4-agent pipeline:
 
-## Getting Started
+1. **Parser** - Extract policy elements from text
+2. **Reasoner** - Detect contradictions and constraints  
+3. **Generator** - Create ODRL Turtle policies
+4. **Validator** - SHACL validation and refinement
 
-1. **Clone the repo**
+## Quick Start
 
+**Local Development:**
 ```bash
-git clone https://github.com/Daham-Mustaf/odrl-multi-agent-llm.git
-cd odrl-multi-agent-llm
-````
-
-2. **Run Backend**
-
-The backend is built with **Python** and **FastAPI**. It is located in the `backend` directory.
-
-### Development
-
-```bash
+# Backend
 cd backend
-uv venv --python 3.12
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-uv pip install -r requirements.txt
-uv run uvicorn main:app --reload
-```
-## Frontend
+uv sync
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-The frontend is built with **React** and is located in the `frontend` directory.  
-
-### Development
-
-```bash
+# Frontend (new terminal)
 cd frontend
 npm install
 npm start
-````
+```
 
-The frontend will be available at [http://localhost:3000](http://localhost:3000).
+Access at: http://localhost:3000
 
+**Production Deployment:** See [Deployment Guide →](docs/DEPLOYMENT.md)
 
+## Documentation
+
+- **[ Deployment Guide](docs/DEPLOYMENT.md)** - Production setup on Ubuntu
+- **[ Configuration](docs/CONFIGURATION.md)** - Environment variables and settings
+- **[ Docker Setup](docs/DOCKER.md)** - Container deployment
+- **[ Development](docs/DEVELOPMENT.md)** - Local development setup
+- **[ Testing](docs/TESTING.md)** - How to test the system
+- **[ API Reference](docs/API.md)** - Backend API documentation
+- **[ hangelog](docs/CHANGELOG.md)** - Version history
+
+##  Tech Stack
+
+- **Backend:** FastAPI, LangChain, UV, RDFLib, PySHACL
+- **Frontend:** React, Tailwind CSS
+- **LLMs:** Groq, Ollama, OpenAI-compatible, Google GenAI
+
+## Requirements
+
+- Python 3.11+
+- Node.js 20+
+- 4GB RAM recommended
+
+## Contributing
+
+Contributions welcome! Please see [CONTRIBUTING.md](docs/CONTRIBUTING.md)
+
+## License
+
+MIT License - see [LICENSE](LICENSE)
+
+## Links
+
+- [Repository](https://github.com/Daham-Mustaf/odrl-multi-agent-llm)
+- [Issues](https://github.com/Daham-Mustaf/odrl-multi-agent-llm/issues)
+- [ODRL Specification](https://www.w3.org/TR/odrl-model/)
