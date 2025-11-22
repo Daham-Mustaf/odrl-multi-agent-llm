@@ -219,6 +219,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ============================================
@@ -279,21 +280,38 @@ status_queues = {}
 
 @app.get("/api/agent-status/{session_id}")
 async def agent_status_stream(session_id: str):
-    """Stream agent status updates"""
+    """Stream agent status updates with keepalive"""
     queue = Queue()
     status_queues[session_id] = queue
     
     async def event_generator():
         try:
+            # Send initial connection message
+            yield f"data: {json.dumps({'status': 'connected', 'session_id': session_id})}\n\n"
+            
             while True:
-                status = await queue.get()
-                yield f"data: {json.dumps(status)}\n\n"
+                try:
+                    # Add timeout and keepalive
+                    status = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(status)}\n\n"
+                except asyncio.TimeoutError:
+                    # Send keepalive ping every 15 seconds
+                    yield f": keepalive\n\n"
+                    continue
+                    
         except asyncio.CancelledError:
-            del status_queues[session_id]
+            logger.info(f"[SSE] Client disconnected: {session_id}")
+            if session_id in status_queues:
+                del status_queues[session_id]
     
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
     )
 
 # Helper to broadcast status

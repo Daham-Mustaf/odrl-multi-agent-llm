@@ -172,7 +172,7 @@ const ExampleCard = ({ example, onSelect, darkMode, textClass, mutedTextClass })
  * Inline styles for animations and utility classes
  */
 const Styles = () => (
-  <style jsx>{`
+  <style>{`
     @keyframes fade-in {
       from {
         opacity: 0;

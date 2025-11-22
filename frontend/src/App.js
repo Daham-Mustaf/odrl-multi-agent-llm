@@ -193,27 +193,33 @@ const ODRLDemo = () => {
   // ============================================
   // HELPER: Get Custom Model Config
   // ============================================
-  // In getModelConfig
+
   const getModelConfig = React.useCallback((modelValue) => {
-    console.log('[getModelConfig] Input:', modelValue);
-    console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
-    
-    if (!modelValue) return null;
-    
-    const customModel = customModels.find(m => m.value === modelValue);
-    console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
-    
-    if (!customModel) return null;
-    
-    const config = {
-      provider_type: customModel.provider_type,
-      base_url: customModel.base_url,
-      model_id: customModel.model_id,
-      api_key: customModel.api_key,
-      context_length: customModel.context_length,
-      temperature_default: customModel.temperature_default
-    };
-    
+  console.log('[getModelConfig] Input:', modelValue);
+  console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
+  
+  if (!modelValue) return null;
+  
+  // WAIT FOR CUSTOM MODELS TO LOAD
+  if (modelValue.startsWith('custom:') && customModels.length === 0) {
+    console.warn('[getModelConfig] Custom models not loaded yet');
+    return null;
+  }
+  
+  const customModel = customModels.find(m => m.value === modelValue);
+  console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
+  
+  if (!customModel) return null;
+  
+  const config = {
+    provider_type: customModel.provider_type,
+    base_url: customModel.base_url,
+    model_id: customModel.model_id,
+    api_key: customModel.api_key,
+    context_length: customModel.context_length,
+    temperature_default: customModel.temperature 
+  };
+  
   console.log('[getModelConfig] Returning config:', config);
   return config;
 }, [customModels]);
@@ -255,9 +261,7 @@ const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
-
-
-
+  
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -318,10 +322,10 @@ useEffect(() => {
   console.log('[Debug] Available Provider Models:', providers.flatMap(p => p.models).map(m => m.value));
 }, [selectedModel, customModels, providers]);
 
-
 const loadProviders = async () => {
   setLoadingProviders(true);
   setError(null);
+  
   try {
     const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
       signal: AbortSignal.timeout(5000) 
@@ -330,33 +334,40 @@ const loadProviders = async () => {
     if (!response.ok) throw new Error('Backend not responding');
     
     const data = await response.json();
+    console.log('[loadProviders] Response:', data);
     
-    // ✅ EXTRACT CUSTOM MODELS FROM PROVIDERS
+    // EXTRACT CUSTOM MODELS
     const customProvider = data.providers?.find(p => p.id === 'custom');
     if (customProvider && customProvider.models) {
-      console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models in providers`);
+      console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
       setCustomModels(customProvider.models);
+    } else {
+      console.warn('[loadProviders] No custom models found in response');
+      setCustomModels([]);
     }
     
-    // Set providers (excluding custom, since we handle it separately)
+    // Set regular providers
     const regularProviders = data.providers?.filter(p => p.id !== 'custom') || [];
     setProviders(regularProviders);
     
     setBackendConnected(true);
-    showToast('Successfully connected to backend', 'success');
+    showToast('Backend connected successfully', 'success');
     
+    // Set default model
     if (data.default_model) {
       setSelectedModel(data.default_model);
     } else if (regularProviders.length > 0 && regularProviders[0].models.length > 0) {
       setSelectedModel(regularProviders[0].models[0].value);
     }
+    
   } catch (err) {
-    console.error('Provider detection failed:', err);
-    setError('Backend not connected. Start: cd backend && uvicorn main:app --reload');
+    console.error('[loadProviders] Error:', err);
+    setError('Backend not connected');
     setBackendConnected(false);
     showToast('Backend connection failed', 'error');
+  } finally {
+    setLoadingProviders(false);
   }
-  setLoadingProviders(false);
 };
 
 const loadCustomModels = async () => {
@@ -593,56 +604,105 @@ const deleteCustomModel = async (modelValue) => {
 // SSE CONNECTION FOR REAL-TIME STATUS
 // ============================================
 useEffect(() => {
-  const initializeApp = async () => {
-    setIsInitializing(true);
-    
-    try {
-      console.log('[Init] Step 1: Loading providers and custom models...');
-      await loadProviders();  // ✅ This now loads BOTH providers AND custom models
-      
-      console.log('[Init] Step 2: Waiting for state sync...');
-      await new Promise(resolve => setTimeout(resolve, 250));
-      
-      console.log('[Init] Step 3: Verifying state...');
-      console.log(`[Init] customModels state length: ${customModels.length}`);
-      console.log(`[Init] providers state length: ${providers.length}`);
-      
-      const savedModel = localStorage.getItem('selectedModel');
-      console.log(`[Init] Saved model: ${savedModel}`);
-      
-      if (savedModel) {
-        console.log('[Init] Step 4: Restoring saved model...');
-        
-        // Validate against current models
-        if (savedModel.startsWith('custom:')) {
-          const exists = customModels.some(m => m.value === savedModel);
-          console.log(`[Init] Custom model exists: ${exists}`);
-          
-          if (exists) {
-            setSelectedModel(savedModel);
-            console.log('[Init] ✅ Restored:', savedModel);
-          } else {
-            console.warn('[Init] ⚠️ Model not found, clearing');
-            localStorage.removeItem('selectedModel');
-            showToast('Saved model no longer exists', 'warning');
-          }
-        } else {
-          setSelectedModel(savedModel);
-        }
-      }
-      
-      console.log('[Init] ✅ Complete');
-      
-    } catch (error) {
-      console.error('[Init] ❌ Failed:', error);
-      showToast('Failed to load models', 'error');
-    } finally {
-      setIsInitializing(false);
+  if (!backendConnected) {
+    console.log('[SSE] Waiting for backend connection...');
+    setSseConnected(false);
+    return;
+  }
+  
+  console.log('[SSE] Connecting to status stream...', sessionId.current);
+  
+  let eventSource = null;
+  let reconnectTimeout = null;
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 5;
+  
+  const connect = () => {
+    if (eventSource) {
+      eventSource.close();
     }
+    
+    // ✅ ENSURE /api/ prefix
+    const sseUrl = `${API_BASE_URL}/api/agent-status/${sessionId.current}`;
+    console.log('[SSE] Connecting to:', sseUrl);
+    
+    eventSource = new EventSource(sseUrl);
+    
+    let connectionConfirmed = false;
+    
+    eventSource.onopen = () => {
+      console.log('[SSE] ✅ Connected');
+      setSseConnected(true);
+      connectionConfirmed = true;
+      reconnectAttempts = 0;
+    };
+    
+    eventSource.onmessage = (event) => {
+      try {
+        if (!connectionConfirmed) {
+          console.log('[SSE] ✅ First message received');
+          setSseConnected(true);
+          connectionConfirmed = true;
+        }
+        
+        // Ignore keepalive
+        if (event.data === ': keepalive') return;
+        
+        const status = JSON.parse(event.data);
+        
+        if (status.status === 'connected') {
+          console.log('[SSE] Session confirmed:', status.session_id);
+          return;
+        }
+        
+        console.log('[SSE] Status update:', status);
+        
+        setAgentStates(prev => ({
+          ...prev,
+          [status.agent]: status.status
+        }));
+        
+        if (status.progress !== undefined) {
+          setProcessingProgress(status.progress);
+        }
+        
+        if (status.message) {
+          setProcessingStage(status.message);
+        }
+        
+      } catch (e) {
+        console.error('[SSE] Parse error:', e);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('[SSE] ❌ Error:', error);
+      setSseConnected(false);
+      connectionConfirmed = false;
+      eventSource.close();
+      
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+        console.log(`[SSE] Reconnecting in ${delay}ms...`);
+        
+        reconnectTimeout = setTimeout(() => {
+          connect();
+        }, delay);
+      }
+    };
   };
   
-  initializeApp();
-}, []);
+  connect();
+  
+  return () => {
+    console.log('[SSE] Cleanup');
+    setSseConnected(false);
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if (eventSource) eventSource.close();
+  };
+}, [backendConnected]);
+
 
 const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
