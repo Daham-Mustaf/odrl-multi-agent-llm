@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+
+  - family-names: "Mustafa"
+
+    given-names: "Daham M."
+    affiliation: "Fraunhofer FIT"
+    email: "daham.mohammed.mustafa@fit.fraunhofer.de"
+
+  - family-names: "Collarana"
+
+    given-names: "Diego"
+    affiliation: "Fraunhofer FIT"
+    email: "diego.collarana.vargas@fit.fraunhofer.de"
+
+  - family-names: "Lange"
+
+    given-names: "Christoph"
+    affiliation: "Fraunhofer FIT, RWTH Aachen University"
+    email: "christoph.lange-bever@fit.fraunhofer.de"
+
+  - family-names: "Quix"
+
+    given-names: "Christoph"
+    affiliation: "Fraunhofer FIT, RWTH Aachen University"
+    email: "christoph.quix@fit.fraunhofer.de"
+
+  - family-names: "Decker"
+
+    given-names: "Stefan"
+    affiliation: "Fraunhofer FIT, RWTH Aachen University"
+    email: "stefan.decker@fit.fraunhofer.de"
+title: "ODRL Multi-Agent LLM: A Multi-Agent System for ODRL Policy Generation"
+version: 2.1.0
+doi: 10.5281/zenodo.17670391
+date-released: 2025-01-21
+url: "https://github.com/Daham-Mustaf/odrl-multi-agent-llm"
+license: MIT
+repository-code: "https://github.com/Daham-Mustaf/odrl-multi-agent-llm"
+keywords:
+
+  - ODRL
+  - Multi-agent system
+
+  - Large Language Models
+  - Policy generation
+
+  - RDF
+  - SHACL
+
+  - Semantic Web
+
+abstract: "A multi-agent system leveraging Large Language Models for automated generation and validation of ODRL (Open Digital Rights Language) policies."

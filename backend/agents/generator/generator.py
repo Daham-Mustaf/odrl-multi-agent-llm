@@ -5,7 +5,7 @@ Universal ODRL Turtle generator with domain-specific prefix support
 Generates ODRL policies from parsed data with SHACL compliance
 """
 from typing import Dict, Any, Optional
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from utils.llm_factory import LLMFactory
 import uuid

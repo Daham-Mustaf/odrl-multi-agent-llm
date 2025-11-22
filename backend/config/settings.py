@@ -91,8 +91,37 @@ DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "120"))
 # ============================================
 # CORS CONFIGURATION
 # ============================================
+# Parse from environment variable or use secure defaults
 
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+cors_env = os.getenv("CORS_ORIGINS", "")
+
+if cors_env == "*":
+    # Allow all origins (only for development)
+    CORS_ORIGINS = ["*"]
+    print("⚠️  WARNING: CORS set to allow ALL origins (*)")
+elif cors_env:
+    # Parse comma-separated origins from .env
+    CORS_ORIGINS = [origin.strip() for origin in cors_env.split(",")]
+else:
+    # Production-ready defaults
+    CORS_ORIGINS = [
+        # Local development
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        
+        # Ubuntu server (your production IP)
+        "http://10.223.196.212:3000",  # Frontend
+        "http://10.223.196.212:8000",  # Backend
+        
+        # Add more IPs as needed
+        # "http://another-server-ip:3000",
+    ]
+
+# Log CORS configuration
+
+print(f"🌐 CORS Origins: {len(CORS_ORIGINS)} allowed")
 
 # ============================================
 # FEATURE FLAGS

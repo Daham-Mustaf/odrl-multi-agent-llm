@@ -35,7 +35,7 @@ export const ReasonerTab = ({
   const [policyName, setPolicyName] = useState('');
   const [policyDescription, setPolicyDescription] = useState('');
   const [compactMode, setCompactMode] = useState(false);
-  const [viewMode, setViewMode] = useState('visual');  // ✅ Visual first
+  const [viewMode, setViewMode] = useState('visual');  //  Visual first
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -90,7 +90,7 @@ export const ReasonerTab = ({
           </div>
           
           <div className="flex gap-2">
-            {/* ✅ View Mode Toggle - Visual First */}
+            {/*  View Mode Toggle - Visual First */}
             <div className={`flex items-center gap-1 p-1 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <button
                 onClick={() => setViewMode('visual')}
@@ -179,7 +179,7 @@ export const ReasonerTab = ({
             />
           )
         ) : (
-          // ✅ JSON Mode
+          //  JSON Mode
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-50'} rounded-lg p-4 overflow-auto max-h-[600px]`}>
             <div className="flex items-center justify-between mb-3">
               <span className={`text-sm font-semibold ${textClass}`}>
@@ -247,7 +247,7 @@ export const ReasonerTab = ({
 };
 
 /**
- * ✅ COMPACT VIEW - Screenshot Optimized
+ *  COMPACT VIEW - Screenshot Optimized
  */
 const CompactReasonerView = ({ 
   reasoningResult, 

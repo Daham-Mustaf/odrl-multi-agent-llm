@@ -3,7 +3,7 @@ Agent 4: ODRL Validator
 Validates ODRL Turtle using SHACL constraints + LLM analysis
 """
 from typing import Dict, Any, Optional
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from utils.llm_factory import LLMFactory
 from .shacl_validator import ODRLValidationTool, ValidationReport
 
@@ -136,7 +136,7 @@ Provide:
             
             explanation = result.content if hasattr(result, 'content') else str(result)
             
-            print(f"[Validator] 💡 LLM explanation generated")
+            print(f"[Validator] LLM explanation generated")
             return explanation
             
         except Exception as e:

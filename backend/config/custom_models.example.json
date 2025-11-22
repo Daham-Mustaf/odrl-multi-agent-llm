@@ -1,18 +1,32 @@
 [
   {
-    "value": "custom:fits-llama3.3",
-    "label": "FITS Llama 3.3 70B",
+    "value": "custom:gpt-oss:120b",
+    "label": "FIT GPT-OSS 120B",
     "provider_type": "openai-compatible",
-    "base_url": "http://dgx.fit.fraunhofer.de",
-    "model_id": "llama3.3:70b",
-    "api_key": "your-fits-api-key-if-needed",
+    "base_url": "http://dgx.fit.fraunhofer.de/v1",
+    "model_id": "gpt-oss:120b",
+    "api_key": "dummy",
     "context_length": 8192,
     "temperature_default": 0.3,
-    "created_at": 0,
-    "updated_at": 0
+    "created_at": 1761122775.9161365,
+    "updated_at": 1761122775.9161367,
+    "notes": "OpenAI-compatible endpoint with /v1"
   },
   {
-    "value": "custom:local-model",
+    "value": "custom:llama3.3:70b",
+    "label": "FIT Llama 3.3 70B",
+    "provider_type": "openai-compatible",
+    "base_url": "http://dgx.fit.fraunhofer.de/v1",
+    "model_id": "llama3.3:70b",
+    "api_key": "dummy",
+    "context_length": 8192,
+    "temperature_default": 0.3,
+    "created_at": 1761122812.5435097,
+    "updated_at": 1761122812.5435104,
+    "notes": "FIXED: Added /v1 endpoint for OpenAI compatibility"
+  },
+  {
+    "value": "custom:llama3.1:8b",
     "label": "Local Ollama Model",
     "provider_type": "ollama",
     "base_url": "http://localhost:11434",
@@ -20,7 +34,33 @@
     "api_key": "not-needed",
     "context_length": 4096,
     "temperature_default": 0.5,
-    "created_at": 0,
-    "updated_at": 0
+    "created_at": 1761122812.5522547,
+    "updated_at": 1761122812.552255,
+    "notes": "Local Ollama installation - no /v1 needed"
+  },
+  {
+    "value": "custom:qwen3:235b",
+    "label": "FIT qwen3:235b",
+    "provider_type": "openai-compatible",
+    "base_url": "http://dgx.fit.fraunhofer.de/v1",
+    "model_id": "qwen3:235b",
+    "api_key": "dummy",
+    "context_length": 4096,
+    "temperature_default": 0.3,
+    "created_at": 1761313384.3616383,
+    "updated_at": 1761313384.3616397,
+    "notes": "OpenAI-compatible endpoint with /v1"
+  },
+  {
+    "value": "custom:deepseek-v3:671b",
+    "label": "FIT-deepseek-v3:671b",
+    "provider_type": "openai-compatible",
+    "base_url": "http://dgx.fit.fraunhofer.de/v1",
+    "model_id": "deepseek-v3:671b",
+    "api_key": "",
+    "context_length": 4096,
+    "temperature_default": 0.3,
+    "created_at": 1763374151.9568925,
+    "updated_at": 1763374151.9568927
   }
 ]

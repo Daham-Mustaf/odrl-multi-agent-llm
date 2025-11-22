@@ -15,7 +15,7 @@ export const ParserTab = ({
   const [viewMode, setViewMode] = useState('visual');
   const [copied, setCopied] = useState(false);
   const [jsonCollapsed, setJsonCollapsed] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);  // ✅ Screenshot mode
+  const [compactMode, setCompactMode] = useState(false);  //  Screenshot mode
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -45,7 +45,7 @@ export const ParserTab = ({
             Parsed Results
           </h2>
           <div className="flex gap-2">
-            {/* ✅ Compact Mode Toggle (only in visual mode) */}
+            {/*  Compact Mode Toggle (only in visual mode) */}
             {viewMode === 'visual' && (
               <button
                 onClick={() => setCompactMode(!compactMode)}
@@ -112,7 +112,7 @@ export const ParserTab = ({
       <div className="p-6">
         {viewMode === 'visual' ? (
           compactMode ? (
-            // ✅ COMPACT VIEW - Perfect for Screenshots
+            //  COMPACT VIEW - Perfect for Screenshots
             <CompactView 
               policy={policy}
               darkMode={darkMode}
@@ -163,7 +163,7 @@ export const ParserTab = ({
 };
 
 /**
- * ✅ COMPACT VIEW - Optimized for Academic Paper Screenshots
+ *  COMPACT VIEW - Optimized for Academic Paper Screenshots
  * Single-screen layout, minimal whitespace, maximum information density
  */
 const CompactView = ({ policy, darkMode, textClass, mutedTextClass }) => {

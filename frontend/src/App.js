@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { encodingForModel } from 'js-tiktoken';
-import { AlertCircle, FileText, Brain, Code, Copy, Download, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, Zap, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { API_URL } from './config/api';
+import { AlertCircle, FileText, Brain, Code, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import DebugPanel from './components/DebugPanel'; 
 import { useAbortController } from './hooks/useAbortController';
 import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
@@ -17,7 +18,7 @@ import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 
 // API Configuration
 // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = API_URL;
 
 
 // ============================================
@@ -82,6 +83,7 @@ const ProgressBar = ({ progress, label, darkMode }) => {
 };
 
 const ODRLDemo = () => {
+  
   const [activeTab, setActiveTab] = useState('parser');
   const [inputText, setInputText] = useState('');
   const [parsedData, setParsedData] = useState(null);
@@ -134,7 +136,7 @@ const ODRLDemo = () => {
   const [validating, setValidating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [attemptNumber, setAttemptNumber] = useState(1);
-  
+  const [isInitializing, setIsInitializing] = useState(true);
   const [metrics, setMetrics] = useState({
     parseTime: 0,
     reasonTime: 0,
@@ -161,7 +163,7 @@ const ODRLDemo = () => {
     temperature: 0.3
   });
   
-  const [syncMode, setSyncMode] = useState('both');
+  const [syncMode, setSyncMode] = useState('backend');
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState('');
   const [showExamples, setShowExamples] = useState(false);
@@ -191,52 +193,139 @@ const ODRLDemo = () => {
   // ============================================
   // HELPER: Get Custom Model Config
   // ============================================
+
   const getModelConfig = React.useCallback((modelValue) => {
-    if (!modelValue) return null;
+  console.log('[getModelConfig] Input:', modelValue);
+  console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
+  
+  if (!modelValue) return null;
+  
+  // WAIT FOR CUSTOM MODELS TO LOAD
+  if (modelValue.startsWith('custom:') && customModels.length === 0) {
+    console.warn('[getModelConfig] Custom models not loaded yet');
+    return null;
+  }
+  
+  const customModel = customModels.find(m => m.value === modelValue);
+  console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
+  
+  if (!customModel) return null;
+  
+  const config = {
+    provider_type: customModel.provider_type,
+    base_url: customModel.base_url,
+    model_id: customModel.model_id,
+    api_key: customModel.api_key,
+    context_length: customModel.context_length,
+    temperature_default: customModel.temperature 
+  };
+  
+  console.log('[getModelConfig] Returning config:', config);
+  return config;
+}, [customModels]);
+
+// ADD THE VALIDATION HELPER 
+const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') => {
+  if (!modelValue) {
+    console.error(`[${agentName}] No model specified`);
+    return { valid: false, error: 'No model selected' };
+  }
+  
+  // Custom model validation
+  if (modelValue.startsWith('custom:')) {
+    if (customModels.length === 0) {
+      console.error(`[${agentName}] Custom models not loaded yet`);
+      return { 
+        valid: false, 
+        error: 'Custom models still loading. Please wait a moment...' 
+      };
+    }
     
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (!customModel) return null;
+    const config = getModelConfig(modelValue);
+    if (!config) {
+      console.error(`[${agentName}] Custom model not found:`, modelValue);
+      console.error(`[${agentName}] Available:`, customModels.map(m => m.value));
+      return { 
+        valid: false, 
+        error: `Custom model "${modelValue}" not found. Please reconfigure.` 
+      };
+    }
     
-    return {
-      provider_type: customModel.provider_type,
-      base_url: customModel.base_url,
-      model_id: customModel.model_id,
-      api_key: customModel.api_key,
-      context_length: customModel.context_length,
-      temperature_default: customModel.temperature_default
-    };
-  }, [customModels]);
+    return { valid: true, config };
+  }
+  
+  // Standard model - no config needed
+  return { valid: true, config: null };
+}, [customModels, getModelConfig]);
 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
-
+  
   // ============================================
   // INITIALIZATION
   // ============================================
 useEffect(() => {
   const initializeApp = async () => {
-    // Load providers first
-    await loadProviders();
+    setIsInitializing(true);
     
-    // Load custom models
-    await loadCustomModels();
-    
-    // Then restore selected model from localStorage
-    const savedModel = localStorage.getItem('selectedModel');
-    if (savedModel) {
-      setSelectedModel(savedModel);
-      console.log('Restored selected model:', savedModel);
+    try {
+      console.log('[Init] Step 1: Loading providers and custom models...');
+      await loadProviders();  // This now loads BOTH providers AND custom models
+      
+      console.log('[Init] Step 2: Waiting for state sync...');
+      await new Promise(resolve => setTimeout(resolve, 250));
+      
+      console.log('[Init] Step 3: Verifying state...');
+      console.log(`[Init] customModels state length: ${customModels.length}`);
+      console.log(`[Init] providers state length: ${providers.length}`);
+      
+      const savedModel = localStorage.getItem('selectedModel');
+      console.log(`[Init] Saved model: ${savedModel}`);
+      
+      if (savedModel) {
+        console.log('[Init] Step 4: Restoring saved model...');
+        
+        if (savedModel.startsWith('custom:')) {
+          const exists = customModels.some(m => m.value === savedModel);
+          console.log(`[Init] Custom model exists: ${exists}`);
+          
+          if (exists) {
+            setSelectedModel(savedModel);
+            console.log('[Init] ✅ Restored:', savedModel);
+          } else {
+            console.warn('[Init] ⚠️ Model not found, clearing');
+            localStorage.removeItem('selectedModel');
+            showToast('Saved model no longer exists', 'warning');
+          }
+        } else {
+          setSelectedModel(savedModel);
+        }
+      }
+      
+      console.log('[Init] ✅ Complete');
+      
+    } catch (error) {
+      console.error('[Init] ❌ Failed:', error);
+      showToast('Failed to load models', 'error');
+    } finally {
+      setIsInitializing(false);
     }
   };
   
   initializeApp();
 }, []);
 
+useEffect(() => {
+  console.log('[Debug] Selected Model Changed:', selectedModel);
+  console.log('[Debug] Available Custom Models:', customModels.map(m => m.value));
+  console.log('[Debug] Available Provider Models:', providers.flatMap(p => p.models).map(m => m.value));
+}, [selectedModel, customModels, providers]);
 
 const loadProviders = async () => {
   setLoadingProviders(true);
   setError(null);
+  
   try {
     const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
       signal: AbortSignal.timeout(5000) 
@@ -245,48 +334,62 @@ const loadProviders = async () => {
     if (!response.ok) throw new Error('Backend not responding');
     
     const data = await response.json();
-    setProviders(data.providers || []);
-    setBackendConnected(true);
-    showToast('Successfully connected to backend', 'success');
+    console.log('[loadProviders] Response:', data);
     
+    // EXTRACT CUSTOM MODELS
+    const customProvider = data.providers?.find(p => p.id === 'custom');
+    if (customProvider && customProvider.models) {
+      console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
+      setCustomModels(customProvider.models);
+    } else {
+      console.warn('[loadProviders] No custom models found in response');
+      setCustomModels([]);
+    }
+    
+    // Set regular providers
+    const regularProviders = data.providers?.filter(p => p.id !== 'custom') || [];
+    setProviders(regularProviders);
+    
+    setBackendConnected(true);
+    showToast('Backend connected successfully', 'success');
+    
+    // Set default model
     if (data.default_model) {
       setSelectedModel(data.default_model);
-    } else if (data.providers && data.providers.length > 0 && data.providers[0].models.length > 0) {
-      setSelectedModel(data.providers[0].models[0].value);
+    } else if (regularProviders.length > 0 && regularProviders[0].models.length > 0) {
+      setSelectedModel(regularProviders[0].models[0].value);
     }
+    
   } catch (err) {
-    console.error('Provider detection failed:', err);
-    setError('Backend not connected. Start: cd backend && uvicorn main:app --reload');
+    console.error('[loadProviders] Error:', err);
+    setError('Backend not connected');
     setBackendConnected(false);
     showToast('Backend connection failed', 'error');
+  } finally {
+    setLoadingProviders(false);
   }
-  setLoadingProviders(false);
 };
 
 const loadCustomModels = async () => {
   try {
-    const localModels = loadFromLocalStorage();
-    let backendModels = [];
+    console.log('[loadCustomModels] Starting...');
     
-    if (backendConnected) {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/custom-models`);
-        if (response.ok) {
-          const data = await response.json();
-          backendModels = data.models || [];
-          console.log(`Loaded ${backendModels.length} models from backend`);
-        }
-      } catch (err) {
-        console.log('Backend custom models not available, using localStorage only');
-      }
+    // Only load from localStorage for "localStorage" mode
+    if (syncMode === 'localStorage') {
+      const localModels = loadFromLocalStorage();
+      setCustomModels(localModels);
+      console.log(`[loadCustomModels] ✅ Loaded ${localModels.length} from localStorage`);
+      return localModels;
     }
     
-    const merged = mergeModels(localModels, backendModels);
-    setCustomModels(merged);
-    console.log(`Total custom models loaded: ${merged.length}`);
+    // For 'backend' and 'both' modes, custom models are already loaded by loadProviders
+    console.log(`[loadCustomModels] ✅ Using models from providers (${customModels.length})`);
+    return customModels;
+    
   } catch (err) {
-    console.error('Error loading custom models:', err);
+    console.error('[loadCustomModels] Error:', err);
     showToast('Failed to load custom models', 'error');
+    return [];
   }
 };
 
@@ -320,7 +423,7 @@ const saveToBackend = async (model) => {
   }
   
   try {
-    console.log('📤 Sending to backend:', JSON.stringify(model, null, 2));
+    console.log(' Sending to backend:', JSON.stringify(model, null, 2));
     
     const response = await fetch(`${API_BASE_URL}/api/custom-models`, {
       method: 'POST',
@@ -333,11 +436,11 @@ const saveToBackend = async (model) => {
       return true;
     } else {
       const error = await response.json();
-      console.error('❌ Backend validation error:', JSON.stringify(error, null, 2));
+      console.error(' Backend validation error:', JSON.stringify(error, null, 2));
       return false;
     }
   } catch (err) {
-    console.error('❌ Error saving to backend:', err);
+    console.error(' Error saving to backend:', err);
     return false;
   }
 };
@@ -351,7 +454,7 @@ const mergeModels = (local, backend) => {
 };
 
 const addOrUpdateCustomModel = async (modelData) => {
-  console.log('📥 Input modelData:', modelData);
+  console.log(' Input modelData:', modelData);
   
   // Prepare model for FRONTEND (with value/label)
   const frontendModel = {
@@ -365,7 +468,7 @@ const addOrUpdateCustomModel = async (modelData) => {
     temperature: modelData.temperature || 0.3
   };
   
-  console.log('📤 Prepared for frontend:', frontendModel);
+  console.log(' Prepared for frontend:', frontendModel);
   
   // Update frontend state
   let updated = [...customModels];
@@ -396,7 +499,7 @@ const addOrUpdateCustomModel = async (modelData) => {
       temperature: modelData.temperature || 0.3
     };
     
-    console.log('📤 Sending to backend:', backendPayload);
+    console.log(' Sending to backend:', backendPayload);
     
     const success = await saveToBackend(backendPayload);
     if (success) {
@@ -415,7 +518,7 @@ const deleteCustomModel = async (modelValue) => {
     const modelId = modelValue.split(':').slice(1).join(':');
     const customValue = `custom:${modelId}`;
     
-    console.log('🗑️ Deleting:', customValue);
+    console.log(' Deleting:', customValue);
     
     // Delete from state
     const updated = customModels.filter(m => m.value !== modelValue);
@@ -437,12 +540,12 @@ const deleteCustomModel = async (modelValue) => {
         showToast('Model deleted successfully', 'success');
       } else {
         const error = await response.json();
-        console.error('❌ Delete failed:', error);
+        console.error(' Delete failed:', error);
         showToast('Failed to delete from backend', 'error');
       }
     }
   } catch (err) {
-    console.error('❌ Delete error:', err);
+    console.error(' Delete error:', err);
     showToast('Failed to delete model', 'error');
   }
 };
@@ -509,63 +612,94 @@ useEffect(() => {
   
   console.log('[SSE] Connecting to status stream...', sessionId.current);
   
-  const eventSource = new EventSource(
-    `${API_BASE_URL}/api/agent-status/${sessionId.current}`
-  );
+  let eventSource = null;
+  let reconnectTimeout = null;
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 5;
   
-  // Track if we've confirmed connection
-  let connectionConfirmed = false;
-  
-  eventSource.onopen = () => {
-    console.log('[SSE] ✅ Connected to status stream');
-    setSseConnected(true);
-    connectionConfirmed = true;
-  };
-  
-  eventSource.onmessage = (event) => {
-    try {
-      // Fallback: confirm connection on first message if onopen didn't fire
-      if (!connectionConfirmed) {
-        console.log('[SSE] ✅ Connection confirmed via first message');
-        setSseConnected(true);
-        connectionConfirmed = true;
-      }
-      
-      const status = JSON.parse(event.data);
-      console.log('[SSE] Status update:', status);
-      
-      // Update agent state
-      setAgentStates(prev => ({
-        ...prev,
-        [status.agent]: status.status
-      }));
-      
-      // Update progress bar
-      if (status.progress !== undefined) {
-        setProcessingProgress(status.progress);
-      }
-      
-      // Update stage message
-      if (status.message) {
-        setProcessingStage(status.message);
-      }
-      
-    } catch (e) {
-      console.error('[SSE] Parse error:', e);
+  const connect = () => {
+    if (eventSource) {
+      eventSource.close();
     }
+    
+    // ✅ ENSURE /api/ prefix
+    const sseUrl = `${API_BASE_URL}/api/agent-status/${sessionId.current}`;
+    console.log('[SSE] Connecting to:', sseUrl);
+    
+    eventSource = new EventSource(sseUrl);
+    
+    let connectionConfirmed = false;
+    
+    eventSource.onopen = () => {
+      console.log('[SSE] ✅ Connected');
+      setSseConnected(true);
+      connectionConfirmed = true;
+      reconnectAttempts = 0;
+    };
+    
+    eventSource.onmessage = (event) => {
+      try {
+        if (!connectionConfirmed) {
+          console.log('[SSE] ✅ First message received');
+          setSseConnected(true);
+          connectionConfirmed = true;
+        }
+        
+        // Ignore keepalive
+        if (event.data === ': keepalive') return;
+        
+        const status = JSON.parse(event.data);
+        
+        if (status.status === 'connected') {
+          console.log('[SSE] Session confirmed:', status.session_id);
+          return;
+        }
+        
+        console.log('[SSE] Status update:', status);
+        
+        setAgentStates(prev => ({
+          ...prev,
+          [status.agent]: status.status
+        }));
+        
+        if (status.progress !== undefined) {
+          setProcessingProgress(status.progress);
+        }
+        
+        if (status.message) {
+          setProcessingStage(status.message);
+        }
+        
+      } catch (e) {
+        console.error('[SSE] Parse error:', e);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('[SSE] ❌ Error:', error);
+      setSseConnected(false);
+      connectionConfirmed = false;
+      eventSource.close();
+      
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+        console.log(`[SSE] Reconnecting in ${delay}ms...`);
+        
+        reconnectTimeout = setTimeout(() => {
+          connect();
+        }, delay);
+      }
+    };
   };
   
-  eventSource.onerror = (error) => {
-    console.error('[SSE] Connection error:', error);
-    setSseConnected(false);
-    connectionConfirmed = false;
-    eventSource.close();
-  };
+  connect();
   
   return () => {
-    console.log('[SSE] Closing connection');
+    console.log('[SSE] Cleanup');
     setSseConnected(false);
-    eventSource.close();
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if (eventSource) eventSource.close();
   };
 }, [backendConnected]);
 
@@ -720,7 +854,7 @@ const handleProcess = async () => {
       reasoning: reasonResult,
       model: generatorModel,
       temperature,
-      custom_config: generatorCustomConfig
+      custom_model: generatorCustomConfig
     }, signal);
 
     setGeneratedODRL(genResult);
@@ -763,7 +897,7 @@ const handleProcess = async () => {
       original_text: inputText,
       model: validatorModel,
       temperature,
-      custom_config: validatorCustomConfig
+      custom_model: validatorCustomConfig
     }, signal);
 
     setValidationResult(valResult);
@@ -859,89 +993,79 @@ const handleGenerate = async () => {
     showToast('Please run analysis first!', 'warning');
     return;
   }
-
   if (!parsedData) {
     showToast('Parser data missing - please run parsing again', 'error');
     return;
   }
-
+  
+  // ✅ VALIDATE MODEL
+  const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+  const validation = validateModelConfig(generatorModel, 'Generator');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
+    return;
+  }
+  
   setLoading(true);
   setProcessingStage('Generating ODRL policy...');
   setProcessingProgress(50);
   setGeneratedODRL(null);
   setValidationResult(null);
-
+  
   const startTime = Date.now();
   const signal = abortControllerRef.current.signal;
-
+  
   try {
-    // Update generator agent state
     updateAgentState('generator', 'processing');
-
-    const generatorModel =
-      advancedMode && agentModels.generator
-        ? agentModels.generator
-        : selectedModel;
-
-    const generatorCustomConfig = getModelConfig(generatorModel?.value);
-
+    
+    const generatorCustomConfig = validation.config;  // ✅ Use validated config
+    
     console.log('[Generator] Sending generate request...');
-
     const response = await fetch(`${API_BASE_URL}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-ID': sessionId.current     // ← Added for pipeline tracking
+        'X-Session-ID': sessionId.current
       },
       body: JSON.stringify({
         parsed_data: parsedData,
         original_text: inputText,
         reasoning: reasoningResult,
         attempt_number: 1,
-        model: generatorModel?.id || null,
+        model: generatorModel,
         temperature,
-        custom_config: generatorCustomConfig
+        custom_model: generatorCustomConfig  // ✅ Changed from custom_config
       }),
       signal
     });
-
+    
     if (!response.ok) {
       throw new Error(`Generation failed: ${response.status}`);
     }
-
+    
     const genResult = await response.json();
     console.log('[Generator] Generation complete');
-
-    // Store generated policy
+    
     setGeneratedODRL(genResult);
-
-    // Store context for regeneration
     setGenerationContext({
       parsed_data: parsedData,
       original_text: inputText,
       reasoning: reasoningResult
     });
-
-    // Update metrics
+    
     setMetrics(prev => ({
       ...prev,
       generateTime: Date.now() - startTime
     }));
-
-    // Agent state success
+    
     updateAgentState('generator', 'completed');
-
-    // Final UI progress
     setProcessingProgress(100);
     setProcessingStage('generating_done');
     setProcessingProgress(0);
-
-    // Notify user
+    
     showToast('ODRL generated! Click "Validate Policy" to verify', 'success');
-
-    // Move to generator tab
     setActiveTab('generator');
-
+    
   } catch (error) {
     if (error.name === 'AbortError') {
       console.log('[Generator] Generation cancelled');
@@ -967,10 +1091,17 @@ const handleValidate = async () => {
     return;
   }
   
-  // Check if Turtle exists
   if (!generatedODRL.odrl_turtle) {
     showToast('Generated ODRL missing Turtle format!', 'error');
     console.error('[Validator] Generated ODRL:', generatedODRL);
+    return;
+  }
+  
+  // ✅ VALIDATE MODEL
+  const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+  const validation = validateModelConfig(validatorModel, 'Validator');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
     return;
   }
   
@@ -981,44 +1112,22 @@ const handleValidate = async () => {
   const startTime = Date.now();
   const signal = getSignal();
   
-  const getModelConfig = (modelValue) => {
-    if (!modelValue) return null;
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (!customModel) return null;
-    return {
-      provider_type: customModel.provider_type,
-      base_url: customModel.base_url,
-      model_id: customModel.model_id,
-      api_key: customModel.api_key,
-      context_length: customModel.context_length,
-      temperature_default: customModel.temperature_default
-    };
-  };
-  
   try {
     updateAgentState('validator', 'processing');
     
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-    const validatorCustomConfig = getModelConfig(validatorModel);
+    const validatorCustomConfig = validation.config;  // ✅ Use validated config
     
     console.log('[Validator] Manual validation starting...');
     console.log('[Validator] Turtle length:', generatedODRL.odrl_turtle.length, 'chars');
     console.log('[Validator] Model:', validatorModel);
     console.log('[Validator] Has custom config?', !!validatorCustomConfig);
-    if (validatorCustomConfig) {
-      console.log('[Validator] Config preview:', {
-        provider: validatorCustomConfig.provider_type,
-        model: validatorCustomConfig.model_id,
-        url: validatorCustomConfig.base_url
-      });
-    }
     
     const valResult = await callAPI('validate', {
       odrl_turtle: generatedODRL.odrl_turtle,
       original_text: inputText,
       model: validatorModel,
       temperature,
-      custom_config: validatorCustomConfig 
+      custom_model: validatorCustomConfig  // ✅ Changed from custom_config
     }, signal);
     
     setValidationResult(valResult);
@@ -1026,18 +1135,16 @@ const handleValidate = async () => {
     updateAgentState('validator', 'completed');
     setProcessingProgress(100);
     
-    // Switch to validator tab
     setActiveTab('validator');
     
     if (valResult.is_valid) {
-      showToast('SHACL validation passed!', 'success');
+      showToast('SHACL validation passed! ✅', 'success');
     } else {
       showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
     }
+    
     setProcessingStage('complete');
-    setActiveTab('validator');
     setProcessingProgress(0);
-    showToast('Complete! All stages finished', 'success');
     
   } catch (error) {
     console.error('[Validator] Error:', error);
@@ -1057,26 +1164,23 @@ const handleRegenerate = async () => {
     showToast('Missing context for regeneration', 'error');
     return;
   }
-
+  
+  // ✅ VALIDATE MODEL
+  const regenerateModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+  const validation = validateModelConfig(regenerateModel, 'Generator');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
+    return;
+  }
+  
   setRegenerating(true);
   setValidationResult(null);
   setProcessingStage(`Regenerating ODRL (attempt ${(generatedODRL.attempt_number || 1) + 1})...`);
   setProcessingProgress(50);
-   const getModelConfig = (modelValue) => {
-    if (!modelValue) return null;
-    const customModel = customModels.find(m => m.value === modelValue);
-    if (!customModel) return null;
-    return {
-      provider_type: customModel.provider_type,
-      base_url: customModel.base_url,
-      model_id: customModel.model_id,
-      api_key: customModel.api_key,
-      context_length: customModel.context_length,
-      temperature_default: customModel.temperature_default
-    };
-  };
-
+  
   try {
+    const regenerateCustomConfig = validation.config;  // ✅ Use validated config
+    
     console.log('[Generator] Regenerating ODRL with validation fixes...');
     console.log('[Generator] Context preview:', {
       original_text: generationContext.original_text?.substring(0, 50) + '...',
@@ -1084,14 +1188,9 @@ const handleRegenerate = async () => {
       has_reasoning: !!generationContext.reasoning,
       validation_issues: validationResult.issues?.length
     });
-
-    // Get model config
-    const regenerateModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-    const regenerateCustomConfig = getModelConfig(regenerateModel);
-
     console.log('[Regenerate] Model:', regenerateModel);
     console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
-
+    
     const response = await fetch(`${API_BASE_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1104,24 +1203,23 @@ const handleRegenerate = async () => {
         attempt_number: (generatedODRL.attempt_number || 1) + 1,
         model: regenerateModel,
         temperature,
-        custom_config: regenerateCustomConfig  
+        custom_model: regenerateCustomConfig  // ✅ Changed from custom_config
       }),
       signal: abortControllerRef.current.signal
     });
-
+    
     if (!response.ok) {
       throw new Error(`Regeneration failed: ${response.status}`);
     }
-
+    
     const data = await response.json();
     console.log('[Generator] Regeneration complete');
     console.log('[Generator] Attempt number:', data.attempt_number);
-
-    // Update state
+    
     setGeneratedODRL(data);
     setActiveTab('generator');
     showToast(`Regenerated ODRL (attempt ${data.attempt_number})`, 'success');
-
+    
   } catch (error) {
     if (error.name === 'AbortError') {
       console.log('[Generator] Regeneration cancelled');
@@ -1136,7 +1234,6 @@ const handleRegenerate = async () => {
     setProcessingStage('');
   }
 };
-
 // ============================================
 // handleEditFromValidator Function 
 // ============================================
@@ -1323,6 +1420,13 @@ const handleParse = async () => {
     showToast('Please enter a policy description', 'warning');
     return;
   }
+  // VALIDATE MODEL
+  const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+  const validation = validateModelConfig(parserModel, 'Parser');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
+    return;
+  }
 
   setLoading(true);
   setProcessingStage('parsing');
@@ -1335,10 +1439,8 @@ const handleParse = async () => {
 
   try {
     updateAgentState('parser', 'processing');
-    
-    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
-    const parserCustomConfig = getModelConfig(parserModel);
-    
+    const parserCustomConfig = validation.config;
+    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;    
     const parseResult = await callAPI('parse', {
       text: inputText,
       model: parserModel,
@@ -1372,6 +1474,13 @@ const handleReason = async () => {
     showToast('Please parse text first!', 'warning');
     return;
   }
+  // VALIDATE MODEL
+  const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
+  const validation = validateModelConfig(reasonerModel, 'Reasoner');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
+    return;
+  }
 
   setLoading(true);
   setProcessingStage('reasoning');
@@ -1384,7 +1493,7 @@ const handleReason = async () => {
     updateAgentState('reasoner', 'processing');
     
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
-    const reasonerCustomConfig = getModelConfig(reasonerModel);
+    const reasonerCustomConfig = validation.config;  // Use validated config
     
     const reasonResult = await callAPI('reason', {
       parsed_data: parsedData,
@@ -1463,9 +1572,30 @@ const handleSaveGenerator = async (metadata) => {
   // ============================================
   // RENDER UI
   // ============================================
+  if (isInitializing) {
+  return (
+    <div className={`min-h-screen ${bgClass} flex items-center justify-center`}>
+      <div className="text-center">
+        <div className="relative">
+          <RefreshCw className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <Sparkles className="w-6 h-6 text-purple-500 absolute top-0 right-0 animate-pulse" />
+        </div>
+
+        <h2 className={`text-xl font-bold ${textClass} mb-2`}>
+          Loading ODRL Generator
+        </h2>
+
+        <p className={`text-sm ${mutedTextClass}`}>
+          Initializing models and configuration...
+        </p>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className={`min-h-screen ${bgClass} transition-colors duration-300`}>
+      
       
       {/* Toast Notifications */}
       <div className="fixed top-20 right-6 z-50 space-y-3">
@@ -1515,7 +1645,7 @@ const handleSaveGenerator = async (metadata) => {
                   {backendConnected ? 'Backend Connected' : 'Backend Offline'}
                 </span>
               </div>
-              {/* ✅ ADD SSE STATUS HERE */}
+              {/*  ADD SSE STATUS HERE */}
               {backendConnected && (
                 <button
                   onClick={() => setActiveTab('status')}
@@ -1535,13 +1665,21 @@ const handleSaveGenerator = async (metadata) => {
 
               {/* Model Info in Header */}
             {backendConnected && selectedModel && (
-              <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
-                {/* Show custom model label if it's a custom model */}
-                {customModels.find(m => m.value === selectedModel)?.label ||
-                providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
-                'Unknown Model'}
-              </div>
-            )}
+  <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
+    {(() => {
+      // Try custom models first
+      const customModel = customModels.find(m => m.value === selectedModel);
+      if (customModel) return customModel.label;
+      
+      // Then provider models
+      const providerModel = providers.flatMap(p => p.models).find(m => m.value === selectedModel);
+      if (providerModel) return providerModel.label;
+      
+      // Fallback
+      return selectedModel;
+    })()}
+  </div>
+)}
 
               {/* Settings Button */}
               <button
@@ -1778,14 +1916,12 @@ const handleSaveGenerator = async (metadata) => {
 
                 <div className="p-6 space-y-4">
                   {/* Example Cards - Using Component */}
-                  {!inputText && (
-                    <ExamplePolicies
-                      onSelectExample={(text) => setInputText(text)}
-                      darkMode={darkMode}
-                      textClass={textClass}
-                      mutedTextClass={mutedTextClass}
-                    />
-                  )}
+                 <ExamplePolicies
+  onSelectExample={(text) => setInputText(text)}
+  darkMode={darkMode}
+  textClass={textClass}
+  mutedTextClass={mutedTextClass}
+/>
                 {/* Drag and Drop Text Area */}
                 <div
                   onDragEnter={handleDrag}
@@ -1930,41 +2066,35 @@ const handleSaveGenerator = async (metadata) => {
         </p>
       </div>
 
-      {/* Agent model selectors */}
       {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
-        <div key={agent}>
-          <label
-            className={`block text-sm font-medium mb-2 ${textClass} capitalize`}
-          >
-            {agent} Model
-          </label>
-
-          <select
-            value={agentModels[agent] || ''}
-            onChange={(e) =>
-              setAgentModels({
-                ...agentModels,
-                [agent]: e.target.value || null,
-              })
-            }
-            className={`w-full px-3 py-2 ${
-              darkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300'
-            } border rounded-lg text-sm`}
-          >
-            {/* Default Option */}
-            <option value="">
-              Use default (
-              {selectedModel
-                ? providers
-                    .flatMap((p) => p.models)
-                    .find((m) => m.value === selectedModel)?.label ||
-                  customModels.find((m) => m.value === selectedModel)?.label ||
-                  'llama3.3'
-                : 'llama3.3'}
-              )
-            </option>
+  <div key={agent}>
+    <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
+      {agent} Model
+    </label>
+    <select
+      value={agentModels[agent] || ''}
+      onChange={(e) => {
+        const newValue = e.target.value || null;
+        console.log(`[Advanced] ${agent} model changed to:`, newValue);
+        setAgentModels({
+          ...agentModels,
+          [agent]: newValue,
+        });
+      }}
+      className={`w-full px-3 py-2 ${
+        darkMode
+          ? 'bg-gray-700 border-gray-600 text-white'
+          : 'bg-white border-gray-300'
+      } border rounded-lg text-sm`}
+    >
+      {/* Default Option */}
+      <option value="">
+        Use default ({selectedModel
+          ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
+            customModels.find(m => m.value === selectedModel)?.label ||
+            'Unknown'
+          : 'llama3.3'})
+      </option>
 
             {/* Default Provider Models */}
             {providers.length > 0 && (
@@ -2236,41 +2366,41 @@ const handleSaveGenerator = async (metadata) => {
             value={selectedModel || ''}
             onChange={(e) => {
               const newModel = e.target.value;
+              console.log('[Settings] Model changed to:', newModel);
               setSelectedModel(newModel);
-              localStorage.setItem('selectedModel', newModel);  //  Save to localStorage
-              showToast('Model updated', 'success');
+              localStorage.setItem('selectedModel', newModel);
+              showToast(`Model updated: ${providers.flatMap(p => p.models).find(m => m.value === newModel)?.label || customModels.find(m => m.value === newModel)?.label || 'Unknown'}`, 'success');
             }}
-            // className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-            className={`w-full h-2 px-2 py-2 bg-transparent rounded-lg resize-none focus:outline-none ${textClass}`}
+            className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
             disabled={!backendConnected}
           >
             {!backendConnected && <option>Backend not connected</option>}
             
             {/* Default Providers */}
-            {providers.map(provider => (
-              <optgroup key={provider.name} label={provider.name}>
-                {provider.models.map(model => (
-                  <option key={model.value} value={model.value}>
-                    {model.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-            
-            {/* Custom Models - UPDATED to show context length */}
-            {customModels.length > 0 && (
-              <optgroup label="━━ Your Custom Models ━━">
-                {customModels.map(model => (
-                  <option key={model.value} value={model.value}>
-                    {model.label}
-                    {' '}
-                    ({model.context_length >= 1000000 
-                      ? `${(model.context_length / 1000000).toFixed(1)}M` 
-                      : `${(model.context_length / 1024).toFixed(0)}K`} ctx)
-                  </option>
-                ))}
-              </optgroup>
-            )}
+{providers.map(provider => (
+  <optgroup key={provider.name} label={provider.name}>
+    {provider.models.map(model => (
+      <option key={model.value} value={model.value}>
+        {model.label}
+      </option>
+    ))}
+  </optgroup>
+))}
+
+{/* Custom Models - ONLY if not in syncMode 'localStorage' */}
+{customModels.length > 0 && (
+  <optgroup label="━━ Your Custom Models ━━">
+    {customModels.map(model => (
+      <option key={model.value} value={model.value}>
+        {model.label}
+        {' '}
+        ({model.context_length >= 1000000 
+          ? `${(model.context_length / 1000000).toFixed(1)}M` 
+          : `${(model.context_length / 1024).toFixed(0)}K`} ctx)
+      </option>
+    ))}
+  </optgroup>
+)}
           </select>
           
           {/*  NEW: Show current selection */}
