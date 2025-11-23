@@ -14,8 +14,8 @@ This API transforms natural language policy descriptions into valid ODRL policie
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies with uv
+uv pip install -r requirements.txt
 
 # Configure environment
 cd backend
@@ -23,11 +23,27 @@ cp .env.example .env
 # Add your API keys to .env
 
 # Run server
-uvicorn main:app --reload
+uv run uvicorn main:app --reload
 
 # Access API
 # Local: http://localhost:8000
 # Docs: http://localhost:8000/docs
+```
+
+## Features
+
+- Multi-agent architecture with specialized processing stages
+- Flexible LLM support (Ollama, Groq, OpenAI, Claude, custom endpoints)
+- Custom model configuration with persistent storage
+- File upload support (TXT, DOCX, MD, PDF)
+- Real-time agent status streaming via Server-Sent Events
+- SHACL validation with automatic error correction
+- Cross-platform configuration management
+
+## Architecture
+```
+Input Text → Parser → Reasoner → Generator → Validator → ODRL Policy
+              LLM      LLM        LLM         LLM+SHACL
 ```
 
 ## Features
