@@ -47,6 +47,11 @@ graph LR
     G -->|✗ Invalid| F
 ```
 
+
+### Workflow Diagram
+![Multi-agent workflow](wiki-images/workflow-diagram_1.png)
+*Figure: Multi-agent pipeline with dual human checkpoints. Reasoner (Checkpoint I) enables pre-generation review; Validator (Checkpoint II) enables post-generation refinement. Red dashed: edit input; orange dashed: regenerate; green: continue. Supports per-agent LLM configuration.*
+
 ## Documentation
 
 | Guide | Description |
