@@ -8,6 +8,6 @@
 
 ### Main Interface Demo
 
-![ODRL Policy Generator Main Interface](wiki-images/demo-main-interface-2.png)
+![ODRL Policy Generator Main Interface](https://github.com/Daham-Mustaf/odrl-multi-agent-llm/blob/main/wiki-images/demo-main-interface-2.png)
 *Figure: The main GUI for the ODRL Multi-Agent demo. Users can input policy descriptions, upload files, adjust advanced settings, and track the pipeline status with real-time updates.*
 
