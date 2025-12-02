@@ -59,9 +59,7 @@ graph LR
 
 ## 🎬 Demo
 
-**Video Demo:** [Watch on YouTube](https://youtube.com/demo)  
-**Live Demo:** [Try it here](https://demo.example.com)  
-**Source Code:** [GitHub Repository](https://github.com/Daham-Mustaf/odrl-multi-agent-llm)
+**Video Demo:** [Watch on YouTube](comming soon ...)  
 
 ## Tech Stack
 
