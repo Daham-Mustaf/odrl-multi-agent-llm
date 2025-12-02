@@ -25,3 +25,16 @@
 - **If rejected or needs edits:** users can return to the main text input of the Parser Agent to modify the policy.  
 
 *This ensures policies are validated and conflicts are detected before being finalized.*
+
+### Generator & SHACL Validator Demo
+
+![ODRL Policy Generator Interface](https://github.com/Daham-Mustaf/odrl-multi-agent-llm/blob/main/wiki-images/shacl-operator-violation.png)
+*Figure: The Generator Agent GUI for the ODRL Multi-Agent demo. After the Reasoner Agent approves a policy, the Generator Agent produces the final ODRL JSON and prepares it for validation.*
+
+- **SHACL Validator:**  
+  The generated policy is automatically checked against SHACL constraints to ensure semantic correctness.  
+  - **Valid SHACL:** the policy is finalized and ready for deployment or export.  
+  - **Invalid SHACL:** highlighted errors appear in red, and the policy is redirected back to the Generator Agent for corrections.  
+
+*This ensures that all generated policies are syntactically and semantically correct according to ODRL standards before final use.*
+
