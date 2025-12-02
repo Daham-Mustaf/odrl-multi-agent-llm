@@ -268,6 +268,359 @@
     "acceptance_reasoning_detailed": "The policy imposes mutually exclusive constraints on concurrent connections: one limits to 5, while another allows 10. These cannot be satisfied simultaneously, creating an implementation conflict that invalidates the policy."
 }
 
+         [
+    {
+        "policy_id": "action_hierarchy_conflict_001",
+        "policy_text": "The DRK Cultural Heritage project (http://w3id.org/drk/ontology/) grants UC4 Partner permission to odrl:distribute the 'MuseumArtifacts' dataset for academic collaboration. However, the same policy explicitly prohibits UC4 Partner from performing odrl:share operations on the same dataset.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_hierarchy_contradiction",
+        "rejection_category_description": "Policy creates semantic contradiction through ODRL action subsumption relationships",
+        "specific_contradiction": "In ODRL vocabulary, odrl:share is subsumed by odrl:distribute (share ⊑ distribute). Permitting distribution while prohibiting sharing is semantically impossible, as distributing inherently requires sharing capability.",
+        "recommendation": "Align action permissions with ODRL action hierarchy. Either permit both distribute and share, or prohibit distribute to prevent sharing.",
+        "rejection_reason_detailed": "The ODRL Information Model defines distribute as a parent action that includes sharing as a necessary component operation. A system cannot enable distribution without enabling the sharing mechanism. The policy violates the operational semantics of ODRL actions by creating an impossible action hierarchy constraint where a parent action is permitted but its required child action is prohibited."
+    },
+    {
+        "policy_id": "action_hierarchy_conflict_002",
+        "policy_text": "Researchers at the National Archives are permitted to odrl:modify metadata records in the 'HistoricalDocuments' collection. However, all odrl:write operations on the same collection are strictly prohibited for all users including researchers.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_hierarchy_contradiction",
+        "rejection_category_description": "Policy violates ODRL action containment semantics",
+        "specific_contradiction": "odrl:modify is a specialization of odrl:write in ODRL hierarchy (modify ⊑ write). Prohibiting write while permitting modify creates an action subsumption contradiction.",
+        "recommendation": "Permit write operations with appropriate constraints, or remove modify permission to maintain consistency with write prohibition.",
+        "rejection_reason_detailed": "In ODRL's action taxonomy, modification operations are specializations of write operations. The policy creates a semantic impossibility by allowing a specialized action while prohibiting its parent action. This violates the action containment principle where permissions for specialized actions must be subsets of permissions for their parent actions in the hierarchy."
+    },
+    {
+        "policy_id": "action_hierarchy_conflict_003",
+        "policy_text": "The Staatstheater Augsburg grants permission to odrl:reproduce the 'PerformanceRecordings' collection for educational institutions. The policy explicitly prohibits odrl:print of any materials from the same collection.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_hierarchy_contradiction",
+        "rejection_category_description": "Policy contradicts ODRL includedIn action relationships",
+        "specific_contradiction": "odrl:print is included in odrl:reproduce (print ⊑ reproduce). Permitting reproduction while prohibiting printing creates an operational contradiction.",
+        "recommendation": "Either remove print prohibition to allow reproduction, or replace reproduce permission with specific non-print reproduction methods.",
+        "rejection_reason_detailed": "The ODRL vocabulary specifies that print is included in the operational semantics of reproduce through the includedIn relationship. Reproduction of physical materials inherently includes printing capability. The policy creates an implementation impossibility by granting reproduction rights while denying access to one of its constituent operations, violating the semantic completeness of the reproduce action."
+    },
+    {
+        "policy_id": "action_hierarchy_conflict_004",
+        "policy_text": "UC4 Partner may odrl:use the 'DigitalManuscripts' dataset from the Culture Data Space for research analysis. However, the partner is explicitly prohibited from performing odrl:read operations on the dataset.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_hierarchy_contradiction",
+        "rejection_category_description": "Policy creates fundamental action dependency violation",
+        "specific_contradiction": "odrl:read is subsumed by odrl:use (read ⊑ use). Prohibiting read while permitting use is semantically contradictory as usage requires read access.",
+        "recommendation": "Remove read prohibition or restrict use permission to specific operations that don't require read access.",
+        "rejection_reason_detailed": "In ODRL semantics, the use action encompasses a broad range of operations that fundamentally depend on read access as a prerequisite. The policy creates a logical impossibility by granting usage rights while denying the foundational read operation required to exercise those rights. This violates the dependency chain in ODRL action semantics where higher-level actions depend on lower-level actions."
+    },
+    {
+        "policy_id": "action_hierarchy_conflict_005",
+        "policy_text": "The DRK Connector platform permits approved institutions to odrl:display the 'ExhibitionVideo' archive during public events. The policy prohibits all institutions from performing odrl:play operations on the same archive.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_hierarchy_contradiction",
+        "rejection_category_description": "Policy violates ODRL operational semantics inclusion",
+        "specific_contradiction": "odrl:display is included in odrl:play (display ⊑ play). Prohibiting play while allowing display creates operational contradiction.",
+        "recommendation": "Permit play with appropriate constraints (e.g., public event context only), or restrict display to static images without play permission.",
+        "rejection_reason_detailed": "The ODRL specification defines display as a component operation included within play for audiovisual content. Playing video content inherently requires display capability. The policy creates semantic inconsistency by granting permission for a component operation while prohibiting the parent operation that provides its context, violating the operational semantics defined in the ODRL vocabulary."
+    },
+    {
+        "policy_id": "temporal_duty_precedence_conflict_001",
+        "policy_text": "The National Museum grants UC4 Partner permission to access the 'RareManuscripts' dataset starting from 2025-06-01T00:00:00Z. However, the partner must fulfill a duty to odrl:delete all local copies of the dataset before 2025-05-01T00:00:00Z.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_duty_precedence_contradiction",
+        "rejection_category_description": "Duty temporal constraint precedes permission activation",
+        "specific_contradiction": "Deletion duty deadline (May 1) occurs one month before permission becomes active (June 1), making the duty impossible to fulfill since access hasn't been granted yet.",
+        "recommendation": "Adjust deletion duty to occur after permission period, or remove the duty if intended for prior access periods.",
+        "rejection_reason_detailed": "The policy violates temporal precedence requirements in ODRL duty evaluation. A duty cannot be fulfilled on data that hasn't been accessed yet. The deletion duty refers to 'local copies' that can only exist after the permission is exercised, but the duty deadline occurs before permission activation. This creates a temporal impossibility where the subject of the duty doesn't exist at the time the duty must be satisfied."
+    },
+    {
+        "policy_id": "temporal_duty_precedence_conflict_002",
+        "policy_text": "Researchers may access 'ClinicalTrialData' with constraint dateTime lteq 2025-12-31T23:59:59Z. The policy requires researchers to odrl:notify the data provider of their findings with constraint dateTime gt 2026-01-01T00:00:00Z.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_duty_precedence_contradiction",
+        "rejection_category_description": "Duty temporal window occurs after permission expires",
+        "specific_contradiction": "Notification duty must occur after 2026-01-01, but permission expires on 2025-12-31, creating temporal gap where duty cannot be fulfilled during valid permission period.",
+        "recommendation": "Extend permission validity to cover duty fulfillment period, or adjust duty deadline to fall within permission timeframe.",
+        "rejection_reason_detailed": "ODRL semantics require that duties associated with permissions must be satisfiable during the permission's valid period or as consequences after permission exercise. This policy creates a temporal impossibility by requiring a duty to be performed after the permission that triggers it has expired. The notification duty cannot be fulfilled because the permission context that gives it meaning and enforceability no longer exists when the duty deadline arrives."
+    },
+    {
+        "policy_id": "temporal_elapsed_time_conflict_001",
+        "policy_text": "The Culture Data Space grants permission to odrl:reproduce 'ArchivalPhotos' with constraint elapsedTime eq P30D (30 days duration). The policy includes an obligation to odrl:delete all reproductions with constraint elapsedTime eq P15D (15 days duration).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_elapsed_time_contradiction",
+        "rejection_category_description": "Deletion obligation triggers before permission period ends",
+        "specific_contradiction": "Deletion obligation at 15 days contradicts reproduction permission valid for 30 days, requiring deletion of materials while permission to use them is still active.",
+        "recommendation": "Align elapsedTime constraints so deletion occurs after permission expires, or clarify that deletion applies only after permission period ends.",
+        "rejection_reason_detailed": "The ODRL elapsedTime constraint specifies a duration from a triggering event (typically permission activation). This policy creates a temporal contradiction by requiring deletion at 15 days while simultaneously permitting usage for 30 days. The obligation to delete materials conflicts with the ongoing permission to reproduce and use those materials for the remaining 15 days, creating an implementation impossibility where compliance with the obligation violates the permission, and compliance with the permission violates the obligation."
+    },
+    {
+        "policy_id": "temporal_payment_verification_conflict_001",
+        "policy_text": "Access to 'PremiumCulturalData' requires UC4 Partner to fulfill a duty to odrl:compensate 500 EUR before dateTime 2025-01-01T00:00:00Z. However, payment verification and access activation can only occur after dateTime 2025-02-01T00:00:00Z due to administrative processing.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_duty_verification_contradiction",
+        "rejection_category_description": "Payment verification occurs after payment deadline",
+        "specific_contradiction": "Payment duty deadline (January 1) precedes verification and access activation (February 1), creating temporal impossibility in duty satisfaction verification.",
+        "recommendation": "Align payment deadline with verification capability, or implement automated payment verification to occur before deadline.",
+        "rejection_reason_detailed": "This policy violates ODRL duty verification semantics by creating a temporal gap between duty fulfillment and verification. The duty requires payment by January 1, but the system cannot verify compliance or activate access until February 1. This creates an impossible enforcement scenario where the duty deadline passes without ability to verify fulfillment, potentially causing unjust access denial for parties who fulfilled the duty on time but cannot prove it until after the deadline."
+    },
+    {
+        "policy_id": "temporal_consequence_precedence_conflict_001",
+        "policy_text": "Permission to odrl:display 'ExhibitionCatalog' is valid with constraint dateTime between 2025-06-01 and 2025-08-31. If the permission is violated, the consequence requires odrl:compensate with constraint dateTime before 2025-06-01T00:00:00Z.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_consequence_precedence_contradiction",
+        "rejection_category_description": "Consequence temporal constraint precedes violation possibility",
+        "specific_contradiction": "Consequence compensation must occur before June 1, but permission violation can only occur between June 1 and August 31, making consequence timing impossible.",
+        "recommendation": "Adjust consequence timing to occur after permission period, allowing reasonable time for violation detection and remediation.",
+        "rejection_reason_detailed": "ODRL consequence semantics require that consequences are triggered by specific events (violations, obligation failures). This policy creates a temporal impossibility by requiring a consequence to be fulfilled before the triggering event can occur. A compensation consequence for permission violation cannot logically occur before the permission period begins, as there is no violation to remediate. This violates the causal and temporal ordering requirements of ODRL consequence evaluation."
+    },
+    {
+        "policy_id": "dependency_circular_dataset_conflict_001",
+        "policy_text": "UC4 Partner has permission to odrl:distribute 'Dataset_A' only after fulfilling a duty to odrl:attribute 'Dataset_B'. Separately, permission to odrl:use 'Dataset_B' requires a duty to odrl:compensate for 'Dataset_A' usage.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "circular_dependency_contradiction",
+        "rejection_category_description": "Cross-dataset duties create circular dependency with no starting point",
+        "specific_contradiction": "Distributing Dataset_A requires attributing Dataset_B, but using Dataset_B requires compensating for Dataset_A. Neither action can be initiated without the other being completed first.",
+        "recommendation": "Break circular dependency by removing one duty or establishing independent access to one dataset as entry point.",
+        "rejection_reason_detailed": "This policy creates a circular dependency in ODRL duty chains that violates the acyclic dependency requirement. To distribute Dataset_A, the partner must first use Dataset_B to provide attribution. But to use Dataset_B, they must first have distributed Dataset_A to trigger the compensation obligation. This creates a logical loop with no valid starting point, making both permissions impossible to exercise. ODRL duty dependencies must form directed acyclic graphs to ensure satisfiability."
+    },
+    {
+        "policy_id": "dependency_circular_notification_conflict_001",
+        "policy_text": "Researchers have an obligation to odrl:delete 'TemporaryResearchData' after project completion, with a consequence requiring odrl:notify the provider about deletion. The notification permission itself has a duty to verify that 'TemporaryResearchData' still exists for audit purposes.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "circular_dependency_contradiction",
+        "rejection_category_description": "Deletion-notification creates self-referential impossibility",
+        "specific_contradiction": "Deletion requires notification, but notification requires data existence verification, creating circular dependency where deleted data must exist for notification about its deletion.",
+        "recommendation": "Remove existence verification requirement from notification, or implement notification before deletion as a duty rather than consequence.",
+        "rejection_reason_detailed": "This policy creates a self-referential circular dependency in ODRL consequence-duty chains. The deletion obligation triggers a notification consequence, but exercising that notification requires verifying the existence of the data that was just deleted. This creates a temporal and logical impossibility where fulfilling the deletion obligation makes the notification consequence unsatisfiable. ODRL consequence semantics require that consequences must be achievable given the state resulting from the triggering obligation."
+    },
+    {
+        "policy_id": "dependency_circular_exclusivity_conflict_001",
+        "policy_text": "Permission to odrl:read 'SecureArchive' requires a duty to odrl:ensureExclusivity, verifying no other parties are accessing the data. The exclusivity verification process itself requires odrl:read access to the 'SecureArchive' access logs.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "circular_dependency_contradiction",
+        "rejection_category_description": "Self-referential duty creates impossible bootstrapping problem",
+        "specific_contradiction": "Reading requires exclusivity verification, but verification requires reading, creating circular dependency with no valid entry point.",
+        "recommendation": "Separate exclusivity verification into independent audit process that doesn't require accessing the protected resource.",
+        "rejection_reason_detailed": "This policy violates ODRL duty satisfiability by creating a self-referential dependency loop. To read the SecureArchive, parties must first verify exclusivity by reading the access logs, but reading those logs requires the same read permission being requested, which in turn requires exclusivity verification. This creates an impossible bootstrapping problem with no valid initialization state. ODRL duties must not create self-referential dependencies where satisfying a duty requires the permission being requested."
+    },
+    {
+        "policy_id": "dependency_contradictory_state_conflict_001",
+        "policy_text": "Permission to odrl:distribute 'StatisticalData' includes a duty to odrl:aggregate the data to k=5 anonymity level before distribution. However, the distribution permission also requires a duty to provide the original non-aggregated 'StatisticalData' for verification purposes.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "contradictory_duty_state_requirements",
+        "rejection_category_description": "Mutually exclusive duty state requirements",
+        "specific_contradiction": "Distribution requires aggregation (transforming data) AND requires providing non-aggregated original (preserving data), creating mutually exclusive state requirements.",
+        "recommendation": "Clarify whether distribution occurs on aggregated data with separate verification process, or allow distribution of non-aggregated data with different privacy protections.",
+        "rejection_reason_detailed": "This policy creates mutually exclusive state requirements in ODRL duties. Aggregation fundamentally transforms data by combining individual records, making it impossible to simultaneously maintain non-aggregated originals for the same distribution instance. The duties require the distributed data to exist in two incompatible states: aggregated (for privacy) and non-aggregated (for verification). ODRL duty semantics require that all duties associated with a permission must be simultaneously satisfiable from a single consistent state."
+    },
+    {
+        "policy_id": "dependency_temporal_circular_conflict_001",
+        "policy_text": "Researchers may odrl:modify 'CollaborativeManuscript' only after fulfilling a duty to obtain approval from all co-authors. The approval process requires all co-authors to review and approve the modified version of the manuscript.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "temporal_circular_dependency",
+        "rejection_category_description": "Temporal ordering creates impossible causality",
+        "specific_contradiction": "Modification requires pre-approval, but approval requires reviewing post-modification results, creating temporal circular dependency.",
+        "recommendation": "Restructure to allow preliminary approval based on proposed modifications, or implement iterative approval of incremental changes.",
+        "rejection_reason_detailed": "This policy violates temporal causality in ODRL duty chains by requiring an effect (approval of modified manuscript) to precede its cause (modification action). The modification duty requires obtaining approval before making changes, but the approval process requires the modified manuscript to exist for review. This creates a temporal impossibility where the input to the duty (modified manuscript) cannot exist until after the duty is fulfilled (approval obtained). ODRL duty semantics require that duty fulfillment must not depend on future states that can only result from exercising the permission the duty guards."
+    },
+    {
+        "policy_id": "constraint_numeric_range_conflict_001",
+        "policy_text": "UC4 Partner has permission to odrl:use 'ResearchDataset' with constraint leftOperand odrl:count, operator odrl:lteq, rightOperand 100. The same permission separately includes constraint leftOperand odrl:count, operator odrl:gteq, rightOperand 150.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "numeric_constraint_contradiction",
+        "rejection_category_description": "Contradictory numeric range constraints create impossible condition",
+        "specific_contradiction": "Usage count cannot simultaneously be ≤100 and ≥150, creating non-overlapping numeric range contradiction.",
+        "recommendation": "Remove one constraint or adjust values to create satisfiable range (e.g., gteq 50 and lteq 100).",
+        "rejection_reason_detailed": "This policy violates ODRL constraint composition semantics by combining incompatible numeric range constraints. The conjunction of count≤100 AND count≥150 creates an empty solution set with no valid values. ODRL constraint evaluation requires that all constraints on the same leftOperand must be simultaneously satisfiable. The policy creates a logical contradiction where no usage count value can satisfy both constraints, making the permission impossible to exercise."
+    },
+    {
+        "policy_id": "constraint_payment_contradiction_001",
+        "policy_text": "Access to 'PremiumArchive' is permitted with constraint leftOperand odrl:payAmount, operator odrl:eq, rightOperand 0 (free access). However, the permission includes a duty with constraint leftOperand odrl:payAmount, operator odrl:gt, rightOperand 0 (payment required).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "payment_constraint_contradiction",
+        "rejection_category_description": "Contradictory payment amount constraints",
+        "specific_contradiction": "Payment amount cannot equal 0 (free) and be greater than 0 (paid) simultaneously.",
+        "recommendation": "Either remove payment duty for free access, or adjust permission constraint to allow non-zero payment.",
+        "rejection_reason_detailed": "This policy creates a mathematical contradiction in ODRL payment constraints. The permission constraint states payAmount=0, indicating free access, while the duty constraint requires payAmount>0, indicating paid access. These constraints are mutually exclusive and cannot be satisfied simultaneously. ODRL constraint semantics require that permission constraints and associated duty constraints must be consistent and jointly satisfiable. The policy makes access impossible by requiring contradictory payment states."
+    },
+    {
+        "policy_id": "constraint_resolution_overlap_conflict_001",
+        "policy_text": "Permission to odrl:display 'DigitalArtwork' includes constraint leftOperand odrl:resolution, operator odrl:lt, rightOperand 500dpi. Separately, a prohibition exists with constraint leftOperand odrl:resolution, operator odrl:gteq, rightOperand 300dpi for the same artwork.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "constraint_range_overlap_contradiction",
+        "rejection_category_description": "Permission and prohibition constraint ranges overlap",
+        "specific_contradiction": "Resolution range 300-499dpi falls within both permitted (<500dpi) and prohibited (≥300dpi) ranges, creating ambiguous overlap.",
+        "recommendation": "Adjust constraints to create non-overlapping ranges, e.g., permit <300dpi and prohibit ≥500dpi.",
+        "rejection_reason_detailed": "This policy violates ODRL consistency requirements by creating overlapping permission and prohibition constraints. For display resolutions between 300-499dpi, the artwork is simultaneously permitted (satisfies <500dpi) and prohibited (satisfies ≥300dpi). ODRL policy evaluation cannot resolve this ambiguity as both rules apply with equal validity. Consistent policies require that permission and prohibition constraint ranges must be disjoint, ensuring each possible value unambiguously falls into one category."
+    },
+    {
+        "policy_id": "constraint_set_operator_conflict_001",
+        "policy_text": "Permission includes constraint leftOperand odrl:spatial, operator odrl:isPartOf, rightOperand {Germany, France}. The same permission includes constraint leftOperand odrl:spatial, operator odrl:isNoneOf, rightOperand {European_Union}.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "set_operator_contradiction",
+        "rejection_category_description": "Contradictory set membership constraints",
+        "specific_contradiction": "Locations must be part of {Germany, France} (both EU members) AND none of {European_Union}, creating set contradiction.",
+        "recommendation": "Remove isNoneOf EU constraint, or change isPartOf to countries outside EU.",
+        "rejection_reason_detailed": "This policy violates ODRL set operator semantics by creating contradictory membership constraints. Germany and France are both members of the European Union, so requiring spatial location to be part of {Germany, France} necessarily implies EU membership. The second constraint requires the location to be none of {EU}, creating a logical impossibility. ODRL set operator semantics require that isPartOf and isNoneOf constraints must not create contradictory membership requirements when evaluated against real-world set relationships."
+    },
+    {
+        "policy_id": "constraint_percentage_contradiction_001",
+        "policy_text": "Permission to odrl:extract allows usage with constraint leftOperand odrl:percentage, operator odrl:lteq, rightOperand 50 (maximum 50% of asset). However, a duty requires constraint leftOperand odrl:percentage, operator odrl:eq, rightOperand 100 (must use 100% of asset).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "percentage_constraint_contradiction",
+        "rejection_category_description": "Contradictory percentage usage constraints",
+        "specific_contradiction": "Usage percentage cannot be ≤50% (permission) and =100% (duty) simultaneously.",
+        "recommendation": "Align percentage constraints to create satisfiable range, or separate permission and duty to different assets.",
+        "rejection_reason_detailed": "This policy creates a mathematical contradiction in ODRL percentage constraints. The permission restricts usage to at most 50% of the asset, while the associated duty requires using exactly 100% of the asset. These constraints are mutually exclusive and cannot be satisfied simultaneously. ODRL constraint composition semantics require that permission constraints must not contradict duty constraints, as both must be satisfiable to exercise the permission. The policy makes compliant usage impossible."
+    },
+    {
+        "policy_id": "refinement_action_quality_conflict_001",
+        "policy_text": "Permission to odrl:print 'HistoricalDocument' includes action refinement constraint resolution lt 600dpi (low resolution printing permitted). A duty attached to the permission requires odrl:print the same document with action refinement constraint resolution eq 1200dpi (high resolution printing required).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_refinement_contradiction",
+        "rejection_category_description": "Contradictory action quality refinements",
+        "specific_contradiction": "Cannot print at <600dpi (permission constraint) while also printing at 1200dpi (duty constraint) for same document instance.",
+        "recommendation": "Align resolution requirements or separate into different permissions for different quality levels.",
+        "rejection_reason_detailed": "This policy violates ODRL action refinement consistency by creating contradictory quality constraints on the same action. Action refinements specify how an action is performed on a specific asset instance. The permission allows low-resolution printing (<600dpi) but simultaneously requires high-resolution printing (1200dpi) as a duty. Since a single print action on one document instance can only have one resolution, these refinements are mutually exclusive. ODRL refinement semantics require that permission and duty refinements on the same action must be jointly satisfiable."
+    },
+    {
+        "policy_id": "refinement_asset_scope_conflict_001",
+        "policy_text": "Assignee may odrl:extract from 'CompleteBook' with asset refinement constraint pages isAnyOf {1-50} (any pages from 1-50 permitted). Prohibition on odrl:extract from 'CompleteBook' with asset refinement constraint pages isAllOf {1-100} (all pages from 1-100 prohibited).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "asset_refinement_overlap_contradiction",
+        "rejection_category_description": "Permission and prohibition asset refinements overlap",
+        "specific_contradiction": "Pages 1-50 are permitted (isAnyOf) but also prohibited as subset of pages 1-100 (isAllOf), creating refinement scope overlap.",
+        "recommendation": "Adjust refinement scopes to be disjoint, e.g., permit pages 1-50, prohibit pages 51-100.",
+        "rejection_reason_detailed": "This policy creates overlapping permission and prohibition through asset refinements. The permission allows extraction of any pages from the 1-50 range, but the prohibition forbids extraction when considering all pages in the 1-100 range. Since pages 1-50 are a subset of pages 1-100, any extraction of pages 1-50 simultaneously satisfies the permission (isAnyOf pages 1-50) and violates the prohibition (involves pages that are isAllOf 1-100). ODRL refinement semantics require that asset refinement scopes for permissions and prohibitions must not overlap."
+    },
+    {
+        "policy_id": "refinement_format_contradiction_001",
+        "policy_text": "Permission to odrl:reproduce 'PhotographCollection' includes asset refinement constraint fileFormat eq 'JPEG' (only JPEG format permitted). A duty requires odrl:delete the same asset with refinement constraint fileFormat neq 'JPEG' (delete only non-JPEG formats).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "asset_refinement_scope_mismatch",
+        "rejection_category_description": "Permission and duty asset refinements target different scopes",
+        "specific_contradiction": "Permission targets JPEG files, duty targets non-JPEG files of same asset, creating disjoint refinement scopes that cannot both apply to same operation.",
+        "recommendation": "Clarify whether duty applies to derivatives created during reproduction, or adjust refinements to target same asset scope.",
+        "rejection_reason_detailed": "This policy creates a scope mismatch in ODRL asset refinements between permission and associated duty. The permission applies only to JPEG format files (fileFormat eq JPEG), while the duty applies to non-JPEG files (fileFormat neq JPEG) of the same asset. Since a single reproduction operation targets specific files, and those files are either JPEG or non-JPEG but not both, the duty and permission apply to disjoint sets of files. This makes the duty unsatisfiable in the context of exercising the permission. ODRL refinement semantics require that duties associated with permissions must apply to the same or broader scope as the permission."
+    },
+    {
+        "policy_id": "refinement_translation_conflict_001",
+        "policy_text": "UC4 Partner may odrl:translate 'LatinManuscript' with action refinement constraint targetLanguage eq 'English' (translation to English permitted). Prohibition on odrl:translate with action refinement constraints sourceLanguage eq 'Latin' AND targetLanguage eq 'English' (Latin to English translation prohibited).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_refinement_specificity_conflict",
+        "rejection_category_description": "More specific prohibition contradicts general permission",
+        "specific_contradiction": "General permission for English translation conflicts with specific prohibition on Latin-to-English translation when asset is a Latin manuscript.",
+        "recommendation": "Remove permission for English translation of Latin manuscript, or remove the specific prohibition.",
+        "rejection_reason_detailed": "This policy creates a specificity conflict in ODRL action refinements. The permission allows translation to English (specifying only target language) from 'LatinManuscript', which is inherently in Latin. The prohibition specifically forbids Latin-to-English translation (specifying both source and target). Since the manuscript is Latin, any translation to English necessarily involves Latin as source language, making every instance that satisfies the permission also violate the prohibition. ODRL refinement evaluation principles require that more specific refinements (source+target) must be consistent with less specific refinements (target only)."
+    },
+    {
+        "policy_id": "refinement_streaming_quality_conflict_001",
+        "policy_text": "Permission to odrl:stream 'CulturalVideo' includes action refinement constraint quality lteq '480p' (maximum 480p quality). Obligation associated with streaming requires action refinement constraint quality gteq '720p' (minimum 720p quality required).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "action_refinement_range_contradiction",
+        "rejection_category_description": "Contradictory quality range refinements",
+        "specific_contradiction": "Streaming quality cannot be simultaneously ≤480p (permission) and ≥720p (obligation).",
+        "recommendation": "Align quality ranges to create satisfiable constraint, e.g., permit and require 720p streaming.",
+        "rejection_reason_detailed": "This policy creates contradictory quality range constraints through action refinements. The permission restricts streaming to a maximum quality of 480p, while the associated obligation requires a minimum quality of 720p. These constraints define non-overlapping ranges with no valid quality value that satisfies both. ODRL action refinement semantics require that permission refinements and associated obligation refinements must have overlapping valid ranges to ensure the obligation can be fulfilled while exercising the permission. The policy makes compliant streaming impossible."
+    },
+    {
+        "policy_id": "role_hierarchy_researcher_conflict_001",
+        "policy_text": "Permission assigned to party with role 'PhD_Researcher' to odrl:modify 'ActiveProjects' database. Prohibition for party with role 'Student' on the same action and asset. University HR system classifies all PhD_Researchers as Students.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "role_hierarchy_contradiction",
+        "rejection_category_description": "Permission for specialized role contradicts prohibition on parent role",
+        "specific_contradiction": "PhD_Researchers (permitted) are classified as Students (prohibited) in role hierarchy, creating impossible access control.",
+        "recommendation": "Exempt PhD_Researchers from Student prohibition, or remove PhD_Researcher permission.",
+        "rejection_reason_detailed": "This policy violates ODRL party role consistency by creating contradictory permissions across a role hierarchy. In the organizational taxonomy, PhD_Researchers are a specialization of the Student role. The policy permits PhD_Researchers to modify the database while prohibiting Students from the same action. Since PhD_Researchers are Students, they are simultaneously granted permission (as PhD_Researchers) and subject to prohibition (as Students). ODRL party role semantics require that permissions and prohibitions must be consistent across role hierarchies, where specialized roles inherit constraints from their parent roles."
+    },
+    {
+        "policy_id": "role_type_institution_conflict_001",
+        "policy_text": "Assignee party type 'Academic_Institution' may odrl:reproduce 'EducationalContent' for teaching purposes. Prohibition for party type 'Organization' on reproducing the same content. Institutional ontology defines Academic_Institutions as subclass of Organizations.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "party_type_subsumption_contradiction",
+        "rejection_category_description": "Permission for subclass contradicts prohibition on parent class",
+        "specific_contradiction": "Academic_Institutions (permitted) are subclass of Organizations (prohibited) in type hierarchy.",
+        "recommendation": "Narrow prohibition to exclude Academic_Institutions, or remove Academic_Institution permission.",
+        "rejection_reason_detailed": "This policy creates a party type hierarchy contradiction. The permission targets Academic_Institutions as a specific party type, while the prohibition applies to Organizations as a broader type. In the institutional taxonomy, Academic_Institutions is defined as a subclass of Organizations, meaning all academic institutions are organizations. This creates a logical impossibility where academic institutions are both explicitly permitted (as Academic_Institutions) and implicitly prohibited (as Organizations). ODRL party type semantics require that permissions and prohibitions must respect type subsumption relationships in the underlying ontology."
+    },
+    {
+        "policy_id": "role_project_membership_conflict_001",
+        "policy_text": "Permission for assignee party role 'Project_Lead' to odrl:distribute 'CollaborativeResearch' results. Prohibition for party role 'Project_Contributor' on distributing the same results. Project management system defines Project_Leads as type of Project_Contributors.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "role_classification_contradiction",
+        "rejection_category_description": "Specialized role permission conflicts with general role prohibition",
+        "specific_contradiction": "Project_Leads (permitted) are classified as Project_Contributors (prohibited), creating role-based access contradiction.",
+        "recommendation": "Explicitly exempt Project_Leads from Contributor prohibition, or restructure role definitions.",
+        "rejection_reason_detailed": "This policy violates ODRL role consistency through conflicting access controls across a role hierarchy. The system classifies Project_Leads as a specialized type of Project_Contributor, inheriting the contributor role while adding leadership responsibilities. The policy grants distribution rights to Project_Leads but prohibits distribution for Project_Contributors. Since Project_Leads are Contributors, they inherit the prohibition while simultaneously holding the permission. ODRL party semantics require that role-based permissions and prohibitions must be consistent when roles have subclass relationships, with specialized roles able to have additional permissions but not contradict parent role prohibitions."
+    },
+    {
+        "policy_id": "role_employment_hierarchy_conflict_001",
+        "policy_text": "Duty for party role 'Data_Curator' to odrl:anonymize 'SensitiveResearch' dataset before sharing. Prohibition for party role 'Staff_Member' to odrl:anonymize the same dataset. HR policy states all Data_Curators are Staff_Members.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "role_duty_prohibition_contradiction",
+        "rejection_category_description": "Duty for specialized role conflicts with prohibition on parent role",
+        "specific_contradiction": "Data_Curators (obligated to anonymize) are Staff_Members (prohibited from anonymizing), creating impossible duty assignment.",
+        "recommendation": "Exempt Data_Curators from Staff_Member prohibition, or reassign anonymization duty to different role.",
+        "rejection_reason_detailed": "This policy creates a duty-prohibition contradiction across role hierarchy. Data_Curators have an explicit duty to anonymize sensitive data, but as Staff_Members they are prohibited from anonymization operations. Since all Data_Curators are classified as Staff_Members in the HR hierarchy, they are simultaneously obligated and prohibited from performing the same action. ODRL role-based duty semantics require that duties must be assignable to roles that have the necessary permissions. Prohibiting a parent role from an action makes it impossible to assign duties for that action to any specialized roles within that hierarchy."
+    },
+    {
+        "policy_id": "role_membership_inclusion_conflict_001",
+        "policy_text": "Permission for assignee party 'Consortium_Member' to odrl:access 'SharedDatasets' collection. Prohibition for party 'External_Partner' on accessing the same collection. Consortium membership rules state Consortium_Members include all External_Partners.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "party_relationship_inclusion_contradiction",
+        "rejection_category_description": "Permission for inclusive group conflicts with prohibition on included subgroup",
+        "specific_contradiction": "Consortium_Members (permitted) include External_Partners (prohibited), creating contradictory access for External_Partners.",
+        "recommendation": "Exclude External_Partners from Consortium_Member definition, or remove External_Partner prohibition.",
+        "rejection_reason_detailed": "This policy creates a party relationship inclusion contradiction. The permission grants access to Consortium_Members as a collective group, while the prohibition specifically targets External_Partners. The consortium membership rules state that External_Partners are included within the Consortium_Members group. This creates conflicting access rights where External_Partners are both permitted (as part of Consortium_Members) and prohibited (as External_Partners) from accessing the same resource. ODRL party semantics require that when groups have inclusion relationships, permissions and prohibitions must not create contradictory access rights for included subgroups."
+    },
+    {
+        "policy_id": "vague_universal_purpose_conflict_001",
+        "policy_text": "Permission to odrl:use 'OpenCulturalDataset' for all purposes without restriction. Prohibition on odrl:use the same dataset for any commercial purpose.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "universal_quantifier_contradiction",
+        "rejection_category_description": "Universal permission contradicts specific prohibition",
+        "specific_contradiction": "'All purposes' universally includes commercial purposes, but commercial use is explicitly prohibited, creating quantifier scope contradiction.",
+        "recommendation": "Replace 'all purposes' with specific non-commercial purposes, or remove commercial use prohibition.",
+        "rejection_reason_detailed": "This policy creates a universal-specific quantifier contradiction. The permission uses universal quantification ('all purposes') which logically includes every possible purpose including commercial use. The prohibition specifically excludes commercial purposes from allowed uses. These create contradictory constraints where commercial use is both implicitly included (by 'all purposes' permission) and explicitly excluded (by commercial prohibition). ODRL constraint semantics require that universal quantifiers in permissions must not be contradicted by specific prohibitions, as the universal quantifier creates an explicit claim that no exceptions exist."
+    },
+    {
+        "policy_id": "vague_any_subset_conflict_001",
+        "policy_text": "Assignee may odrl:extract any subset of 'LargeTextCorpus' for analysis. Duty requires preserving all elements of the same 'LargeTextCorpus' unmodified during extraction.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "existential_universal_quantifier_conflict",
+        "rejection_category_description": "Existential permission (any) conflicts with universal obligation (all)",
+        "specific_contradiction": "Extracting 'any subset' implies potential selection/modification, contradicting duty to preserve 'all elements' unmodified.",
+        "recommendation": "Clarify that extraction creates copies while preserving originals, or remove preservation duty.",
+        "rejection_reason_detailed": "This policy creates a quantifier scope contradiction between existential permission and universal obligation. The permission allows extraction of 'any subset', using existential quantification that implies freedom to select, potentially modify, or remove elements. The duty requires preserving 'all elements' unmodified, using universal quantification that implies no elements can be altered. These quantifiers create contradictory requirements: existential quantification in the permission suggests partial operations are allowed, while universal quantification in the duty requires complete preservation. ODRL quantifier semantics require that existential and universal quantifiers must not create contradictory scope requirements on the same asset."
+    },
+    {
+        "policy_id": "vague_recipient_ambiguity_conflict_001",
+        "policy_text": "Permission to odrl:distribute 'NewsArticles' to any recipient without restriction. Prohibition on distribution to recipients in certain jurisdictions (jurisdiction set undefined).",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "universal_existential_ambiguity",
+        "rejection_category_description": "Universal permission conflicts with undefined existential restriction",
+        "specific_contradiction": "'Any recipient' universal quantifier contradicts 'certain jurisdictions' existential restriction without clear definition of restricted set.",
+        "recommendation": "Define specific prohibited jurisdictions or replace 'any recipient' with explicitly allowed jurisdictions.",
+        "rejection_reason_detailed": "This policy creates a quantifier ambiguity through undefined set restrictions. The permission uses universal quantification ('any recipient') indicating no recipient restrictions. The prohibition introduces existential restriction ('certain jurisdictions') without defining the restricted set. This creates enforceability impossibility: implementers cannot determine if a specific distribution violates the policy because the prohibited jurisdiction set is undefined. ODRL quantifier semantics require that existential restrictions must reference well-defined sets from the policy context or external ontologies. Undefined existential restrictions cannot be evaluated for compliance."
+    },
+    {
+        "policy_id": "vague_deletion_archival_conflict_001",
+        "policy_text": "Duty to odrl:delete all copies of 'ResearchData' after project completion date. Permission to odrl:archive any necessary copies for audit and compliance purposes.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "universal_existential_action_conflict",
+        "rejection_category_description": "Universal deletion duty conflicts with existential archival permission",
+        "specific_contradiction": "'All copies' (universal deletion) conflicts with 'any necessary copies' (existential preservation), creating quantifier contradiction.",
+        "recommendation": "Explicitly exempt archived copies from deletion duty, or clarify archival occurs before deletion duty triggers.",
+        "rejection_reason_detailed": "This policy creates a universal-existential action conflict through contradictory quantifier scopes. The deletion duty uses universal quantification ('all copies') requiring complete removal of all instances. The archival permission uses existential quantification ('any necessary copies') allowing preservation of some instances. These create contradictory requirements where compliance with the universal deletion duty (removing all copies) violates the existential permission (preserving necessary copies), and exercising the existential permission (keeping some copies) violates the universal deletion duty (requiring no copies remain). ODRL quantifier semantics require that universal duties must not contradict existential permissions on the same action-asset pairs."
+    },
+    {
+        "policy_id": "vague_nested_quantifier_conflict_001",
+        "policy_text": "Permission to odrl:reproduce 'EducationalMaterials' for any educational use without restriction. Prohibition on reproduction for all commercial educational platforms.",
+        "expected_outcome": "REJECTED",
+        "rejection_category": "nested_universal_quantifier_contradiction",
+        "rejection_category_description": "Universal permission contains universal prohibition as subset",
+        "specific_contradiction": "'Any educational use' universally permits, but 'all commercial educational platforms' universally prohibits subset, creating nested quantifier conflict.",
+        "recommendation": "Replace 'any educational use' with 'any non-commercial educational use', or remove commercial platform prohibition.",
+        "rejection_reason_detailed": "This policy creates a nested universal quantifier contradiction. The permission universally allows reproduction for 'any educational use', which logically includes all types of educational usage including commercial platforms. The prohibition universally forbids reproduction for 'all commercial educational platforms', which is a specific subset of educational uses. This creates a logical contradiction where commercial educational platforms are both explicitly permitted (as subset of 'any educational use') and explicitly prohibited (by the specific prohibition). ODRL quantifier semantics require that universal quantifiers cannot contain contradictory nested universal quantifiers over subsets of the same domain."
+    }
+]
+
 
 
 
