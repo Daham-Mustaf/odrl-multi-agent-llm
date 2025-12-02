@@ -63,9 +63,10 @@ graph LR
 | [API Reference](docs/API.md) | Backend endpoints |
 
 ## 🎬 Demo
-**Video Demo:** [Watch on YouTube](comming soon ...) 
-Check the full screenshot demos [here](docs/index.md).
- 
+
+**Video Demo:** [Watch on YouTube](coming soon...)  
+
+**Screenshot Demos:** Check the full demos [here](docs/index.md).
 
 
 ## Tech Stack
