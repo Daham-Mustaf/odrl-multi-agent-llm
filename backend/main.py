@@ -255,14 +255,14 @@ class GenerateRequest(BaseModel):
     # Model config
     model: Optional[str] = None
     temperature: Optional[float] = None
-    custom_config: Optional[dict] = None
+    custom_model: Optional[dict] = None  # CHANGE FROM custom_config
 
 class ValidateRequest(BaseModel):
     odrl_turtle: str  # accepts Turtle string
     original_text: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = None
-    custom_config: Optional[dict] = None
+    custom_model: Optional[dict] = None  # CHANGE FROM custom_config
 
 class CustomModelRequest(BaseModel):
     name: str
@@ -770,7 +770,7 @@ async def generate_odrl(request: GenerateRequest):
         generator = Generator(
             model=request.model,
             temperature=request.temperature,
-            custom_config=request.custom_config
+            custom_config=request.custom_model
         )
         
         # Generate ODRL Turtle
@@ -820,7 +820,7 @@ async def validate_odrl(request: ValidateRequest):
         validator = Validator(
             model=request.model,
             temperature=request.temperature,
-            custom_config=request.custom_config
+            custom_config=request.custom_model  # CHANGE FROM custom_config
         )
         
         # Validate Turtle directly
