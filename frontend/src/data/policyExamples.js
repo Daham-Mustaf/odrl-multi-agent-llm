@@ -17,7 +17,7 @@ export const policyExamples = {
     },
     { 
       title: "Software License",
-      text: "Users can use, copy, and modify the software. Distribution requires attribution and must use the same license.",
+      text: "Users may use, copy, modify, and distribute the software for any purpose.However, users are strictly prohibited from copying, modifying, or distributing the software under any circumstances",
       hasContradiction: false,
       category: "software"
     },

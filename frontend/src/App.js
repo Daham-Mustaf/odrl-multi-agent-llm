@@ -14,12 +14,10 @@ import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
 import StatusTab from "./components/tabs/StatusTab";
 import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
-
+import SettingsModal from './components/SettingsModal';
 
 // API Configuration
-// const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const API_BASE_URL = API_URL;
-
 
 // ============================================
 // TOAST NOTIFICATION COMPONENT
@@ -31,7 +29,6 @@ const Toast = ({ message, type = 'success', onClose }) => {
     warning: <AlertTriangle className="w-5 h-5" />,
     info: <Info className="w-5 h-5" />
   };
-
   const styles = {
     success: 'bg-green-500 text-white',
     error: 'bg-red-500 text-white',
@@ -94,6 +91,7 @@ const ODRLDemo = () => {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+
   // Store generation context for regeneration
   const [generationContext, setGenerationContext] = useState(null);
   const { getSignal, abort } = useAbortController();
@@ -107,6 +105,7 @@ const ODRLDemo = () => {
   const resetAbortController = () => {
     abortControllerRef.current = new AbortController();
   };
+
   const [advancedMode, setAdvancedMode] = useState(false);
   const [agentModels, setAgentModels] = useState({
     parser: null,      
@@ -114,11 +113,13 @@ const ODRLDemo = () => {
     generator: null,
     validator: null
   });
+
   const {
-  history,
-  addToHistory,
-  clearHistory
+    history,
+    addToHistory,
+    clearHistory
   } = useChatHistory(50);
+
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
   const [completedStages, setCompletedStages] = useState([]);
   const [providers, setProviders] = useState([]);
@@ -132,11 +133,11 @@ const ODRLDemo = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [showMetrics, setShowMetrics] = useState(true);
   const [autoProgress, setAutoProgress] = useState(false);
-
   const [validating, setValidating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [attemptNumber, setAttemptNumber] = useState(1);
   const [isInitializing, setIsInitializing] = useState(true);
+
   const [metrics, setMetrics] = useState({
     parseTime: 0,
     reasonTime: 0,
@@ -173,7 +174,7 @@ const ODRLDemo = () => {
   
   // Processing progress state
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingStage, setProcessingStage] = useState('idle'); // 'idle' | 'parsing' | 'reasoning' | 'generating' | 'validating'
+  const [processingStage, setProcessingStage] = useState('idle');
   const [reasonerLoading, setReasonerLoading] = useState(false);
 
   // ============================================
@@ -193,70 +194,69 @@ const ODRLDemo = () => {
   // ============================================
   // HELPER: Get Custom Model Config
   // ============================================
-
   const getModelConfig = React.useCallback((modelValue) => {
-  console.log('[getModelConfig] Input:', modelValue);
-  console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
-  
-  if (!modelValue) return null;
-  
-  // WAIT FOR CUSTOM MODELS TO LOAD
-  if (modelValue.startsWith('custom:') && customModels.length === 0) {
-    console.warn('[getModelConfig] Custom models not loaded yet');
-    return null;
-  }
-  
-  const customModel = customModels.find(m => m.value === modelValue);
-  console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
-  
-  if (!customModel) return null;
-  
-  const config = {
-    provider_type: customModel.provider_type,
-    base_url: customModel.base_url,
-    model_id: customModel.model_id,
-    api_key: customModel.api_key,
-    context_length: customModel.context_length,
-    temperature_default: customModel.temperature 
-  };
-  
-  console.log('[getModelConfig] Returning config:', config);
-  return config;
-}, [customModels]);
+    console.log('[getModelConfig] Input:', modelValue);
+    console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
+    
+    if (!modelValue) return null;
+    
+    // WAIT FOR CUSTOM MODELS TO LOAD
+    if (modelValue.startsWith('custom:') && customModels.length === 0) {
+      console.warn('[getModelConfig] Custom models not loaded yet');
+      return null;
+    }
+    
+    const customModel = customModels.find(m => m.value === modelValue);
+    console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
+    
+    if (!customModel) return null;
+    
+    const config = {
+      provider_type: customModel.provider_type,
+      base_url: customModel.base_url,
+      model_id: customModel.model_id,
+      api_key: customModel.api_key,
+      context_length: customModel.context_length,
+      temperature_default: customModel.temperature 
+    };
+    
+    console.log('[getModelConfig] Returning config:', config);
+    return config;
+  }, [customModels]);
 
-// ADD THE VALIDATION HELPER 
-const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') => {
-  if (!modelValue) {
-    console.error(`[${agentName}] No model specified`);
-    return { valid: false, error: 'No model selected' };
-  }
-  
-  // Custom model validation
-  if (modelValue.startsWith('custom:')) {
-    if (customModels.length === 0) {
-      console.error(`[${agentName}] Custom models not loaded yet`);
-      return { 
-        valid: false, 
-        error: 'Custom models still loading. Please wait a moment...' 
-      };
+  // ADD THE VALIDATION HELPER 
+  const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') => {
+    if (!modelValue) {
+      console.error(`[${agentName}] No model specified`);
+      return { valid: false, error: 'No model selected' };
     }
     
-    const config = getModelConfig(modelValue);
-    if (!config) {
-      console.error(`[${agentName}] Custom model not found:`, modelValue);
-      console.error(`[${agentName}] Available:`, customModels.map(m => m.value));
-      return { 
-        valid: false, 
-        error: `Custom model "${modelValue}" not found. Please reconfigure.` 
-      };
+    // Custom model validation
+    if (modelValue.startsWith('custom:')) {
+      if (customModels.length === 0) {
+        console.error(`[${agentName}] Custom models not loaded yet`);
+        return { 
+          valid: false, 
+          error: 'Custom models still loading. Please wait a moment...' 
+        };
+      }
+      
+      const config = getModelConfig(modelValue);
+      if (!config) {
+        console.error(`[${agentName}] Custom model not found:`, modelValue);
+        console.error(`[${agentName}] Available:`, customModels.map(m => m.value));
+        return { 
+          valid: false, 
+          error: `Custom model "${modelValue}" not found. Please reconfigure.` 
+        };
+      }
+      
+      return { valid: true, config };
     }
     
-    return { valid: true, config };
-  }
-  
-  // Standard model - no config needed
-  return { valid: true, config: null };
-}, [customModels, getModelConfig]);
+    // Standard model - no config needed
+    return { valid: true, config: null };
+  }, [customModels, getModelConfig]);
 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
@@ -265,290 +265,280 @@ const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') 
   // ============================================
   // INITIALIZATION
   // ============================================
-useEffect(() => {
-  const initializeApp = async () => {
-    setIsInitializing(true);
+  useEffect(() => {
+    const initializeApp = async () => {
+      setIsInitializing(true);
+      
+      try {
+        console.log('[Init] Step 1: Loading providers and custom models...');
+        await loadProviders();
+        
+        console.log('[Init] Step 2: Waiting for state sync...');
+        await new Promise(resolve => setTimeout(resolve, 250));
+        
+        console.log('[Init] Step 3: Verifying state...');
+        console.log(`[Init] customModels state length: ${customModels.length}`);
+        console.log(`[Init] providers state length: ${providers.length}`);
+        
+        const savedModel = localStorage.getItem('selectedModel');
+        console.log(`[Init] Saved model: ${savedModel}`);
+        
+        if (savedModel) {
+          console.log('[Init] Step 4: Restoring saved model...');
+          
+          if (savedModel.startsWith('custom:')) {
+            const exists = customModels.some(m => m.value === savedModel);
+            console.log(`[Init] Custom model exists: ${exists}`);
+            
+            if (exists) {
+              setSelectedModel(savedModel);
+              console.log('[Init] ✅ Restored:', savedModel);
+            } else {
+              console.warn('[Init] ⚠️ Model not found, clearing');
+              localStorage.removeItem('selectedModel');
+              showToast('Saved model no longer exists', 'warning');
+            }
+          } else {
+            setSelectedModel(savedModel);
+          }
+        }
+        
+        console.log('[Init] ✅ Complete');
+        
+      } catch (error) {
+        console.error('[Init] ❌ Failed:', error);
+        showToast('Failed to load models', 'error');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    
+    initializeApp();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    console.log('[Debug] Selected Model Changed:', selectedModel);
+    console.log('[Debug] Available Custom Models:', customModels.map(m => m.value));
+    console.log('[Debug] Available Provider Models:', providers.flatMap(p => p.models).map(m => m.value));
+  }, [selectedModel, customModels, providers]);
+
+  const loadProviders = async () => {
+    setLoadingProviders(true);
+    setError(null);
     
     try {
-      console.log('[Init] Step 1: Loading providers and custom models...');
-      await loadProviders();  // This now loads BOTH providers AND custom models
+      const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
+        signal: AbortSignal.timeout(5000) 
+      });
       
-      console.log('[Init] Step 2: Waiting for state sync...');
-      await new Promise(resolve => setTimeout(resolve, 250));
+      if (!response.ok) throw new Error('Backend not responding');
       
-      console.log('[Init] Step 3: Verifying state...');
-      console.log(`[Init] customModels state length: ${customModels.length}`);
-      console.log(`[Init] providers state length: ${providers.length}`);
+      const data = await response.json();
+      console.log('[loadProviders] Response:', data);
       
-      const savedModel = localStorage.getItem('selectedModel');
-      console.log(`[Init] Saved model: ${savedModel}`);
-      
-      if (savedModel) {
-        console.log('[Init] Step 4: Restoring saved model...');
-        
-        if (savedModel.startsWith('custom:')) {
-          const exists = customModels.some(m => m.value === savedModel);
-          console.log(`[Init] Custom model exists: ${exists}`);
-          
-          if (exists) {
-            setSelectedModel(savedModel);
-            console.log('[Init] ✅ Restored:', savedModel);
-          } else {
-            console.warn('[Init] ⚠️ Model not found, clearing');
-            localStorage.removeItem('selectedModel');
-            showToast('Saved model no longer exists', 'warning');
-          }
-        } else {
-          setSelectedModel(savedModel);
-        }
+      // EXTRACT CUSTOM MODELS
+      const customProvider = data.providers?.find(p => p.id === 'custom');
+      if (customProvider && customProvider.models) {
+        console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
+        setCustomModels(customProvider.models);
+      } else {
+        console.warn('[loadProviders] No custom models found in response');
+        setCustomModels([]);
       }
       
-      console.log('[Init] ✅ Complete');
+      // Set regular providers
+      const regularProviders = data.providers?.filter(p => p.id !== 'custom') || [];
+      setProviders(regularProviders);
       
-    } catch (error) {
-      console.error('[Init] ❌ Failed:', error);
-      showToast('Failed to load models', 'error');
+      setBackendConnected(true);
+      showToast('Backend connected successfully', 'success');
+      
+      // Set default model
+      if (data.default_model) {
+        setSelectedModel(data.default_model);
+      } else if (regularProviders.length > 0 && regularProviders[0].models.length > 0) {
+        setSelectedModel(regularProviders[0].models[0].value);
+      }
+      
+    } catch (err) {
+      console.error('[loadProviders] Error:', err);
+      setError('Backend not connected');
+      setBackendConnected(false);
+      showToast('Backend connection failed', 'error');
     } finally {
-      setIsInitializing(false);
+      setLoadingProviders(false);
     }
   };
-  
-  initializeApp();
-}, []);
 
-useEffect(() => {
-  console.log('[Debug] Selected Model Changed:', selectedModel);
-  console.log('[Debug] Available Custom Models:', customModels.map(m => m.value));
-  console.log('[Debug] Available Provider Models:', providers.flatMap(p => p.models).map(m => m.value));
-}, [selectedModel, customModels, providers]);
+  const loadCustomModels = async () => {
+    try {
+      console.log('[loadCustomModels] Starting...');
+      
+      if (syncMode === 'localStorage') {
+        const localModels = loadFromLocalStorage();
+        setCustomModels(localModels);
+        console.log(`[loadCustomModels] ✅ Loaded ${localModels.length} from localStorage`);
+        return localModels;
+      }
+      
+      console.log(`[loadCustomModels] ✅ Using models from providers (${customModels.length})`);
+      return customModels;
+      
+    } catch (err) {
+      console.error('[loadCustomModels] Error:', err);
+      showToast('Failed to load custom models', 'error');
+      return [];
+    }
+  };
 
-const loadProviders = async () => {
-  setLoadingProviders(true);
-  setError(null);
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
-      signal: AbortSignal.timeout(5000) 
-    });
-    
-    if (!response.ok) throw new Error('Backend not responding');
-    
-    const data = await response.json();
-    console.log('[loadProviders] Response:', data);
-    
-    // EXTRACT CUSTOM MODELS
-    const customProvider = data.providers?.find(p => p.id === 'custom');
-    if (customProvider && customProvider.models) {
-      console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
-      setCustomModels(customProvider.models);
-    } else {
-      console.warn('[loadProviders] No custom models found in response');
-      setCustomModels([]);
+  const loadFromLocalStorage = () => {
+    try {
+      const saved = localStorage.getItem('customModels');
+      if (saved) {
+        const models = JSON.parse(saved);
+        console.log(`Loaded ${models.length} models from localStorage`);
+        return models;
+      }
+    } catch (err) {
+      console.error('Error loading from localStorage:', err);
     }
-    
-    // Set regular providers
-    const regularProviders = data.providers?.filter(p => p.id !== 'custom') || [];
-    setProviders(regularProviders);
-    
-    setBackendConnected(true);
-    showToast('Backend connected successfully', 'success');
-    
-    // Set default model
-    if (data.default_model) {
-      setSelectedModel(data.default_model);
-    } else if (regularProviders.length > 0 && regularProviders[0].models.length > 0) {
-      setSelectedModel(regularProviders[0].models[0].value);
-    }
-    
-  } catch (err) {
-    console.error('[loadProviders] Error:', err);
-    setError('Backend not connected');
-    setBackendConnected(false);
-    showToast('Backend connection failed', 'error');
-  } finally {
-    setLoadingProviders(false);
-  }
-};
-
-const loadCustomModels = async () => {
-  try {
-    console.log('[loadCustomModels] Starting...');
-    
-    // Only load from localStorage for "localStorage" mode
-    if (syncMode === 'localStorage') {
-      const localModels = loadFromLocalStorage();
-      setCustomModels(localModels);
-      console.log(`[loadCustomModels] ✅ Loaded ${localModels.length} from localStorage`);
-      return localModels;
-    }
-    
-    // For 'backend' and 'both' modes, custom models are already loaded by loadProviders
-    console.log(`[loadCustomModels] ✅ Using models from providers (${customModels.length})`);
-    return customModels;
-    
-  } catch (err) {
-    console.error('[loadCustomModels] Error:', err);
-    showToast('Failed to load custom models', 'error');
     return [];
-  }
-};
+  };
 
-const loadFromLocalStorage = () => {
-  try {
-    const saved = localStorage.getItem('customModels');
-    if (saved) {
-      const models = JSON.parse(saved);
-      console.log(`Loaded ${models.length} models from localStorage`);
-      return models;
+  const saveToLocalStorage = (models) => {
+    try {
+      localStorage.setItem('customModels', JSON.stringify(models));
+      console.log(`Saved ${models.length} models to localStorage`);
+    } catch (err) {
+      console.error('Error saving to localStorage:', err);
     }
-  } catch (err) {
-    console.error('Error loading from localStorage:', err);
-  }
-  return [];
-};
+  };
 
-const saveToLocalStorage = (models) => {
-  try {
-    localStorage.setItem('customModels', JSON.stringify(models));
-    console.log(`Saved ${models.length} models to localStorage`);
-  } catch (err) {
-    console.error('Error saving to localStorage:', err);
-  }
-};
-
-const saveToBackend = async (model) => {
-  if (!backendConnected) {
-    console.log('Backend not connected');
-    return false;
-  }
-  
-  try {
-    console.log(' Sending to backend:', JSON.stringify(model, null, 2));
-    
-    const response = await fetch(`${API_BASE_URL}/api/custom-models`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(model)
-    });
-    
-    if (response.ok) {
-      console.log(' Model saved to backend');
-      return true;
-    } else {
-      const error = await response.json();
-      console.error(' Backend validation error:', JSON.stringify(error, null, 2));
+  const saveToBackend = async (model) => {
+    if (!backendConnected) {
+      console.log('Backend not connected');
       return false;
     }
-  } catch (err) {
-    console.error(' Error saving to backend:', err);
-    return false;
-  }
-};
-
-const mergeModels = (local, backend) => {
-  const map = new Map();
-  [...local, ...backend].forEach(model => {
-    map.set(model.value, model);
-  });
-  return Array.from(map.values());
-};
-
-const addOrUpdateCustomModel = async (modelData) => {
-  console.log(' Input modelData:', modelData);
-  
-  // Prepare model for FRONTEND (with value/label)
-  const frontendModel = {
-    value: `custom:${modelData.model_id}`,
-    label: modelData.name,
-    provider_type: modelData.provider_type,
-    base_url: modelData.base_url,
-    api_key: modelData.api_key,
-    model_id: modelData.model_id,
-    context_length: modelData.context_length || 4096,
-    temperature: modelData.temperature || 0.3
+    
+    try {
+      console.log('Sending to backend:', JSON.stringify(model, null, 2));
+      
+      const response = await fetch(`${API_BASE_URL}/api/custom-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(model)
+      });
+      
+      if (response.ok) {
+        console.log('Model saved to backend');
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('Backend validation error:', JSON.stringify(error, null, 2));
+        return false;
+      }
+    } catch (err) {
+      console.error('Error saving to backend:', err);
+      return false;
+    }
   };
-  
-  console.log(' Prepared for frontend:', frontendModel);
-  
-  // Update frontend state
-  let updated = [...customModels];
-  const existingIndex = updated.findIndex(m => m.value === frontendModel.value);
-  
-  if (existingIndex >= 0) {
-    updated[existingIndex] = frontendModel;
-  } else {
-    updated.push(frontendModel);
-  }
-  
-  setCustomModels(updated);
-  
-  // Save to localStorage
-  if (syncMode === 'localStorage' || syncMode === 'both') {
-    saveToLocalStorage(updated);
-  }
-  
-  // Prepare DIFFERENT payload for BACKEND (without value/label)
-  if (syncMode === 'backend' || syncMode === 'both') {
-    const backendPayload = {
-      name: modelData.name,
+
+  const mergeModels = (local, backend) => {
+    const map = new Map();
+    [...local, ...backend].forEach(model => {
+      map.set(model.value, model);
+    });
+    return Array.from(map.values());
+  };
+
+  const addOrUpdateCustomModel = async (modelData) => {
+    console.log('Input modelData:', modelData);
+    
+    const frontendModel = {
+      value: `custom:${modelData.model_id}`,
+      label: modelData.name,
       provider_type: modelData.provider_type,
       base_url: modelData.base_url,
-      model_id: modelData.model_id,
       api_key: modelData.api_key,
+      model_id: modelData.model_id,
       context_length: modelData.context_length || 4096,
       temperature: modelData.temperature || 0.3
     };
     
-    console.log(' Sending to backend:', backendPayload);
+    console.log('Prepared for frontend:', frontendModel);
     
-    const success = await saveToBackend(backendPayload);
-    if (success) {
-      showToast(`Model ${existingIndex >= 0 ? 'updated' : 'added'} successfully`, 'success');
+    let updated = [...customModels];
+    const existingIndex = updated.findIndex(m => m.value === frontendModel.value);
+    
+    if (existingIndex >= 0) {
+      updated[existingIndex] = frontendModel;
     } else {
-      showToast('Failed to save to backend', 'error');
+      updated.push(frontendModel);
     }
-  }
-  
-  console.log(` Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${frontendModel.label}`);
-};
-
-const deleteCustomModel = async (modelValue) => {
-  try {
-    // Normalize to custom: format for deletion
-    const modelId = modelValue.split(':').slice(1).join(':');
-    const customValue = `custom:${modelId}`;
     
-    console.log(' Deleting:', customValue);
-    
-    // Delete from state
-    const updated = customModels.filter(m => m.value !== modelValue);
     setCustomModels(updated);
     
-    // Delete from localStorage
     if (syncMode === 'localStorage' || syncMode === 'both') {
       saveToLocalStorage(updated);
     }
     
-    // Delete from backend
     if (syncMode === 'backend' || syncMode === 'both') {
-      const response = await fetch(`${API_BASE_URL}/api/custom-models/${encodeURIComponent(customValue)}`, {
-        method: 'DELETE'
-      });
+      const backendPayload = {
+        name: modelData.name,
+        provider_type: modelData.provider_type,
+        base_url: modelData.base_url,
+        model_id: modelData.model_id,
+        api_key: modelData.api_key,
+        context_length: modelData.context_length || 4096,
+        temperature: modelData.temperature || 0.3
+      };
       
-      if (response.ok) {
-        console.log(' Deleted from backend');
-        showToast('Model deleted successfully', 'success');
+      console.log('Sending to backend:', backendPayload);
+      
+      const success = await saveToBackend(backendPayload);
+      if (success) {
+        showToast(`Model ${existingIndex >= 0 ? 'updated' : 'added'} successfully`, 'success');
       } else {
-        const error = await response.json();
-        console.error(' Delete failed:', error);
-        showToast('Failed to delete from backend', 'error');
+        showToast('Failed to save to backend', 'error');
       }
     }
-  } catch (err) {
-    console.error(' Delete error:', err);
-    showToast('Failed to delete model', 'error');
-  }
-};
+    
+    console.log(`Model ${existingIndex >= 0 ? 'updated' : 'added'}: ${frontendModel.label}`);
+  };
+
+  const deleteCustomModel = async (modelValue) => {
+    try {
+      const modelId = modelValue.split(':').slice(1).join(':');
+      const customValue = `custom:${modelId}`;
+      
+      console.log('Deleting:', customValue);
+      
+      const updated = customModels.filter(m => m.value !== modelValue);
+      setCustomModels(updated);
+      
+      if (syncMode === 'localStorage' || syncMode === 'both') {
+        saveToLocalStorage(updated);
+      }
+      
+      if (syncMode === 'backend' || syncMode === 'both') {
+        const response = await fetch(`${API_BASE_URL}/api/custom-models/${encodeURIComponent(customValue)}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok) {
+          console.log('Deleted from backend');
+          showToast('Model deleted successfully', 'success');
+        } else {
+          const error = await response.json();
+          console.error('Delete failed:', error);
+          showToast('Failed to delete from backend', 'error');
+        }
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      showToast('Failed to delete model', 'error');
+    }
+  };
 
   const countTokens = (text) => {
     try {
@@ -562,251 +552,340 @@ const deleteCustomModel = async (modelValue) => {
   };
 
   const callAPI = async (endpoint, body, signal = null) => {
-  try {
-    //  ADD /api/ prefix if not already present
-    const url = endpoint.startsWith('/api/') 
-      ? `${API_BASE_URL}${endpoint}` 
-      : `${API_BASE_URL}/api/${endpoint}`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      'X-Session-ID': sessionId,
-      body: JSON.stringify(body),
-      signal  
-    });
-    
-    if (response.status === 499) {
-      throw new Error('Request cancelled by user');
-    }
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
-    }
-    
-    return await response.json();
-    
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error('Request cancelled by user');
-    }
-    
-    if (error.message === 'Failed to fetch') {
-      throw new Error('Network error - check if backend is running');
-    }
-    
-    throw error;
-  }
-};
-
-// ============================================
-// SSE CONNECTION FOR REAL-TIME STATUS
-// ============================================
-useEffect(() => {
-  if (!backendConnected) {
-    console.log('[SSE] Waiting for backend connection...');
-    setSseConnected(false);
-    return;
-  }
-  
-  console.log('[SSE] Connecting to status stream...', sessionId.current);
-  
-  let eventSource = null;
-  let reconnectTimeout = null;
-  let reconnectAttempts = 0;
-  const maxReconnectAttempts = 5;
-  
-  const connect = () => {
-    if (eventSource) {
-      eventSource.close();
-    }
-    
-    // ✅ ENSURE /api/ prefix
-    const sseUrl = `${API_BASE_URL}/api/agent-status/${sessionId.current}`;
-    console.log('[SSE] Connecting to:', sseUrl);
-    
-    eventSource = new EventSource(sseUrl);
-    
-    let connectionConfirmed = false;
-    
-    eventSource.onopen = () => {
-      console.log('[SSE] ✅ Connected');
-      setSseConnected(true);
-      connectionConfirmed = true;
-      reconnectAttempts = 0;
-    };
-    
-    eventSource.onmessage = (event) => {
-      try {
-        if (!connectionConfirmed) {
-          console.log('[SSE] ✅ First message received');
-          setSseConnected(true);
-          connectionConfirmed = true;
-        }
-        
-        // Ignore keepalive
-        if (event.data === ': keepalive') return;
-        
-        const status = JSON.parse(event.data);
-        
-        if (status.status === 'connected') {
-          console.log('[SSE] Session confirmed:', status.session_id);
-          return;
-        }
-        
-        console.log('[SSE] Status update:', status);
-        
-        setAgentStates(prev => ({
-          ...prev,
-          [status.agent]: status.status
-        }));
-        
-        if (status.progress !== undefined) {
-          setProcessingProgress(status.progress);
-        }
-        
-        if (status.message) {
-          setProcessingStage(status.message);
-        }
-        
-      } catch (e) {
-        console.error('[SSE] Parse error:', e);
-      }
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error('[SSE] ❌ Error:', error);
-      setSseConnected(false);
-      connectionConfirmed = false;
-      eventSource.close();
+    try {
+      const url = endpoint.startsWith('/api/') 
+        ? `${API_BASE_URL}${endpoint}` 
+        : `${API_BASE_URL}/api/${endpoint}`;
       
-      if (reconnectAttempts < maxReconnectAttempts) {
-        reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-        console.log(`[SSE] Reconnecting in ${delay}ms...`);
-        
-        reconnectTimeout = setTimeout(() => {
-          connect();
-        }, delay);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionId.current
+        },
+        body: JSON.stringify(body),
+        signal  
+      });
+      
+      if (response.status === 499) {
+        throw new Error('Request cancelled by user');
       }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `API request failed: ${response.statusText}`);
+      }
+      
+      return await response.json();
+      
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request cancelled by user');
+      }
+      
+      if (error.message === 'Failed to fetch') {
+        throw new Error('Network error - check if backend is running');
+      }
+      
+      throw error;
+    }
+  };
+
+  // ============================================
+  // SSE CONNECTION FOR REAL-TIME STATUS
+  // ============================================
+  useEffect(() => {
+    if (!backendConnected) {
+      console.log('[SSE] Waiting for backend connection...');
+      setSseConnected(false);
+      return;
+    }
+    
+    console.log('[SSE] Connecting to status stream...', sessionId.current);
+    
+    let eventSource = null;
+    let reconnectTimeout = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    
+    const connect = () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      
+      const sseUrl = `${API_BASE_URL}/api/agent-status/${sessionId.current}`;
+      console.log('[SSE] Connecting to:', sseUrl);
+      
+      eventSource = new EventSource(sseUrl);
+      
+      let connectionConfirmed = false;
+      
+      eventSource.onopen = () => {
+        console.log('[SSE] ✅ Connected');
+        setSseConnected(true);
+        connectionConfirmed = true;
+        reconnectAttempts = 0;
+      };
+      
+      eventSource.onmessage = (event) => {
+        try {
+          if (!connectionConfirmed) {
+            console.log('[SSE] ✅ First message received');
+            setSseConnected(true);
+            connectionConfirmed = true;
+          }
+          
+          if (event.data === ': keepalive') return;
+          
+          const status = JSON.parse(event.data);
+          
+          if (status.status === 'connected') {
+            console.log('[SSE] Session confirmed:', status.session_id);
+            return;
+          }
+          
+          console.log('[SSE] Status update:', status);
+          
+          setAgentStates(prev => ({
+            ...prev,
+            [status.agent]: status.status
+          }));
+          
+          if (status.progress !== undefined) {
+            setProcessingProgress(status.progress);
+          }
+          
+          if (status.message) {
+            setProcessingStage(status.message);
+          }
+          
+        } catch (e) {
+          console.error('[SSE] Parse error:', e);
+        }
+      };
+      
+      eventSource.onerror = (error) => {
+        console.error('[SSE] ❌ Error:', error);
+        setSseConnected(false);
+        connectionConfirmed = false;
+        eventSource.close();
+        
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+          console.log(`[SSE] Reconnecting in ${delay}ms...`);
+          
+          reconnectTimeout = setTimeout(() => {
+            connect();
+          }, delay);
+        }
+      };
     };
-  };
-  
-  connect();
-  
-  return () => {
-    console.log('[SSE] Cleanup');
-    setSseConnected(false);
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    if (eventSource) eventSource.close();
-  };
-}, [backendConnected]);
+    
+    connect();
+    
+    return () => {
+      console.log('[SSE] Cleanup');
+      setSseConnected(false);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (eventSource) eventSource.close();
+    };
+  }, [backendConnected]);
 
-
-const updateAgentState = (agent, state) => {
+  const updateAgentState = (agent, state) => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
- // ============================================
-// MAIN PIPELINE FUNCTION
-// ============================================
-const handleProcess = async () => {
-  if (!inputText.trim()) {
-    setError('Please enter a policy description');
-    showToast('Please enter a policy description', 'warning');
-    return;
-  }
 
-  // Reset states
-  setLoading(true);
-  setError(null);
-  setAttemptNumber(1);
-  setProcessingProgress(0);
-  setProcessingStage('Starting process...');
-  setParsedData(null);
-  setReasoningResult(null);
-  setGeneratedODRL(null);
-  setValidationResult(null);
+  // ============================================
+  // MAIN PIPELINE FUNCTION
+  // ============================================
+  const handleProcess = async () => {
+    if (!inputText.trim()) {
+      setError('Please enter a policy description');
+      showToast('Please enter a policy description', 'warning');
+      return;
+    }
 
-  const startTimes = { 
-    total: Date.now(),
-    parse: Date.now(), 
-    reason: 0,
-    generate: 0,
-    validate: 0
-  };
+    setLoading(true);
+    setError(null);
+    setAttemptNumber(1);
+    setProcessingProgress(0);
+    setProcessingStage('Starting process...');
+    setParsedData(null);
+    setReasoningResult(null);
+    setGeneratedODRL(null);
+    setValidationResult(null);
 
-  const signal = getSignal();
-  const completedStages = [];
+    const startTimes = { 
+      total: Date.now(),
+      parse: Date.now(), 
+      reason: 0,
+      generate: 0,
+      validate: 0
+    };
 
-  try {
-    // ============================================
-    // STAGE 1: PARSE
-    // ============================================
-    updateAgentState('parser', 'processing');
-    setProcessingStage('Parsing policy text...');
-    setProcessingProgress(10);
+    const signal = getSignal();
+    const completedStages = [];
 
-    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
-    const parserCustomConfig = getModelConfig(parserModel);
-    console.log('[DEBUG] Parse request:', {
-      text: inputText.substring(0, 50) + '...',
-      model: parserModel,
-      temperature,
-      custom_model: parserCustomConfig
-    });
+    try {
+      // STAGE 1: PARSE
+      updateAgentState('parser', 'processing');
+      setProcessingStage('Parsing policy text...');
+      setProcessingProgress(10);
 
-    const parseResult = await callAPI('parse', {
-      text: inputText,
-      model: parserModel,
-      temperature,
-      custom_model: parserCustomConfig
-    }, signal);
+      const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+      const parserCustomConfig = getModelConfig(parserModel);
 
-    setParsedData(parseResult);
-    setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
-    updateAgentState('parser', 'completed');
-    completedStages.push('parser');
-    setProcessingProgress(25);
-    showToast('Policy parsed successfully!', 'success');
+      console.log('[DEBUG] Parse request:', {
+        text: inputText.substring(0, 50) + '...',
+        model: parserModel,
+        temperature,
+        custom_model: parserCustomConfig
+      });
 
-    startTimes.reason = Date.now();
+      const parseResult = await callAPI('parse', {
+        text: inputText,
+        model: parserModel,
+        temperature,
+        custom_model: parserCustomConfig
+      }, signal);
 
-    // ============================================
-    // STAGE 2: REASON
-    // ============================================
-    updateAgentState('reasoner', 'processing');
-    setProcessingStage('Analyzing policy...');
-    setProcessingProgress(35);
+      setParsedData(parseResult);
+      setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
+      updateAgentState('parser', 'completed');
+      completedStages.push('parser');
+      setProcessingProgress(25);
+      showToast('Policy parsed successfully!', 'success');
+      startTimes.reason = Date.now();
 
-    const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
-    const reasonerCustomConfig = getModelConfig(reasonerModel);
+      // STAGE 2: REASON
+      updateAgentState('reasoner', 'processing');
+      setProcessingStage('Analyzing policy...');
+      setProcessingProgress(35);
 
-    const reasonResult = await callAPI('reason', {
-      parsed_data: parseResult,
-      original_text: inputText,
-      model: reasonerModel,
-      temperature,
-      custom_model: reasonerCustomConfig
-    }, signal);
+      const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
+      const reasonerCustomConfig = getModelConfig(reasonerModel);
 
-    setReasoningResult(reasonResult);
-    setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
-    updateAgentState('reasoner', 'completed');
-    completedStages.push('reasoner');
-    setProcessingProgress(50);
-    showToast('Analysis complete!', 'success');
+      const reasonResult = await callAPI('reason', {
+        parsed_data: parseResult,
+        original_text: inputText,
+        model: reasonerModel,
+        temperature,
+        custom_model: reasonerCustomConfig
+      }, signal);
 
-    // ============================================
-    // CHECKPOINT: Should we continue automatically?
-    // ============================================
-    if (!autoProgress) {
-      console.log('[App] Manual mode - pausing at Reasoner checkpoint');
-      setActiveTab('reasoner');
-      setLoading(false);
-      setProcessingProgress(0);
-      setProcessingStage('');
+      setReasoningResult(reasonResult);
+      setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
+      updateAgentState('reasoner', 'completed');
+      completedStages.push('reasoner');
+      setProcessingProgress(50);
+      showToast('Analysis complete!', 'success');
 
+      // CHECKPOINT: Should we continue automatically?
+      if (!autoProgress) {
+        console.log('[App] Manual mode - pausing at Reasoner checkpoint');
+        setActiveTab('reasoner');
+        setLoading(false);
+        setProcessingProgress(0);
+        setProcessingStage('');
+
+        const totalTime = Date.now() - startTimes.total;
+        const historyItem = createHistoryItem({
+          inputText,
+          selectedModel,
+          temperature,
+          completedStages,
+          parsedData: parseResult,
+          reasoningResult: reasonResult,
+          totalTime,
+          metrics: {
+            parseTime: Date.now() - startTimes.parse,
+            reasonTime: Date.now() - startTimes.reason
+          },
+          status: 'paused_at_reasoner'
+        });
+        addToHistory(historyItem);
+        setCurrentHistoryId(historyItem.id);
+        showToast('Review analysis and click Continue to generate ODRL', 'info');
+        return;
+      }
+
+      // AUTO-PROGRESS MODE: CONTINUE
+      console.log('[App] Auto-progress mode - continuing to Generator');
+      startTimes.generate = Date.now();
+
+      // STAGE 3: GENERATE
+      updateAgentState('generator', 'processing');
+      setProcessingStage('Generating ODRL policy...');
+      setProcessingProgress(65);
+
+      const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+      const generatorCustomConfig = getModelConfig(generatorModel);
+
+      console.log('[Generator] Using model:', generatorModel);
+      console.log('[Generator] Custom config:', generatorCustomConfig ? 'YES' : 'NO');
+
+      const genResult = await callAPI('generate', {
+        parsed_data: parseResult,
+        original_text: inputText,
+        reasoning: reasonResult,
+        model: generatorModel,
+        temperature,
+        custom_model: generatorCustomConfig
+      }, signal);
+
+      setGeneratedODRL(genResult);
+      setGenerationContext({
+        parsed_data: parseResult,
+        original_text: inputText,
+        reasoning: reasonResult
+      });
+      setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
+      updateAgentState('generator', 'completed');
+      completedStages.push('generator');
+      setProcessingProgress(80);
+      showToast('ODRL policy generated!', 'success');
+      startTimes.validate = Date.now();
+
+      // STAGE 4: VALIDATE
+      updateAgentState('validator', 'processing');
+      setProcessingStage('Validating with SHACL...');
+      setProcessingProgress(90);
+
+      const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+      const validatorCustomConfig = getModelConfig(validatorModel);
+
+      if (!genResult.odrl_turtle) {
+        throw new Error('Generator did not return odrl_turtle format');
+      }
+
+      console.log('[Validator] Validating Turtle policy');
+      console.log('[Validator] Length:', genResult.odrl_turtle.length, 'characters');
+      console.log('[Validator] Model:', validatorModel);
+      console.log('[Validator] Has custom config?', !!validatorCustomConfig);
+
+      const valResult = await callAPI('validate', {
+        odrl_turtle: genResult.odrl_turtle,
+        original_text: inputText,
+        model: validatorModel,
+        temperature,
+        custom_model: validatorCustomConfig
+      }, signal);
+
+      setValidationResult(valResult);
+      setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
+      updateAgentState('validator', 'completed');
+      completedStages.push('validator');
+      setProcessingProgress(100);
+
+      if (valResult.is_valid) {
+        showToast('Complete! All validations passed!', 'success');
+      } else {
+        showToast(`Complete! ${valResult.issues?.length || 0} SHACL violations found`, 'warning');
+      }
+      setActiveTab('validator');
+
+      // SAVE HISTORY
       const totalTime = Date.now() - startTimes.total;
       const historyItem = createHistoryItem({
         inputText,
@@ -815,519 +894,398 @@ const handleProcess = async () => {
         completedStages,
         parsedData: parseResult,
         reasoningResult: reasonResult,
+        generatedODRL: genResult,
+        validationResult: valResult,
         totalTime,
         metrics: {
           parseTime: Date.now() - startTimes.parse,
-          reasonTime: Date.now() - startTimes.reason
+          reasonTime: Date.now() - startTimes.reason,
+          generateTime: Date.now() - startTimes.generate,
+          validateTime: Date.now() - startTimes.validate
         },
-        status: 'paused_at_reasoner'
+        status: 'completed'
       });
+      const historyId = addToHistory(historyItem);
+      setCurrentHistoryId(historyId);
 
+    } catch (err) {
+      const errorMessage =
+        (err instanceof Error ? err.message : null) ||
+        (typeof err === 'string' ? err : null) ||
+        err?.message ||
+        err?.detail ||
+        'An error occurred';
+
+      if (errorMessage === 'Request cancelled by user') {
+        setError(null);
+        showToast('Processing cancelled', 'warning');
+        Object.keys(agentStates).forEach(agent => {
+          if (agentStates[agent] === 'processing') {
+            updateAgentState(agent, 'cancelled');
+          }
+        });
+      } else {
+        setError(errorMessage);
+        showToast(`Error: ${errorMessage}`, 'error');
+        Object.keys(agentStates).forEach(agent => {
+          if (agentStates[agent] === 'processing') {
+            updateAgentState(agent, 'error');
+          }
+        });
+      }
+
+      const historyItem = createHistoryItem({
+        inputText,
+        selectedModel,
+        temperature,
+        completedStages,
+        error: errorMessage,
+        status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
+        totalTime: Date.now() - startTimes.total
+      });
       addToHistory(historyItem);
-      setCurrentHistoryId(historyItem.id);
-      showToast('Review analysis and click Continue to generate ODRL', 'info');
-      return; // STOP HERE in manual mode
+
+    } finally {
+      setLoading(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
     }
+  };
 
-    // ============================================
-    // AUTO-PROGRESS MODE: CONTINUE
-    // ============================================
-    console.log('[App] Auto-progress mode - continuing to Generator');
-    startTimes.generate = Date.now();
-
-    // ============================================
-    // STAGE 3: GENERATE
-    // ============================================
-    updateAgentState('generator', 'processing');
-    setProcessingStage('Generating ODRL policy...');
-    setProcessingProgress(65);
-
+  // ============================================
+  // handleGenerate Function
+  // ============================================
+  const handleGenerate = async () => {
+    if (!reasoningResult) {
+      showToast('Please run analysis first!', 'warning');
+      return;
+    }
+    if (!parsedData) {
+      showToast('Parser data missing - please run parsing again', 'error');
+      return;
+    }
+    
     const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-    const generatorCustomConfig = getModelConfig(generatorModel);
-
-    console.log('[Generator] Using model:', generatorModel);
-    console.log('[Generator] Custom config:', generatorCustomConfig ? 'YES' : 'NO');
-
-    const genResult = await callAPI('generate', {
-      parsed_data: parseResult,
-      original_text: inputText,
-      reasoning: reasonResult,
-      model: generatorModel,
-      temperature,
-      custom_model: generatorCustomConfig
-    }, signal);
-
-    setGeneratedODRL(genResult);
-    setGenerationContext({
-      parsed_data: parseResult,
-      original_text: inputText,
-      reasoning: reasonResult
-    });
-    setMetrics(prev => ({ ...prev, generateTime: Date.now() - startTimes.generate }));
-    updateAgentState('generator', 'completed');
-    completedStages.push('generator');
-    setProcessingProgress(80);
-    showToast('ODRL policy generated!', 'success');
-
-    startTimes.validate = Date.now();
-
-    // ============================================
-    // STAGE 4: VALIDATE
-    // ============================================
-    updateAgentState('validator', 'processing');
-    setProcessingStage('Validating with SHACL...');
-    setProcessingProgress(90);
-
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-    const validatorCustomConfig = getModelConfig(validatorModel);
-
-    // Ensure Turtle output exists
-    if (!genResult.odrl_turtle) {
-      throw new Error('Generator did not return odrl_turtle format');
+    const validation = validateModelConfig(generatorModel, 'Generator');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
     }
-    // ebug logs
-    console.log('[Validator] Validating Turtle policy');
-    console.log('[Validator]  Length:', genResult.odrl_turtle.length, 'characters');
-    console.log('[Validator] Model:', validatorModel);
-    console.log('[Validator] Has custom config?', !!validatorCustomConfig);
-
-
-    const valResult = await callAPI('validate', {
-      odrl_turtle: genResult.odrl_turtle,
-      original_text: inputText,
-      model: validatorModel,
-      temperature,
-      custom_model: validatorCustomConfig
-    }, signal);
-
-    setValidationResult(valResult);
-    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
-    updateAgentState('validator', 'completed');
-    completedStages.push('validator');
-    setProcessingProgress(100);
-
-    if (valResult.is_valid) {
-      showToast('Complete! All validations passed!', 'success');
-    } else {
-      showToast(`Complete! ${valResult.issues?.length || 0} SHACL violations found`, 'warning');
-    }
-
-    setActiveTab('validator');
-
-    // ============================================
-    // SAVE HISTORY
-    // ============================================
-    const totalTime = Date.now() - startTimes.total;
-    const historyItem = createHistoryItem({
-      inputText,
-      selectedModel,
-      temperature,
-      completedStages,
-      parsedData: parseResult,
-      reasoningResult: reasonResult,
-      generatedODRL: genResult,
-      validationResult: valResult,
-      totalTime,
-      metrics: {
-        parseTime: Date.now() - startTimes.parse,
-        reasonTime: Date.now() - startTimes.reason,
-        generateTime: Date.now() - startTimes.generate,
-        validateTime: Date.now() - startTimes.validate
-      },
-      status: 'completed'
-    });
-
-    const historyId = addToHistory(historyItem);
-    setCurrentHistoryId(historyId);
-
-  } catch (err) {
-    const errorMessage =
-      (err instanceof Error ? err.message : null) ||
-      (typeof err === 'string' ? err : null) ||
-      err?.message ||
-      err?.detail ||
-      'An error occurred';
-
-    if (errorMessage === 'Request cancelled by user') {
-      setError(null);
-      showToast('Processing cancelled', 'warning');
-
-      Object.keys(agentStates).forEach(agent => {
-        if (agentStates[agent] === 'processing') {
-          updateAgentState(agent, 'cancelled');
-        }
-      });
-    } else {
-      setError(errorMessage);
-      showToast(`Error: ${errorMessage}`, 'error');
-
-      Object.keys(agentStates).forEach(agent => {
-        if (agentStates[agent] === 'processing') {
-          updateAgentState(agent, 'error');
-        }
-      });
-    }
-
-    const historyItem = createHistoryItem({
-      inputText,
-      selectedModel,
-      temperature,
-      completedStages,
-      error: errorMessage,
-      status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
-      totalTime: Date.now() - startTimes.total
-    });
-    addToHistory(historyItem);
-
-  } finally {
-    setLoading(false);
-    setProcessingProgress(0);
-    setProcessingStage('');
-  }
-};
-// ============================================
-// handleGenerate Function
-// ============================================
-const handleGenerate = async () => {
-  if (!reasoningResult) {
-    showToast('Please run analysis first!', 'warning');
-    return;
-  }
-  if (!parsedData) {
-    showToast('Parser data missing - please run parsing again', 'error');
-    return;
-  }
-  
-  // ✅ VALIDATE MODEL
-  const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-  const validation = validateModelConfig(generatorModel, 'Generator');
-  if (!validation.valid) {
-    showToast(validation.error, 'error');
-    return;
-  }
-  
-  setLoading(true);
-  setProcessingStage('Generating ODRL policy...');
-  setProcessingProgress(50);
-  setGeneratedODRL(null);
-  setValidationResult(null);
-  
-  const startTime = Date.now();
-  const signal = abortControllerRef.current.signal;
-  
-  try {
-    updateAgentState('generator', 'processing');
     
-    const generatorCustomConfig = validation.config;  // ✅ Use validated config
+    setLoading(true);
+    setProcessingStage('Generating ODRL policy...');
+    setProcessingProgress(50);
+    setGeneratedODRL(null);
+    setValidationResult(null);
     
-    console.log('[Generator] Sending generate request...');
-    const response = await fetch(`${API_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-ID': sessionId.current
-      },
-      body: JSON.stringify({
+    const startTime = Date.now();
+    const signal = abortControllerRef.current.signal;
+    
+    try {
+      updateAgentState('generator', 'processing');
+      
+      const generatorCustomConfig = validation.config;
+      
+      console.log('[Generator] Sending generate request...');
+      const response = await fetch(`${API_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionId.current
+        },
+        body: JSON.stringify({
+          parsed_data: parsedData,
+          original_text: inputText,
+          reasoning: reasoningResult,
+          attempt_number: 1,
+          model: generatorModel,
+          temperature,
+          custom_model: generatorCustomConfig
+        }),
+        signal
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Generation failed: ${response.status}`);
+      }
+      
+      const genResult = await response.json();
+      console.log('[Generator] Generation complete');
+      
+      setGeneratedODRL(genResult);
+      setGenerationContext({
         parsed_data: parsedData,
         original_text: inputText,
-        reasoning: reasoningResult,
-        attempt_number: 1,
-        model: generatorModel,
+        reasoning: reasoningResult
+      });
+      
+      setMetrics(prev => ({
+        ...prev,
+        generateTime: Date.now() - startTime
+      }));
+      
+      updateAgentState('generator', 'completed');
+      setProcessingProgress(100);
+      setProcessingStage('generating_done');
+      setProcessingProgress(0);
+      
+      showToast('ODRL generated!', 'success');
+      
+      // Auto-progress: trigger next stage automatically
+      if (autoProgress) {
+        console.log('[AutoProgress] Generate done → auto-triggering Validate');
+        setTimeout(() => handleValidate(), 100);
+        return;
+      }
+      setActiveTab('generator');
+      
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('[Generator] Generation cancelled');
+        showToast('Generation cancelled', 'info');
+      } else {
+        console.error('[Generator] Error:', error);
+        showToast(`Generation failed: ${error.message}`, 'error');
+        updateAgentState('generator', 'error');
+      }
+    } finally {
+      setLoading(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
+    }
+  };
+
+  // ============================================
+  // handleValidate Function
+  // ============================================
+  const handleValidate = async () => {
+    if (!generatedODRL) {
+      showToast('Please generate ODRL first!', 'warning');
+      return;
+    }
+    
+    if (!generatedODRL.odrl_turtle) {
+      showToast('Generated ODRL missing Turtle format!', 'error');
+      console.error('[Validator] Generated ODRL:', generatedODRL);
+      return;
+    }
+    
+    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validation = validateModelConfig(validatorModel, 'Validator');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
+    }
+    
+    setValidating(true);
+    setProcessingStage('Validating ODRL...');
+    setProcessingProgress(90);
+    
+    const startTime = Date.now();
+    const signal = getSignal();
+    
+    try {
+      updateAgentState('validator', 'processing');
+      
+      const validatorCustomConfig = validation.config;
+      
+      console.log('[Validator] Manual validation starting...');
+      console.log('[Validator] Turtle length:', generatedODRL.odrl_turtle.length, 'chars');
+      console.log('[Validator] Model:', validatorModel);
+      console.log('[Validator] Has custom config?', !!validatorCustomConfig);
+      
+      const valResult = await callAPI('validate', {
+        odrl_turtle: generatedODRL.odrl_turtle,
+        original_text: inputText,
+        model: validatorModel,
         temperature,
-        custom_model: generatorCustomConfig  // ✅ Changed from custom_config
-      }),
-      signal
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Generation failed: ${response.status}`);
+        custom_model: validatorCustomConfig
+      }, signal);
+      
+      setValidationResult(valResult);
+      setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
+      updateAgentState('validator', 'completed');
+      setProcessingProgress(100);
+      
+      setActiveTab('validator');
+      
+      if (valResult.is_valid) {
+        showToast('SHACL validation passed! ✅', 'success');
+      } else {
+        showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
+      }
+      
+      setProcessingStage('complete');
+      setProcessingProgress(0);
+      
+    } catch (error) {
+      console.error('[Validator] Error:', error);
+      showToast('Validation failed: ' + error.message, 'error');
+      updateAgentState('validator', 'error');
+    } finally {
+      setValidating(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
+    }
+  };
+
+  // ============================================
+  // handleRegenerate Function
+  // ============================================
+  const handleRegenerate = async () => {
+    if (!validationResult || !generatedODRL || !generationContext) {
+      showToast('Missing context for regeneration', 'error');
+      return;
     }
     
-    const genResult = await response.json();
-    console.log('[Generator] Generation complete');
-    
-    setGeneratedODRL(genResult);
-    setGenerationContext({
-      parsed_data: parsedData,
-      original_text: inputText,
-      reasoning: reasoningResult
-    });
-    
-    setMetrics(prev => ({
-      ...prev,
-      generateTime: Date.now() - startTime
-    }));
-    
-    updateAgentState('generator', 'completed');
-    setProcessingProgress(100);
-    setProcessingStage('generating_done');
-    setProcessingProgress(0);
-    
-    showToast('ODRL generated! Click "Validate Policy" to verify', 'success');
-    setActiveTab('generator');
-    
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('[Generator] Generation cancelled');
-      showToast('Generation cancelled', 'info');
-    } else {
-      console.error('[Generator] Error:', error);
-      showToast(`Generation failed: ${error.message}`, 'error');
-      updateAgentState('generator', 'error');
+    const regenerateModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
+    const validation = validateModelConfig(regenerateModel, 'Generator');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
     }
-  } finally {
+    
+    setRegenerating(true);
+    setValidationResult(null);
+    setProcessingStage(`Regenerating ODRL (attempt ${(generatedODRL.attempt_number || 1) + 1})...`);
+    setProcessingProgress(50);
+    
+    try {
+      const regenerateCustomConfig = validation.config;
+      
+      console.log('[Generator] Regenerating ODRL with validation fixes...');
+      console.log('[Generator] Context preview:', {
+        original_text: generationContext.original_text?.substring(0, 50) + '...',
+        has_parsed_data: !!generationContext.parsed_data,
+        has_reasoning: !!generationContext.reasoning,
+        validation_issues: validationResult.issues?.length
+      });
+      console.log('[Regenerate] Model:', regenerateModel);
+      console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
+      
+      const response = await fetch(`${API_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parsed_data: generationContext.parsed_data,
+          original_text: generationContext.original_text,
+          reasoning: generationContext.reasoning,
+          validation_errors: validationResult,
+          previous_odrl: generatedODRL.odrl_turtle,
+          attempt_number: (generatedODRL.attempt_number || 1) + 1,
+          model: regenerateModel,
+          temperature,
+          custom_model: regenerateCustomConfig
+        }),
+        signal: abortControllerRef.current.signal
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Regeneration failed: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('[Generator] Regeneration complete');
+      console.log('[Generator] Attempt number:', data.attempt_number);
+      
+      setGeneratedODRL(data);
+      setActiveTab('generator');
+      showToast(`Regenerated ODRL (attempt ${data.attempt_number})`, 'success');
+      
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('[Generator] Regeneration cancelled');
+        showToast('Regeneration cancelled', 'info');
+      } else {
+        console.error('[Generator] Regeneration error:', error);
+        showToast('Regeneration failed: ' + error.message, 'error');
+      }
+    } finally {
+      setRegenerating(false);
+      setProcessingProgress(0);
+      setProcessingStage('');
+    }
+  };
+
+  // ============================================
+  // handleEditFromValidator Function 
+  // ============================================
+  const handleEditFromValidator = () => {
+    console.log('[App] User wants to edit input from validator');
+    setActiveTab('parser');
+    setAttemptNumber(1);
+    showToast('Edit your input and click "Start Processing" to regenerate', 'info');
+  };
+
+  // ============================================
+  // handleStop Function
+  // ============================================
+  const handleStop = () => {
+    console.log('Stop button clicked - cancelling operations');
+    
+    abortControllerRef.current.abort();
+    resetAbortController();
+    
     setLoading(false);
     setProcessingProgress(0);
     setProcessingStage('');
-  }
-};
-
-// ============================================
-// handleValidate Function
-// ============================================
-const handleValidate = async () => {
-  if (!generatedODRL) {
-    showToast('Please generate ODRL first!', 'warning');
-    return;
-  }
-  
-  if (!generatedODRL.odrl_turtle) {
-    showToast('Generated ODRL missing Turtle format!', 'error');
-    console.error('[Validator] Generated ODRL:', generatedODRL);
-    return;
-  }
-  
-  // ✅ VALIDATE MODEL
-  const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-  const validation = validateModelConfig(validatorModel, 'Validator');
-  if (!validation.valid) {
-    showToast(validation.error, 'error');
-    return;
-  }
-  
-  setValidating(true);
-  setProcessingStage('Validating ODRL...');
-  setProcessingProgress(90);
-  
-  const startTime = Date.now();
-  const signal = getSignal();
-  
-  try {
-    updateAgentState('validator', 'processing');
     
-    const validatorCustomConfig = validation.config;  // ✅ Use validated config
-    
-    console.log('[Validator] Manual validation starting...');
-    console.log('[Validator] Turtle length:', generatedODRL.odrl_turtle.length, 'chars');
-    console.log('[Validator] Model:', validatorModel);
-    console.log('[Validator] Has custom config?', !!validatorCustomConfig);
-    
-    const valResult = await callAPI('validate', {
-      odrl_turtle: generatedODRL.odrl_turtle,
-      original_text: inputText,
-      model: validatorModel,
-      temperature,
-      custom_model: validatorCustomConfig  // ✅ Changed from custom_config
-    }, signal);
-    
-    setValidationResult(valResult);
-    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
-    updateAgentState('validator', 'completed');
-    setProcessingProgress(100);
-    
-    setActiveTab('validator');
-    
-    if (valResult.is_valid) {
-      showToast('SHACL validation passed! ✅', 'success');
-    } else {
-      showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
-    }
-    
-    setProcessingStage('complete');
-    setProcessingProgress(0);
-    
-  } catch (error) {
-    console.error('[Validator] Error:', error);
-    showToast('Validation failed: ' + error.message, 'error');
-    updateAgentState('validator', 'error');
-  } finally {
-    setValidating(false);
-    setProcessingProgress(0);
-    setProcessingStage('');
-  }
-};
-// ============================================
-// handleRegenerate Function
-// ============================================
-const handleRegenerate = async () => {
-  if (!validationResult || !generatedODRL || !generationContext) {
-    showToast('Missing context for regeneration', 'error');
-    return;
-  }
-  
-  // ✅ VALIDATE MODEL
-  const regenerateModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
-  const validation = validateModelConfig(regenerateModel, 'Generator');
-  if (!validation.valid) {
-    showToast(validation.error, 'error');
-    return;
-  }
-  
-  setRegenerating(true);
-  setValidationResult(null);
-  setProcessingStage(`Regenerating ODRL (attempt ${(generatedODRL.attempt_number || 1) + 1})...`);
-  setProcessingProgress(50);
-  
-  try {
-    const regenerateCustomConfig = validation.config;  // ✅ Use validated config
-    
-    console.log('[Generator] Regenerating ODRL with validation fixes...');
-    console.log('[Generator] Context preview:', {
-      original_text: generationContext.original_text?.substring(0, 50) + '...',
-      has_parsed_data: !!generationContext.parsed_data,
-      has_reasoning: !!generationContext.reasoning,
-      validation_issues: validationResult.issues?.length
-    });
-    console.log('[Regenerate] Model:', regenerateModel);
-    console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
-    
-    const response = await fetch(`${API_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        parsed_data: generationContext.parsed_data,
-        original_text: generationContext.original_text,
-        reasoning: generationContext.reasoning,
-        validation_errors: validationResult,
-        previous_odrl: generatedODRL.odrl_turtle,
-        attempt_number: (generatedODRL.attempt_number || 1) + 1,
-        model: regenerateModel,
-        temperature,
-        custom_model: regenerateCustomConfig  // ✅ Changed from custom_config
-      }),
-      signal: abortControllerRef.current.signal
+    Object.keys(agentStates).forEach(agent => {
+      if (agentStates[agent] === 'processing') {
+        updateAgentState(agent, 'cancelled');
+      }
     });
     
-    if (!response.ok) {
-      throw new Error(`Regeneration failed: ${response.status}`);
+    showToast('Processing stopped', 'info'); 
+  };
+
+  // ============================================
+  // handleLoadHistory Function
+  // ============================================
+  const handleLoadHistory = (historyItem) => {
+    console.log('Loading history item:', historyItem.id);
+    setInputText(historyItem.inputText);
+    setSelectedModel(historyItem.model || selectedModel);
+    setTemperature(historyItem.temperature || 0.3);
+
+    if (historyItem.parsedData) {
+      setParsedData(historyItem.parsedData);
+      updateAgentState('parser', 'completed');
     }
-    
-    const data = await response.json();
-    console.log('[Generator] Regeneration complete');
-    console.log('[Generator] Attempt number:', data.attempt_number);
-    
-    setGeneratedODRL(data);
-    setActiveTab('generator');
-    showToast(`Regenerated ODRL (attempt ${data.attempt_number})`, 'success');
-    
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('[Generator] Regeneration cancelled');
-      showToast('Regeneration cancelled', 'info');
-    } else {
-      console.error('[Generator] Regeneration error:', error);
-      showToast('Regeneration failed: ' + error.message, 'error');
+    if (historyItem.reasoningResult) {
+      setReasoningResult(historyItem.reasoningResult);
+      updateAgentState('reasoner', 'completed');
     }
-  } finally {
-    setRegenerating(false);
-    setProcessingProgress(0);
-    setProcessingStage('');
-  }
-};
-// ============================================
-// handleEditFromValidator Function 
-// ============================================
-const handleEditFromValidator = () => {
-  console.log('[App] User wants to edit input from validator');
-  setActiveTab('parser');
-  setAttemptNumber(1); // Reset attempt counter
-  showToast('Edit your input and click "Start Processing" to regenerate', 'info');
-};
-
-// ============================================
-// handleStop Function
-// ============================================
-const handleStop = () => {
-  console.log('Stop button clicked - cancelling operations');
-  
-  // Abort current request
-  abortControllerRef.current.abort();
-  // Create new controller for next request
-  resetAbortController();
-  
-  // Reset loading state
-  setLoading(false);
-  setProcessingProgress(0);
-  setProcessingStage('');
-  
-  // Mark processing agents as cancelled
-  Object.keys(agentStates).forEach(agent => {
-    if (agentStates[agent] === 'processing') {
-      updateAgentState(agent, 'cancelled');
+    if (historyItem.generatedODRL) {
+      setGeneratedODRL(historyItem.generatedODRL);
+      updateAgentState('generator', 'completed');
     }
-  });
-  
-  showToast('Processing stopped', 'info'); 
-};
-
-// ============================================
-// handleLoadHistory Function
-// ============================================
-const handleLoadHistory = (historyItem) => {
-  console.log('Loading history item:', historyItem.id);
-
-  // Restore input
-  setInputText(historyItem.inputText);
-  setSelectedModel(historyItem.model || selectedModel);
-  setTemperature(historyItem.temperature || 0.3);
-
-  // Restore results if available
-  if (historyItem.parsedData) {
-    setParsedData(historyItem.parsedData);
-    updateAgentState('parser', 'completed');
-  }
-  if (historyItem.reasoningResult) {
-    setReasoningResult(historyItem.reasoningResult);
-    updateAgentState('reasoner', 'completed');
-  }
-  if (historyItem.generatedODRL) {
-    setGeneratedODRL(historyItem.generatedODRL);
-    updateAgentState('generator', 'completed');
-  }
-  if (historyItem.validationResult) {
-    setValidationResult(historyItem.validationResult);
-    updateAgentState('validator', 'completed');
-  }
-
-  // Restore metrics
-  if (historyItem.metrics) {
-    setMetrics(historyItem.metrics);
-  }
-
-  // Set active tab to first completed stage or parser
-  if (historyItem.completedStages && historyItem.completedStages.length > 0) {
-    setActiveTab(historyItem.completedStages[0]);
-  }
-
-  setCurrentHistoryId(historyItem.id);
-  showToast('History loaded successfully', 'success');
-};
+    if (historyItem.validationResult) {
+      setValidationResult(historyItem.validationResult);
+      updateAgentState('validator', 'completed');
+    }
+    if (historyItem.metrics) {
+      setMetrics(historyItem.metrics);
+    }
+    if (historyItem.completedStages && historyItem.completedStages.length > 0) {
+      setActiveTab(historyItem.completedStages[0]);
+    }
+    setCurrentHistoryId(historyItem.id);
+    showToast('History loaded successfully', 'success');
+  };
 
   const handleFileUpload = async (file) => {
     if (!file) return;
-
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       setUploadStatus({ type: 'error', message: 'File too large (max 5MB)' });
       return;
     }
-
     const allowedTypes = ['text/plain', 'text/markdown', 'application/json'];
     if (!allowedTypes.includes(file.type) && !file.name.match(/\.(txt|md|json)$/i)) {
       setUploadStatus({ type: 'error', message: 'Invalid file type. Use .txt, .md, or .json' });
       return;
     }
-
     try {
       const text = await file.text();
       setInputText(text);
@@ -1380,22 +1338,38 @@ const handleLoadHistory = (historyItem) => {
   };
 
   const resetDemo = () => {
+    // Abort any running request first
+    abort();
+    abortControllerRef.current.abort();
+    resetAbortController();
+
     setInputText('');
     setParsedData(null);
     setReasoningResult(null);
     setGeneratedODRL(null);
     setValidationResult(null);
     setError(null);
+    setLoading(false);
     setActiveTab('parser');
     setProcessingStage('idle');
+    setProcessingProgress(0);
     setAgentStates({
       parser: 'idle',
       reasoner: 'idle',
       generator: 'idle',
       validator: 'idle'
     });
+    setMetrics({
+      parseTime: 0,
+      reasonTime: 0,
+      generateTime: 0,
+      validateTime: 0,
+    });
     setFileName('');
+    setCompletedStages([]);
+    showToast('Pipeline reset', 'info');
   };
+
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
@@ -1412,190 +1386,221 @@ const handleLoadHistory = (historyItem) => {
   };
 
   // ============================================
-// STEP-BY-STEP PROCESSING HANDLERS
-// ============================================
+  // STEP-BY-STEP PROCESSING HANDLERS
+  // ============================================
+  const handleParse = async () => {
+    if (!inputText.trim()) {
+      showToast('Please enter a policy description', 'warning');
+      return;
+    }
 
-const handleParse = async () => {
-  if (!inputText.trim()) {
-    showToast('Please enter a policy description', 'warning');
-    return;
-  }
-  // VALIDATE MODEL
-  const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
-  const validation = validateModelConfig(parserModel, 'Parser');
-  if (!validation.valid) {
-    showToast(validation.error, 'error');
-    return;
-  }
+    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+    const validation = validateModelConfig(parserModel, 'Parser');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
+    }
 
-  setLoading(true);
-  setProcessingStage('parsing');
-  setProcessingProgress(25);
-  setError(null);
-  setParsedData(null);
-  
-  const startTime = Date.now();
-  const signal = getSignal();
-
-  try {
-    updateAgentState('parser', 'processing');
-    const parserCustomConfig = validation.config;
-    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;    
-    const parseResult = await callAPI('parse', {
-      text: inputText,
-      model: parserModel,
-      temperature,
-      custom_model: parserCustomConfig
-    }, signal);
+    setLoading(true);
+    setProcessingStage('parsing');
+    setProcessingProgress(25);
+    setError(null);
+    setParsedData(null);
     
-    setParsedData(parseResult);
-    setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTime }));
-    updateAgentState('parser', 'completed');
-    
-    setProcessingStage('parsing_done');
-    setProcessingProgress(0); 
-    setActiveTab('parser');
-    showToast('Parsing complete! Click "Start Reasoning" to continue', 'success');
-    
-  } catch (err) {
-    const errorMessage = err?.message || 'Parsing failed';
-    setError(errorMessage);
-    showToast(`Parse error: ${errorMessage}`, 'error');
-    updateAgentState('parser', 'error');
-    setProcessingStage('idle');
-    setProcessingProgress(0); 
-  } finally {
-    setLoading(false);
-  }
-};
+    const startTime = Date.now();
+    const signal = getSignal();
 
-const handleReason = async () => {
-  if (!parsedData) {
-    showToast('Please parse text first!', 'warning');
-    return;
-  }
-  // VALIDATE MODEL
-  const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
-  const validation = validateModelConfig(reasonerModel, 'Reasoner');
-  if (!validation.valid) {
-    showToast(validation.error, 'error');
-    return;
-  }
+    try {
+      updateAgentState('parser', 'processing');
+      const parserCustomConfig = validation.config;
+      
+      const parseResult = await callAPI('parse', {
+        text: inputText,
+        model: parserModel,
+        temperature,
+        custom_model: parserCustomConfig
+      }, signal);
+      
+      setParsedData(parseResult);
+      setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTime }));
+      updateAgentState('parser', 'completed');
+      
+      setProcessingStage('parsing_done');
+      setProcessingProgress(0); 
+      setActiveTab('parser');
+      showToast('Parsing complete!', 'success');
+      
+      // Auto-progress: trigger next stage automatically
+      if (autoProgress) {
+        console.log('[AutoProgress] Parse done → auto-triggering Reason');
+        // Use setTimeout to let state settle before next stage
+        setTimeout(() => handleReason(), 100);
+        return;
+      }
+      
+    } catch (err) {
+      const errorMessage = err?.message || 'Parsing failed';
+      setError(errorMessage);
+      showToast(`Parse error: ${errorMessage}`, 'error');
+      updateAgentState('parser', 'error');
+      setProcessingStage('idle');
+      setProcessingProgress(0); 
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  setLoading(true);
-  setProcessingStage('reasoning');
-  setReasoningResult(null);
-  
-  const startTime = Date.now();
-  const signal = getSignal();
+  const handleReason = async () => {
+    if (!parsedData) {
+      showToast('Please parse text first!', 'warning');
+      return;
+    }
 
-  try {
-    updateAgentState('reasoner', 'processing');
-    
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
-    const reasonerCustomConfig = validation.config;  // Use validated config
+    const validation = validateModelConfig(reasonerModel, 'Reasoner');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
+    }
+
+    setLoading(true);
+    setProcessingStage('reasoning');
+    setReasoningResult(null);
     
-    const reasonResult = await callAPI('reason', {
-      parsed_data: parsedData,
-      original_text: inputText,
-      model: reasonerModel,
-      temperature,
-      custom_model: reasonerCustomConfig
-    }, signal);
-    
-    setReasoningResult(reasonResult);
-    setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTime }));
-    updateAgentState('reasoner', 'completed');
-    
-    setProcessingStage('reasoning_done');
-    setProcessingProgress(0); 
-    setActiveTab('reasoner');
-    showToast('Analysis complete! Review results or click "Generate ODRL"', 'success');
-    
-  } catch (err) {
-    const errorMessage = err?.message || 'Reasoning failed';
-    setError(errorMessage);
-    showToast(`Reasoning error: ${errorMessage}`, 'error');
-    updateAgentState('reasoner', 'error');
-    setProcessingStage('parsing_done'); // Go back
-  } finally {
-    setLoading(false);
-  }
-};
+    const startTime = Date.now();
+    const signal = getSignal();
+
+    try {
+      updateAgentState('reasoner', 'processing');
+      
+      const reasonerCustomConfig = validation.config;
+      
+      const reasonResult = await callAPI('reason', {
+        parsed_data: parsedData,
+        original_text: inputText,
+        model: reasonerModel,
+        temperature,
+        custom_model: reasonerCustomConfig
+      }, signal);
+      
+      setReasoningResult(reasonResult);
+      setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTime }));
+      updateAgentState('reasoner', 'completed');
+      
+      setProcessingStage('reasoning_done');
+      setProcessingProgress(0); 
+      setActiveTab('reasoner');
+      showToast('Analysis complete!', 'success');
+      
+      // Auto-progress: trigger next stage automatically
+      if (autoProgress) {
+        console.log('[AutoProgress] Reason done → auto-triggering Generate');
+        setTimeout(() => handleGenerate(), 100);
+        return;
+      }
+      
+    } catch (err) {
+      const errorMessage = err?.message || 'Reasoning failed';
+      setError(errorMessage);
+      showToast(`Reasoning error: ${errorMessage}`, 'error');
+      updateAgentState('reasoner', 'error');
+      setProcessingStage('parsing_done');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ============================================
   // handleUpdateODRL Function 
   // ============================================
-const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
-  if (isTurtle) {
-    console.log('[App] User updated ODRL Turtle manually');
+  const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
+    if (isTurtle) {
+      console.log('[App] User updated ODRL Turtle manually');
+      setGeneratedODRL({
+        ...generatedODRL,
+        odrl_turtle: updatedODRL
+      });
+    } else {
+      console.log('[App] User updated ODRL JSON-LD manually');
+      setGeneratedODRL({
+        ...generatedODRL,
+        odrl_policy: updatedODRL,
+        odrl: updatedODRL
+      });
+    }
+    setValidationResult(null);
+    showToast('ODRL updated. Please validate the changes.', 'info');
+  };
 
-    // Update Turtle string
-    setGeneratedODRL({
-      ...generatedODRL,
-      odrl_turtle: updatedODRL
-    });
-  } else {
-    console.log('[App] User updated ODRL JSON-LD manually');
+  const handleSaveReasoning = async (metadata) => {
+    try {
+      const result = await saveReasoningAnalysis(metadata);
+      showToast(`Saved to backend: ${result.filename}`, 'success');
+    } catch (error) {
+      showToast(`Failed to save: ${error.message}`, 'error');
+    }
+  };
 
-    // Update JSON-LD objects
-    setGeneratedODRL({
-      ...generatedODRL,
-      odrl_policy: updatedODRL,
-      odrl: updatedODRL
-    });
-  }
+  const handleSaveGenerator = async (metadata) => {
+    try {
+      const result = await saveGeneratedPolicy(metadata);
+      showToast(`Saved to backend: ${result.filename}`, 'success');
+    } catch (error) {
+      showToast(`Failed to save: ${error.message}`, 'error');
+    }
+  };
 
-  // Clear previous validation result
-  setValidationResult(null);
-
-  showToast('ODRL updated. Please validate the changes.', 'info');
-};
-
-const handleSaveReasoning = async (metadata) => {
-  try {
-    const result = await saveReasoningAnalysis(metadata);
-    showToast(` Saved to backend: ${result.filename}`, 'success');
-  } catch (error) {
-    showToast(`Failed to save: ${error.message}`, 'error');
-  }
-};
-
-const handleSaveGenerator = async (metadata) => {
-  try {
-    const result = await saveGeneratedPolicy(metadata);
-    showToast(`Saved to backend: ${result.filename}`, 'success');
-  } catch (error) {
-    showToast(`Failed to save: ${error.message}`, 'error');
-  }
-};
   // ============================================
   // RENDER UI
   // ============================================
   if (isInitializing) {
-  return (
-    <div className={`min-h-screen ${bgClass} flex items-center justify-center`}>
-      <div className="text-center">
-        <div className="relative">
-          <RefreshCw className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
-          <Sparkles className="w-6 h-6 text-purple-500 absolute top-0 right-0 animate-pulse" />
+    return (
+      <div className={`min-h-screen ${bgClass} flex items-center justify-center`}>
+        <div className="text-center">
+          {/* Pipeline visualization */}
+          <div className="flex items-center justify-center gap-3 mb-8">
+            {[
+              { icon: <FileText className="w-5 h-5" />, label: 'Parse', delay: '0s' },
+              { icon: <Brain className="w-5 h-5" />, label: 'Reason', delay: '0.4s' },
+              { icon: <Code className="w-5 h-5" />, label: 'Generate', delay: '0.8s' },
+              { icon: <Shield className="w-5 h-5" />, label: 'Validate', delay: '1.2s' },
+            ].map((stage, i) => (
+              <React.Fragment key={stage.label}>
+                <div className="flex flex-col items-center gap-2">
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg"
+                    style={{
+                      background: ['#3b82f6','#8b5cf6','#10b981','#f59e0b'][i],
+                      animation: `init-pulse 2s ease-in-out infinite`,
+                      animationDelay: stage.delay,
+                      opacity: 0.3,
+                    }}
+                  >
+                    {stage.icon}
+                  </div>
+                  <span className={`text-xs font-medium ${mutedTextClass}`}>{stage.label}</span>
+                </div>
+                {i < 3 && (
+                  <div className={`w-8 h-0.5 mb-5 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`}
+                    style={{ animation: `init-line 2s ease-in-out infinite`, animationDelay: `${i * 0.4 + 0.2}s` }}
+                  />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+          <h2 className={`text-xl font-bold ${textClass} mb-2`}>
+            ODRL Policy Generator
+          </h2>
+          <p className={`text-sm ${mutedTextClass}`}>
+            Connecting to models...
+          </p>
         </div>
-
-        <h2 className={`text-xl font-bold ${textClass} mb-2`}>
-          Loading ODRL Generator
-        </h2>
-
-        <p className={`text-sm ${mutedTextClass}`}>
-          Initializing models and configuration...
-        </p>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className={`min-h-screen ${bgClass} transition-colors duration-300`}>
-      
       
       {/* Toast Notifications */}
       <div className="fixed top-20 right-6 z-50 space-y-3">
@@ -1645,7 +1650,8 @@ const handleSaveGenerator = async (metadata) => {
                   {backendConnected ? 'Backend Connected' : 'Backend Offline'}
                 </span>
               </div>
-              {/*  ADD SSE STATUS HERE */}
+
+              {/* SSE STATUS */}
               {backendConnected && (
                 <button
                   onClick={() => setActiveTab('status')}
@@ -1664,22 +1670,17 @@ const handleSaveGenerator = async (metadata) => {
               )}
 
               {/* Model Info in Header */}
-            {backendConnected && selectedModel && (
-  <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
-    {(() => {
-      // Try custom models first
-      const customModel = customModels.find(m => m.value === selectedModel);
-      if (customModel) return customModel.label;
-      
-      // Then provider models
-      const providerModel = providers.flatMap(p => p.models).find(m => m.value === selectedModel);
-      if (providerModel) return providerModel.label;
-      
-      // Fallback
-      return selectedModel;
-    })()}
-  </div>
-)}
+              {backendConnected && selectedModel && (
+                <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
+                  {(() => {
+                    const customModel = customModels.find(m => m.value === selectedModel);
+                    if (customModel) return customModel.label;
+                    const providerModel = providers.flatMap(p => p.models).find(m => m.value === selectedModel);
+                    if (providerModel) return providerModel.label;
+                    return selectedModel;
+                  })()}
+                </div>
+              )}
 
               {/* Settings Button */}
               <button
@@ -1720,184 +1721,114 @@ const handleSaveGenerator = async (metadata) => {
         </div>
       </div>
 
-      {/* PROGRESS BAR */}
-      {/* Processing Progress Bar */}
-      {loading && processingProgress > 0 && (
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="max-w-7xl mx-auto">
-            <ProgressBar 
-              progress={processingProgress} 
-              label={processingStage} 
-              darkMode={darkMode}
+      {/* UNIFIED PIPELINE NAV — tabs + status in one bar */}
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
+        {/* Progress bar (thin, at top of nav) */}
+        {loading && processingProgress > 0 && (
+          <div className={`h-1 w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+            <div 
+              className="h-full bg-blue-500 transition-all duration-500 ease-out"
+              style={{ width: `${processingProgress}%` }}
             />
           </div>
-        </div>
-      )}
-
-{/* STATUS BAR HERE */}
-<div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
-  <div className="max-w-7xl mx-auto px-6 py-3">
-    <div className="flex items-center justify-between">
-      
-      {/* Left: Overall Progress */}
-      <div className="flex items-center gap-4 flex-1">
-        <div className="flex items-center gap-2">
-          <Activity className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-          <span className={`font-semibold ${textClass}`}>Pipeline Status</span>
-        </div>
-        
-        {processingProgress > 0 && (
-          <div className="flex-1 max-w-xs">
-            <div className="flex items-center gap-2">
-              <div className={`flex-1 h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                <div 
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-                  style={{ width: `${processingProgress}%` }}
-                />
-              </div>
-              <span className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                {processingProgress}%
-              </span>
-            </div>
-          </div>
         )}
-        
-        {processingStage && (
-          <span className={`text-sm ${mutedTextClass}`}>
-            {processingStage}
-          </span>
-        )}
-      </div>
-      
-      {/* Right: SSE Connection + View Details */}
-      <div className="flex items-center gap-3">
-        {/* SSE Status Indicator */}
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-          sseConnected 
-            ? 'bg-green-500/10 border border-green-500' 
-            : 'bg-gray-500/10 border border-gray-500'
-        }`}>
-          <div className={`w-2 h-2 rounded-full ${
-            sseConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-          }`} />
-          <span className={`text-xs font-medium ${
-            sseConnected ? 'text-green-600 dark:text-green-400' : mutedTextClass
-          }`}>
-            {sseConnected ? 'Live' : 'Idle'}
-          </span>
-        </div>
-        
-        {/* View Full Status Button */}
-        <button
-          onClick={() => setActiveTab('status')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition ${
-            activeTab === 'status'
-              ? 'bg-indigo-600 text-white'
-              : darkMode 
-                ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-          <span className="text-sm font-medium">View Details</span>
-        </button>
-      </div>
-      
-    </div>
-  </div>
-</div>
-
-{/*AGENT TABS NAVIGATION STARTS HERE */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-3">
+          <div className="flex items-center gap-2">
+            {/* Agent Tabs */}
             {['parser', 'reasoner', 'generator', 'validator'].map((agent, idx) => {
               const Icon = getAgentIcon(agent);
               const isActive = activeTab === agent;
               const state = agentStates[agent];
               
-              // Define unique colors for each agent
-              const agentColors = {
-                parser: {
-                  bg: 'from-blue-500 to-cyan-500',
-                  bgLight: darkMode ? 'bg-blue-900/30' : 'bg-blue-50',
-                  text: 'text-blue-600 dark:text-blue-400',
-                  border: 'border-blue-500',
-                  icon: 'text-blue-500'
-                },
-                reasoner: {
-                  bg: 'from-purple-500 to-pink-500',
-                  bgLight: darkMode ? 'bg-purple-900/30' : 'bg-purple-50',
-                  text: 'text-purple-600 dark:text-purple-400',
-                  border: 'border-purple-500',
-                  icon: 'text-purple-500'
-                },
-                generator: {
-                  bg: 'from-green-500 to-emerald-500',
-                  bgLight: darkMode ? 'bg-green-900/30' : 'bg-green-50',
-                  text: 'text-green-600 dark:text-green-400',
-                  border: 'border-green-500',
-                  icon: 'text-green-500'
-                },
-                validator: {
-                  bg: 'from-orange-500 to-red-500',
-                  bgLight: darkMode ? 'bg-orange-900/30' : 'bg-orange-50',
-                  text: 'text-orange-600 dark:text-orange-400',
-                  border: 'border-orange-500',
-                  icon: 'text-orange-500'
-                },
-                 status: {  
-                  bg: 'from-indigo-500 to-purple-500',
-                  bgLight: darkMode ? 'bg-indigo-900/30' : 'bg-indigo-50',
-                  text: 'text-indigo-600 dark:text-indigo-400',
-                  border: 'border-indigo-500',
-                  icon: 'text-indigo-500'
-                }
-              };
+              const agentColor = {
+                parser: { solid: '#3b82f6', light: darkMode ? 'bg-blue-900/30' : 'bg-blue-50', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500' },
+                reasoner: { solid: '#8b5cf6', light: darkMode ? 'bg-violet-900/30' : 'bg-violet-50', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500' },
+                generator: { solid: '#10b981', light: darkMode ? 'bg-emerald-900/30' : 'bg-emerald-50', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500' },
+                validator: { solid: '#f59e0b', light: darkMode ? 'bg-amber-900/30' : 'bg-amber-50', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500' },
+              }[agent];
 
-              const colors = agentColors[agent];
+              const metricsKey = agent === 'generator' ? 'generateTime' : agent === 'reasoner' ? 'reasonTime' : agent === 'validator' ? 'validateTime' : 'parseTime';
               
               return (
                 <React.Fragment key={agent}>
                   <button
                     onClick={() => setActiveTab(agent)}
-                    className={`flex-1 flex items-center gap-3 px-4 py-3 rounded-lg transition border-2 ${
+                    className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition border-2 ${
                       isActive 
-                        ? `${colors.bgLight} ${colors.border}` 
+                        ? `${agentColor.light} ${agentColor.border}` 
                         : darkMode ? 'hover:bg-gray-700/50 border-transparent' : 'hover:bg-gray-50 border-transparent'
-                    }`}
+                    } ${state === 'processing' ? 'animate-agent-active' : ''}`}
                   >
-                    <div className={`p-2 rounded-lg ${
-                      state === 'completed' ? `bg-gradient-to-r ${colors.bg} shadow-lg` :
-                      state === 'processing' ? `bg-gradient-to-r ${colors.bg} animate-pulse shadow-lg` :
+                    <div className={`p-1.5 rounded-lg ${
+                      state === 'completed' ? 'shadow-sm' :
                       state === 'error' ? 'bg-red-500/20' :
                       darkMode ? 'bg-gray-700' : 'bg-gray-200'
-                    }`}>
-                      <Icon className={`w-5 h-5 ${
+                    }`}
+                      style={state === 'completed' || state === 'processing' ? { background: agentColor.solid } : {}}
+                    >
+                      <Icon className={`w-4 h-4 ${
                         state === 'completed' || state === 'processing' ? 'text-white' : 
                         state === 'error' ? 'text-red-500' :
-                        colors.icon
+                        darkMode ? 'text-gray-400' : 'text-gray-500'
                       }`} />
                     </div>
-                    <div className="text-left">
-                      <div className={`font-semibold text-sm ${isActive ? colors.text : textClass}`}>
-  {idx + 1}. {agent.charAt(0).toUpperCase() + agent.slice(1)}
-</div>
-                      {showMetrics && metrics[`${agent === 'generator' ? 'generate' : agent === 'reasoner' ? 'reason' : agent === 'validator' ? 'validate' : 'parse'}Time`] > 0 && (
-                        <div className={`text-xs flex items-center gap-1 ${isActive ? colors.text : mutedTextClass}`}>
+                    <div className="text-left min-w-0">
+                      <div className={`font-semibold text-sm leading-tight ${isActive ? agentColor.text : textClass}`}>
+                        {agent.charAt(0).toUpperCase() + agent.slice(1)}
+                      </div>
+                      {showMetrics && metrics[metricsKey] > 0 && (
+                        <div className={`text-xs flex items-center gap-1 ${isActive ? agentColor.text : mutedTextClass}`}>
                           <Clock className="w-3 h-3" />
-                          {(metrics[`${agent === 'generator' ? 'generate' : agent === 'reasoner' ? 'reason' : agent === 'validator' ? 'validate' : 'parse'}Time`] / 1000).toFixed(2)}s
+                          {(metrics[metricsKey] / 1000).toFixed(2)}s
                         </div>
                       )}
                     </div>
                   </button>
                   {idx < 3 && (
-                    <ArrowRight className={`w-5 h-5 mx-2 ${mutedTextClass}`} />
+                    <ArrowRight className={`w-4 h-4 flex-shrink-0 ${mutedTextClass}`} />
                   )}
                 </React.Fragment>
               );
             })}
+
+            {/* Divider */}
+            <div className={`w-px h-8 mx-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
+
+            {/* SSE indicator (compact) */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+              sseConnected 
+                ? 'text-green-600 dark:text-green-400' 
+                : mutedTextClass
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${
+                sseConnected ? 'bg-green-500 animate-pulse' : darkMode ? 'bg-gray-600' : 'bg-gray-400'
+              }`} />
+              {sseConnected ? 'Live' : 'Idle'}
+            </div>
+
+            {/* Status tab button */}
+            <button
+              onClick={() => setActiveTab('status')}
+              className={`p-2 rounded-lg transition ${
+                activeTab === 'status'
+                  ? 'bg-indigo-600 text-white'
+                  : darkMode 
+                    ? 'hover:bg-gray-700 text-gray-400' 
+                    : 'hover:bg-gray-100 text-gray-500'
+              }`}
+              title="View pipeline details"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
           </div>
+
+          {/* Processing stage label (only when active) */}
+          {loading && processingStage && (
+            <div className={`mt-2 text-xs font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} flex items-center gap-2`}>
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              {processingStage}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1913,15 +1844,15 @@ const handleSaveGenerator = async (metadata) => {
                   Enter Policy Description
                 </h2>
               </div>
+              <div className="p-6 space-y-4">
+                {/* Example Cards */}
+                <ExamplePolicies
+                  onSelectExample={(text) => setInputText(text)}
+                  darkMode={darkMode}
+                  textClass={textClass}
+                  mutedTextClass={mutedTextClass}
+                />
 
-                <div className="p-6 space-y-4">
-                  {/* Example Cards - Using Component */}
-                 <ExamplePolicies
-  onSelectExample={(text) => setInputText(text)}
-  darkMode={darkMode}
-  textClass={textClass}
-  mutedTextClass={mutedTextClass}
-/>
                 {/* Drag and Drop Text Area */}
                 <div
                   onDragEnter={handleDrag}
@@ -1994,139 +1925,134 @@ const handleSaveGenerator = async (metadata) => {
                     <span className="text-sm">{uploadStatus.message}</span>
                   </div>
                 )}
-{/* ============================================ */}
-{/* ADVANCED SETTINGS - COLLAPSIBLE SECTION */}
-{/* ============================================ */}
-<div
-  className={`rounded-lg border ${
-    advancedMode
-      ? darkMode
-        ? 'border-green-600 bg-green-900/10'
-        : 'border-green-500 bg-green-50'
-      : darkMode
-        ? 'border-gray-700'
-        : 'border-gray-200'
-  }`}
->
-  <button
-    onClick={() => setAdvancedMode(!advancedMode)}
-    className={`w-full px-4 py-3 flex items-center justify-between transition ${
-      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-    }`}
-  >
-    <div className="flex items-center gap-2">
-      <Settings className={`w-4 h-4 ${advancedMode ? 'text-green-500' : ''}`} />
-      <span className={`text-sm font-medium ${textClass}`}>
-        Advanced Settings
-      </span>
-      <span
-        className={`text-xs px-2 py-0.5 rounded ${
-          advancedMode
-            ? 'bg-green-500 text-white'
-            : darkMode
-              ? 'bg-gray-700 text-gray-400'
-              : 'bg-gray-100 text-gray-600'
-        }`}
-      >
-        {advancedMode ? 'ON' : 'OFF'}
-      </span>
-    </div>
-    {advancedMode ? (
-      <ChevronUp className="w-4 h-4" />
-    ) : (
-      <ChevronDown className="w-4 h-4" />
-    )}
-  </button>
 
-  {/* Expanded content */}
-  {advancedMode && (
-    <div
-      className={`px-4 py-4 border-t space-y-4 ${
-        darkMode
-          ? 'border-gray-700 bg-gray-800/50'
-          : 'border-gray-200 bg-gray-50'
-      }`}
-    >
-      {/* Info Tip */}
-      <div
-        className={`flex items-start gap-2 p-3 rounded-lg ${
-          darkMode
-            ? 'bg-blue-900/20 border border-blue-800'
-            : 'bg-blue-50 border border-blue-200'
-        }`}
-      >
-        <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-        <p
-          className={`text-xs ${
-            darkMode ? 'text-blue-300' : 'text-blue-700'
-          }`}
-        >
-          <strong>Pro Tip:</strong> Use faster models for parsing/validation
-          and powerful models for reasoning/generation.
-        </p>
-      </div>
+                {/* ADVANCED SETTINGS - COLLAPSIBLE SECTION */}
+                <div
+                  className={`rounded-lg border ${
+                    advancedMode
+                      ? darkMode
+                        ? 'border-green-600 bg-green-900/10'
+                        : 'border-green-500 bg-green-50'
+                      : darkMode
+                        ? 'border-gray-700'
+                        : 'border-gray-200'
+                  }`}
+                >
+                  <button
+                    onClick={() => setAdvancedMode(!advancedMode)}
+                    className={`w-full px-4 py-3 flex items-center justify-between transition ${
+                      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Settings className={`w-4 h-4 ${advancedMode ? 'text-green-500' : ''}`} />
+                      <span className={`text-sm font-medium ${textClass}`}>
+                        Advanced Settings
+                      </span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          advancedMode
+                            ? 'bg-green-500 text-white'
+                            : darkMode
+                              ? 'bg-gray-700 text-gray-400'
+                              : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {advancedMode ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                    {advancedMode ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </button>
 
-      {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
-  <div key={agent}>
-    <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
-      {agent} Model
-    </label>
-    <select
-      value={agentModels[agent] || ''}
-      onChange={(e) => {
-        const newValue = e.target.value || null;
-        console.log(`[Advanced] ${agent} model changed to:`, newValue);
-        setAgentModels({
-          ...agentModels,
-          [agent]: newValue,
-        });
-      }}
-      className={`w-full px-3 py-2 ${
-        darkMode
-          ? 'bg-gray-700 border-gray-600 text-white'
-          : 'bg-white border-gray-300'
-      } border rounded-lg text-sm`}
-    >
-      {/* Default Option */}
-      <option value="">
-        Use default ({selectedModel
-          ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
-            customModels.find(m => m.value === selectedModel)?.label ||
-            'Unknown'
-          : 'llama3.3'})
-      </option>
+                  {/* Expanded content */}
+                  {advancedMode && (
+                    <div
+                      className={`px-4 py-4 border-t space-y-4 ${
+                        darkMode
+                          ? 'border-gray-700 bg-gray-800/50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      {/* Info Tip */}
+                      <div
+                        className={`flex items-start gap-2 p-3 rounded-lg ${
+                          darkMode
+                            ? 'bg-blue-900/20 border border-blue-800'
+                            : 'bg-blue-50 border border-blue-200'
+                        }`}
+                      >
+                        <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                        <p
+                          className={`text-xs ${
+                            darkMode ? 'text-blue-300' : 'text-blue-700'
+                          }`}
+                        >
+                          <strong>Pro Tip:</strong> Use faster models for parsing/validation
+                          and powerful models for reasoning/generation.
+                        </p>
+                      </div>
 
-            {/* Default Provider Models */}
-            {providers.length > 0 && (
-              <optgroup label="━━ Available Providers ━━">
-                {providers.flatMap((p) => p.models).map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label}
-                  </option>
-                ))}
-              </optgroup>
-            )}
+                      {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
+                        <div key={agent}>
+                          <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
+                            {agent} Model
+                          </label>
+                          <select
+                            value={agentModels[agent] || ''}
+                            onChange={(e) => {
+                              const newValue = e.target.value || null;
+                              console.log(`[Advanced] ${agent} model changed to:`, newValue);
+                              setAgentModels({
+                                ...agentModels,
+                                [agent]: newValue,
+                              });
+                            }}
+                            className={`w-full px-3 py-2 ${
+                              darkMode
+                                ? 'bg-gray-700 border-gray-600 text-white'
+                                : 'bg-white border-gray-300'
+                            } border rounded-lg text-sm`}
+                          >
+                            <option value="">
+                              Use default ({selectedModel
+                                ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
+                                  customModels.find(m => m.value === selectedModel)?.label ||
+                                  'Unknown'
+                                : 'llama3.3'})
+                            </option>
+                            {providers.length > 0 && (
+                              <optgroup label="━━ Available Providers ━━">
+                                {providers.flatMap((p) => p.models).map((model) => (
+                                  <option key={model.value} value={model.value}>
+                                    {model.label}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {customModels.length > 0 && (
+                              <optgroup label="━━ Your Custom Models ━━">
+                                {customModels.map((model) => (
+                                  <option key={model.value} value={model.value}>
+                                    {model.label}{' '}
+                                    {model.context_length >= 1000000
+                                      ? `(${(model.context_length / 1000000).toFixed(1)}M ctx)`
+                                      : `(${(model.context_length / 1024).toFixed(0)}K ctx)`}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-            {/* Custom Models */}
-            {customModels.length > 0 && (
-              <optgroup label="━━ Your Custom Models ━━">
-                {customModels.map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label}{' '}
-                    {model.context_length >= 1000000
-                      ? `(${(model.context_length / 1000000).toFixed(1)}M ctx)`
-                      : `(${(model.context_length / 1024).toFixed(0)}K ctx)`}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
-      ))}
-    </div>
-  )}
-</div>
-                {/* Auto-progress Setting - Moved to bottom */}
+                {/* Auto-progress Setting */}
                 <div className="flex items-center justify-between pt-2">
                   <label className={`flex items-center gap-2 cursor-pointer ${autoProgress ? 'text-green-600 dark:text-green-400 font-medium' : ''}`}>
                     <input
@@ -2155,55 +2081,69 @@ const handleSaveGenerator = async (metadata) => {
                 )}
 
                 {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => {
-                    if (processingStage === 'idle') {
-                      handleParse();  // Start with parsing only
-                    } else if (processingStage === 'parsing_done') {
-                      handleReason();  // Then reasoning
-                    } else if (processingStage === 'reasoning_done') {
-                      handleGenerate();  // Then generation
-                    } else if (processingStage === 'generating_done') {
-                      handleValidate();  // Finally validation
-                    }
-                  }}
-                  disabled={loading || !inputText.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
-                >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      {processingStage === 'parsing' && 'Parsing...'}
-                      {processingStage === 'reasoning' && 'Analyzing...'}
-                      {processingStage === 'generating' && 'Generating...'}
-                      {processingStage === 'validating' && 'Validating...'}
-                    </>
-                  ) : (
-                    <>
-                      <PlayCircle className="w-5 h-5" />
-                      {processingStage === 'idle' && 'Start Parsing'}
-                      {processingStage === 'parsing_done' && 'Start Reasoning'}
-                      {processingStage === 'reasoning_done' && 'Generate ODRL'}
-                      {processingStage === 'generating_done' && 'Validate Policy'}
-                      {processingStage === 'complete' && 'Complete! Start Over'}
-                    </>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      if (processingStage === 'idle') {
+                        handleParse();
+                      } else if (processingStage === 'parsing_done') {
+                        handleReason();
+                      } else if (processingStage === 'reasoning_done') {
+                        handleGenerate();
+                      } else if (processingStage === 'generating_done') {
+                        handleValidate();
+                      } else if (processingStage === 'complete') {
+                        resetDemo();
+                      }
+                    }}
+                    disabled={loading || (!inputText.trim() && processingStage === 'idle')}
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        {processingStage === 'parsing' && 'Parsing...'}
+                        {processingStage === 'reasoning' && 'Analyzing...'}
+                        {processingStage === 'generating' && 'Generating...'}
+                        {processingStage === 'Generating ODRL policy...' && 'Generating...'}
+                        {processingStage === 'validating' && 'Validating...'}
+                      </>
+                    ) : (
+                      <>
+                        <PlayCircle className="w-5 h-5" />
+                        {processingStage === 'idle' && 'Start Parsing'}
+                        {processingStage === 'parsing_done' && 'Start Reasoning'}
+                        {processingStage === 'reasoning_done' && 'Generate ODRL'}
+                        {processingStage === 'generating_done' && 'Validate Policy'}
+                        {processingStage === 'complete' && 'Start Over'}
+                      </>
+                    )}
+                  </button>
+
+                  {/* Stop button (during processing) */}
+                  {loading && (
+                    <button
+                      onClick={handleStop}
+                      className="px-6 py-3 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                    >
+                      Stop
+                    </button>
                   )}
-                </button>
-                
-                <button
-                  onClick={resetDemo}
-                  className={`px-6 py-3 rounded-lg font-medium transition ${
-                    darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-                  }`}
-                >
-                  Reset
-                </button>
-              </div>
+                  
+                  {/* Reset button (always available) */}
+                  <button
+                    onClick={resetDemo}
+                    className={`px-6 py-3 rounded-lg font-medium transition ${
+                      darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </div>
         
-             {/* ADD THIS BLOCK HERE - BEFORE THE FOOTER */}
+            {/* Parser Results */}
             {parsedData && (
               <ParserTab
                 parsedData={parsedData}
@@ -2212,512 +2152,212 @@ const handleSaveGenerator = async (metadata) => {
                 onDownload={downloadJSON}
               />
             )}
-
             
-            {/* Model Info Footer */}
-            <div className={`flex items-center justify-between ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              <div className="flex items-center gap-4 text-sm">
-                <span>Model: {selectedModel ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label || 'llama3.3' : 'llama3.3'}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={resetDemo}
-                  className={`text-sm hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                >
-                  Reset Demo
-                </button>
-                <a
-                  href="http://localhost:8000/docs"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`text-sm hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                >
-                  API Docs
-                </a>
-              </div>
-            </div>
-
-            {/* Subtitle Footer */}
-            <div className={`text-center text-xs ${mutedTextClass} pt-2`}>
-              <p>ODRL Policy Generator • Multi-Agent System</p>
-              <p>Flexible LLM Configuration • localStorage + Backend Storage</p>
+            {/* Footer */}
+            <div className={`flex items-center justify-end gap-3 text-sm ${mutedTextClass} pt-2`}>
+              <button
+                onClick={resetDemo}
+                className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
+              >
+                Reset
+              </button>
+              <span>•</span>
+              <a
+                href="http://localhost:8000/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
+              >
+                API Docs
+              </a>
             </div>
           </div>
         )}
 
-   {/* Reasoner Tab - Shows results automatically after parsing */}
-{activeTab === 'reasoner' && (
-  <div className="space-y-6 animate-fade-in">
-    
-    {!reasoningResult ? (
-      // No results yet - show placeholder
-      <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-        <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h2 className={`text-xl font-bold ${textClass}`}>Step 2: Policy Analysis</h2>
-          <p className={`text-sm ${mutedTextClass} mt-1`}>
-            Review policy validation results
-          </p>
-        </div>
-        <div className={`p-12 text-center ${mutedTextClass}`}>
-          <Brain className="w-16 h-16 mx-auto mb-4 opacity-50" />
-          <p>Please parse text first</p>
-          <p className="text-sm mt-2">Go to Parser tab and click "Start Parsing"</p>
-        </div>
-      </div>
-    ) : (
-      // Show reasoning results
-      <>
-        <ReasonerTab
-          reasoningResult={reasoningResult}
-          darkMode={darkMode}
-          onCopy={copyToClipboard}
-          onDownload={downloadJSON}
-          onContinue={() => {
-            console.log('[App] User approved - continuing to Generator');
-            handleGenerate();
-          }}
-          onEdit={() => {
-            console.log('[App] User wants to edit - returning to Parser');
-            setActiveTab('parser');
-            showToast('Edit your policy text and click "Start Parsing" again', 'info');
-          }}
-          onSave={handleSaveReasoning}
-        />
-
-        {/* Footer */}
-        <div className={`flex items-center justify-between text-sm ${mutedTextClass}`}>
-          <span>Reasoner: Validation & Conflict Detection</span>
-          <span>
-            {reasoningResult.processing_time_ms}ms • {reasoningResult.model_used}
-          </span>
-        </div>
-      </>
-    )}
-  </div>
-)}
+        {/* Reasoner Tab */}
+        {activeTab === 'reasoner' && (
+          <div className="space-y-6 animate-fade-in">
+            {!reasoningResult ? (
+              <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+                <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <h2 className={`text-xl font-bold ${textClass}`}>Step 2: Policy Analysis</h2>
+                  <p className={`text-sm ${mutedTextClass} mt-1`}>
+                    Review policy validation results
+                  </p>
+                </div>
+                <div className={`p-12 text-center ${mutedTextClass}`}>
+                  <Brain className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p>Please parse text first</p>
+                  <p className="text-sm mt-2">Go to Parser tab and click "Start Parsing"</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ReasonerTab
+                  reasoningResult={reasoningResult}
+                  darkMode={darkMode}
+                  onCopy={copyToClipboard}
+                  onDownload={downloadJSON}
+                  onContinue={() => {
+                    console.log('[App] User approved - continuing to Generator');
+                    handleGenerate();
+                  }}
+                  onEdit={() => {
+                    console.log('[App] User wants to edit - returning to Parser');
+                    setActiveTab('parser');
+                    showToast('Edit your policy text and click "Start Parsing" again', 'info');
+                  }}
+                  onSave={handleSaveReasoning}
+                />
+                <div className={`flex items-center justify-between text-sm ${mutedTextClass}`}>
+                  <span>Reasoner: Validation & Conflict Detection</span>
+                  <span>
+                    {reasoningResult.processing_time_ms}ms • {reasoningResult.model_used}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Generator Tab */}
-    {activeTab === 'generator' && (
-      <GeneratorTab
-        generatedODRL={generatedODRL}
+        {activeTab === 'generator' && (
+          <GeneratorTab
+            generatedODRL={generatedODRL}
+            darkMode={darkMode}
+            onCopy={copyToClipboard}
+            onDownload={downloadJSON}
+            onSave={handleSaveGenerator} 
+            onValidate={handleValidate}
+            onUpdateODRL={handleUpdateODRL} 
+            isValidating={validating}
+            showToast={showToast}
+          />
+        )}
+
+        {/* Validator Tab */}
+        {activeTab === 'validator' && (
+          <ValidatorTab
+            validationResult={validationResult}
+            generatedODRL={generatedODRL}
+            darkMode={darkMode}
+            onCopy={copyToClipboard}
+            onDownload={downloadJSON}
+            onRegenerate={handleRegenerate}        
+            onEditInput={handleEditFromValidator}   
+            isRegenerating={regenerating}  
+            originalText={inputText}       
+          />
+        )}
+ 
+        {/* Status Tab */}
+        {activeTab === 'status' && (
+          <StatusTab
+            agentStates={agentStates}
+            metrics={metrics}
+            processingProgress={processingProgress}
+            processingStage={processingStage}
+            sseConnected={sseConnected}
+            sessionId={sessionId.current}
+            darkMode={darkMode}
+          />
+        )}
+      </div>
+
+      {/* PERSISTENT PIPELINE ACTION BAR — visible on non-parser tabs when pipeline is mid-flow */}
+      {activeTab !== 'parser' && processingStage !== 'idle' && (
+        <div className={`border-t ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-sm sticky bottom-0 z-30`}>
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+            {/* Next step button */}
+            {!loading && (
+              <button
+                onClick={() => {
+                  if (processingStage === 'parsing_done') handleReason();
+                  else if (processingStage === 'reasoning_done') handleGenerate();
+                  else if (processingStage === 'generating_done') handleValidate();
+                  else if (processingStage === 'complete') resetDemo();
+                }}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/20"
+              >
+                <PlayCircle className="w-4 h-4" />
+                {processingStage === 'parsing_done' && 'Continue → Reasoning'}
+                {processingStage === 'reasoning_done' && 'Continue → Generate ODRL'}
+                {processingStage === 'generating_done' && 'Continue → Validate'}
+                {processingStage === 'complete' && 'Start Over'}
+              </button>
+            )}
+
+            {/* Loading indicator */}
+            {loading && (
+              <div className={`flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                <span className={`text-sm font-medium ${textClass}`}>
+                  {processingStage}
+                </span>
+              </div>
+            )}
+
+            {/* Stop button (during processing) */}
+            {loading && (
+              <button
+                onClick={handleStop}
+                className="px-5 py-2.5 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+              >
+                Stop
+              </button>
+            )}
+
+            {/* Reset button (always visible) */}
+            <button
+              onClick={resetDemo}
+              className={`px-5 py-2.5 rounded-lg font-medium transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS MODAL */}
+      <SettingsModal
         darkMode={darkMode}
-        onCopy={copyToClipboard}
-        onDownload={downloadJSON}
-        onSave={handleSaveGenerator} 
-        onValidate={handleValidate}
-        onUpdateODRL={handleUpdateODRL} 
-        isValidating={validating}
+        textClass={textClass}
+        mutedTextClass={mutedTextClass}
+        settingsOpen={settingsOpen}
+        setSettingsOpen={setSettingsOpen}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        temperature={temperature}
+        setTemperature={setTemperature}
+        providers={providers}
+        customModels={customModels}
+        customForm={customForm}
+        setCustomForm={setCustomForm}
+        showCustomForm={showCustomForm}
+        setShowCustomForm={setShowCustomForm}
+        addOrUpdateCustomModel={addOrUpdateCustomModel}
+        deleteCustomModel={deleteCustomModel}
+        syncMode={syncMode}
+        setSyncMode={setSyncMode}
+        backendConnected={backendConnected}
         showToast={showToast}
       />
-    )}
 
-{/* Validator Tab */}
-{activeTab === 'validator' && (
-  <ValidatorTab
-    validationResult={validationResult}
-    generatedODRL={generatedODRL}
-    darkMode={darkMode}
-    onCopy={copyToClipboard}
-    onDownload={downloadJSON}
-    onRegenerate={handleRegenerate}        
-    onEditInput={handleEditFromValidator}   
-    isRegenerating={regenerating}  
-    originalText={inputText}  
-         
-  />
-)}  
- 
-{/* Status Tab */}
-{activeTab === 'status' && (
-  <StatusTab
-    agentStates={agentStates}
-    metrics={metrics}
-    processingProgress={processingProgress}
-    processingStage={processingStage}
-    sseConnected={sseConnected}
-    sessionId={sessionId.current}
-    darkMode={darkMode}
-  />
-)}
-      </div>
-
-     {/* SETTINGS MODAL*/}
-{settingsOpen && (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto`}>
-      <div className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} px-6 py-4 border-b flex items-center justify-between sticky top-0 z-10`}>
-        <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
-          <Settings className="w-5 h-5" />
-          Settings & Configuration
-        </h2>
-        <button
-          onClick={() => setSettingsOpen(false)}
-          className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-      
-      <div className="p-6 space-y-6">
-        {/* Model Selection - UPDATED */}
-        <div>
-          <h3 className={`text-lg font-bold ${textClass} mb-3`}>Default Model</h3>
-          <select
-            value={selectedModel || ''}
-            onChange={(e) => {
-              const newModel = e.target.value;
-              console.log('[Settings] Model changed to:', newModel);
-              setSelectedModel(newModel);
-              localStorage.setItem('selectedModel', newModel);
-              showToast(`Model updated: ${providers.flatMap(p => p.models).find(m => m.value === newModel)?.label || customModels.find(m => m.value === newModel)?.label || 'Unknown'}`, 'success');
-            }}
-            className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-            disabled={!backendConnected}
-          >
-            {!backendConnected && <option>Backend not connected</option>}
-            
-            {/* Default Providers */}
-{providers.map(provider => (
-  <optgroup key={provider.name} label={provider.name}>
-    {provider.models.map(model => (
-      <option key={model.value} value={model.value}>
-        {model.label}
-      </option>
-    ))}
-  </optgroup>
-))}
-
-{/* Custom Models - ONLY if not in syncMode 'localStorage' */}
-{customModels.length > 0 && (
-  <optgroup label="━━ Your Custom Models ━━">
-    {customModels.map(model => (
-      <option key={model.value} value={model.value}>
-        {model.label}
-        {' '}
-        ({model.context_length >= 1000000 
-          ? `${(model.context_length / 1000000).toFixed(1)}M` 
-          : `${(model.context_length / 1024).toFixed(0)}K`} ctx)
-      </option>
-    ))}
-  </optgroup>
-)}
-          </select>
-          
-          {/*  NEW: Show current selection */}
-          <div className={`mt-2 text-sm ${mutedTextClass}`}>
-            Currently selected: {
-              customModels.find(m => m.value === selectedModel)?.label ||
-              providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
-              'None'
-            }
-          </div>
-        </div>
-
-              {/* Temperature Slider */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${textClass}`}>
-                  Temperature: {temperature}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={temperature}
-                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  className="w-full"
-                />
-                <p className={`text-xs ${mutedTextClass} mt-1`}>
-                  Lower = more focused, Higher = more creative
-                </p>
-              </div>
-              
-
-              {/* Storage Mode */}
-              <div>
-                <h3 className={`text-lg font-bold ${textClass} mb-3`}>Storage Mode</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'localStorage', label: 'Browser Only', icon: '💾' },
-                    { value: 'backend', label: 'Backend Only', icon: '☁️' },
-                    { value: 'both', label: 'Both (Sync)', icon: '🔄' }
-                  ].map(mode => (
-                    <button
-                      key={mode.value}
-                      onClick={() => setSyncMode(mode.value)}
-                      className={`p-3 rounded-lg text-center transition ${
-                        syncMode === mode.value
-                          ? 'bg-blue-600 text-white'
-                          : darkMode
-                          ? 'bg-gray-700 hover:bg-gray-600'
-                          : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      <div className="text-2xl mb-1">{mode.icon}</div>
-                      <div className="text-sm font-medium">{mode.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-             {/* Custom Model Form */}
-<div>
-  <div className="flex items-center justify-between mb-3">
-    <h3 className={`text-lg font-bold ${textClass}`}>Custom Models</h3>
-    <button
-      onClick={() => setShowCustomForm(!showCustomForm)}
-      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-    >
-      <Plus className="w-4 h-4" />
-      Add Model
-    </button>
-  </div>
-  
-  {showCustomForm && (
-    <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4 space-y-3`}>
-      {/* Model Name */}
-      <input
-        type="text"
-        placeholder="Model Name (e.g., My GPT-4)"
-        value={customForm.name}
-        onChange={(e) => setCustomForm({...customForm, name: e.target.value})}
-        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
+      {/* DebugPanel */}
+      <DebugPanel 
+        darkMode={darkMode}
+        selectedModel={selectedModel}
+        customModels={customModels}
+        agentModels={agentModels}
+        advancedMode={advancedMode}
+        temperature={temperature}
       />
-      
-      {/* Provider Type */}
-      <select
-        value={customForm.provider_type}
-        onChange={(e) => setCustomForm({...customForm, provider_type: e.target.value})}
-        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-      >
-        <option value="ollama">Ollama (Local)</option>
-        <option value="openai-compatible">OpenAI Compatible API</option>
-        <option value="google-genai">Google GenAI</option>
-        <option value="custom">Custom Provider</option>
-      </select>
-      
-      {/* Base URL (hide for google-genai) */}
-      {customForm.provider_type !== 'google-genai' && (
-        <input
-          type="text"
-          placeholder="Base URL (e.g., http://localhost:11434)"
-          value={customForm.base_url}
-          onChange={(e) => setCustomForm({...customForm, base_url: e.target.value})}
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-        />
-      )}
-      
-      {/* Model ID */}
-      <input
-        type="text"
-        placeholder="Model ID (e.g., llama3.3, gpt-4)"
-        value={customForm.model_id}
-        onChange={(e) => setCustomForm({...customForm, model_id: e.target.value})}
-        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg`}
-      />
-      
-      {/* Context Length */}
-      <div>
-        <label className={`block text-sm font-medium mb-2 ${textClass}`}>
-          Context Length: {customForm.context_length.toLocaleString()} tokens
-        </label>
-        <input
-          type="number"
-          value={customForm.context_length}
-          onChange={(e) => setCustomForm({
-            ...customForm, 
-            context_length: parseInt(e.target.value) || 4096
-          })}
-          placeholder="Context length in tokens"
-          min="1024"
-          max="2000000"
-          step="1024"
-          className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg text-sm`}
-        />
-        <p className={`text-xs ${mutedTextClass} mt-1`}>
-          Tip: DeepSeek-v3=64K, GPT-OSS=8K, Gemini=1M+
-        </p>
-      </div>
-      
-      {/*  FIXED: Default Temperature Slider */}
-      <div>
-        <label className={`block text-sm font-medium mb-2 ${textClass}`}>
-          Default Temperature: {customForm.temperature || 0.3}
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.1"
-          value={customForm.temperature || 0.3}
-          onChange={(e) => setCustomForm({
-            ...customForm, 
-            temperature: parseFloat(e.target.value)
-          })}
-          className="w-full"
-        />
-        <p className={`text-xs ${mutedTextClass} mt-1`}>
-          Lower = more focused, Higher = more creative
-        </p>
-      </div>
-      
-      {/* API Key */}
-      <input
-        type="password"
-        placeholder="API Key (optional for local models)"
-        value={customForm.api_key}
-        onChange={(e) => setCustomForm({...customForm, api_key: e.target.value})}
-        className={`w-full px-3 py-2 ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'} border rounded-lg font-mono text-sm`}
-      />
-      
-      {/* Cancel & Save Buttons */}
-      <div className="flex gap-2 pt-2">
-        <button
-          onClick={() => {
-            setShowCustomForm(false);
-            setCustomForm({
-              name: '',
-              provider_type: 'ollama',
-              base_url: 'http://localhost:11434',
-              api_key: '',
-              model_id: '',
-              context_length: 4096,
-              temperature: 0.3  // ← FIXED: Use "temperature" not "temperature_default"
-            });
-          }}
-          className={`flex-1 px-4 py-2 rounded-lg transition ${
-            darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
-          }`}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={async () => {
-            const isValid = customForm.name && customForm.model_id && 
-              (customForm.provider_type === 'google-genai' || customForm.base_url);
-            
-            if (isValid) {
-              await addOrUpdateCustomModel(customForm);
-              setShowCustomForm(false);
-              setCustomForm({
-                name: '',
-                provider_type: 'ollama',
-                base_url: 'http://localhost:11434',
-                api_key: '',
-                model_id: '',
-                context_length: 4096,
-                temperature: 0.3  // ← FIXED: Use "temperature" not "temperature_default"
-              });
-            }
-          }}
-          disabled={!customForm.name || !customForm.model_id}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          <Save className="w-4 h-4" />
-          Save Model
-        </button>
-      </div>
-    </div>
-  )}
-</div>
-              {/* Custom Models List */}
-              {customModels.length > 0 && (
-                <div>
-                  <h3 className={`text-lg font-bold ${textClass} mb-3 flex items-center justify-between`}>
-                    <span>Your Custom Models</span>
-                    <span className={`text-xs ${mutedTextClass}`}>
-                      {customModels.length} model{customModels.length !== 1 ? 's' : ''}
-                    </span>
-                  </h3>
-                  <div className="space-y-2">
-                    {customModels.map((model, idx) => (
-                      <div
-                        key={idx}
-                        className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded-lg p-3 flex justify-between items-center`}
-                      >
-                        <div className="flex-1">
-                          <div className={`font-medium ${textClass} flex items-center gap-2`}>
-                            {model.label}
-                            {selectedModel === model.value && (
-                              <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded">Active</span>
-                            )}
-                          </div>
-                          <div className={`text-xs ${mutedTextClass} mt-1 flex items-center gap-2 flex-wrap`}>
-                            <span>
-                              {model.provider_type === 'ollama' && '🦙 '}
-                              {model.provider_type === 'openai-compatible' && '🔗 '}
-                              {model.provider_type === 'google-genai' && '🌟 '}
-                              {model.provider_type} • {model.model_id}
-                            </span>
-                            {model.context_length && (
-                              <span className={`px-2 py-0.5 rounded text-xs ${
-                                darkMode 
-                                  ? 'bg-blue-900/30 text-blue-300' 
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {model.context_length >= 1000000 
-                                  ? `${(model.context_length / 1000000).toFixed(1)}M` 
-                                  : `${(model.context_length / 1024).toFixed(0)}K`} ctx
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => deleteCustomModel(model.value)}
-                          className={`p-2 rounded transition ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-100'}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Info Box */}
-              <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-4`}>
-                <h4 className={`font-semibold ${textClass} mb-2 flex items-center gap-2`}>
-                  <Info className="w-4 h-4" />
-                  Quick Setup Guide
-                </h4>
-                <ul className={`text-sm ${mutedTextClass} space-y-1`}>
-                  <li>• <strong>Ollama:</strong> Install from ollama.ai, run: <code className={`${darkMode ? 'bg-gray-800' : 'bg-gray-200'} px-1 rounded`}>ollama run llama2</code></li>
-                  <li>• <strong>OpenAI:</strong> Get API key from platform.openai.com</li>
-                  <li>• <strong>Custom:</strong> Any OpenAI-compatible endpoint</li>
-                  <li>• <strong>Storage:</strong> Use "Both" mode to sync across devices</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'} px-6 py-4 border-t flex justify-end sticky bottom-0`}>
-              <button
-                onClick={() => setSettingsOpen(false)}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DebugPanel*/}
-        <DebugPanel 
-          darkMode={darkMode}
-          selectedModel={selectedModel}
-          customModels={customModels}
-          agentModels={agentModels}
-          advancedMode={advancedMode}
-          temperature={temperature}
-        />
-        <StopButton
+      <StopButton
         isProcessing={loading}
         onStop={handleStop}
         currentStage={processingStage}
         darkMode={darkMode}
       />
-
       <ChatHistory
         history={history}
         onLoadHistory={handleLoadHistory}
@@ -2725,19 +2365,11 @@ const handleSaveGenerator = async (metadata) => {
         darkMode={darkMode}
       />
       
-
       <style>{`
   @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
-  
   .animate-fade-in {
     animation: fade-in 0.3s ease-out;
   }
@@ -2750,20 +2382,39 @@ const handleSaveGenerator = async (metadata) => {
   }
   
   @keyframes slide-in-right {
-    from {
-      opacity: 0;
-      transform: translateX(100%);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
   }
-  
   .animate-slide-in-right {
     animation: slide-in-right 0.3s ease-out;
   }
-  
+
+  /* Loading screen: pipeline nodes light up */
+  @keyframes init-pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.08); }
+  }
+  @keyframes init-line {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.8; }
+  }
+
+  /* Active agent tab subtle glow */
+  @keyframes agent-active {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.2); }
+    50% { box-shadow: 0 0 12px 2px rgba(59,130,246,0.15); }
+  }
+  .animate-agent-active {
+    animation: agent-active 1.5s ease-in-out infinite;
+  }
+
+  /* Stage completion flash */
+  @keyframes stage-complete {
+    0% { background-color: transparent; }
+    30% { background-color: rgba(16,185,129,0.1); }
+    100% { background-color: transparent; }
+  }
+
   /* Better focus states for accessibility */
   button:focus-visible,
   input:focus-visible,
