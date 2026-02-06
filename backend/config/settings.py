@@ -44,6 +44,7 @@ ENABLE_FITS = os.getenv("ENABLE_FITS", "true").lower() == "true"
 ENABLE_GROQ = os.getenv("ENABLE_GROQ", "true").lower() == "true"
 ENABLE_OPENAI = os.getenv("ENABLE_OPENAI", "false").lower() == "true"
 ENABLE_ANTHROPIC = os.getenv("ENABLE_ANTHROPIC", "false").lower() == "true"
+ENABLE_AZURE = os.getenv("ENABLE_AZURE", "true").lower() == "true"
 
 # ============================================
 # OLLAMA CONFIGURATION (Local)
@@ -81,18 +82,28 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
 
 # ============================================
+# AZURE OPENAI CONFIGURATION (FHGenie)
+# ============================================
+
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT", "https://fhgenie-api-fit-ems30127.openai.azure.com")
+AZURE_LLM_DEPLOYMENT = os.getenv("AZURE_LLM_DEPLOYMENT", "gpt-4o-2024-08-06")
+AZURE_LLM_MODEL = os.getenv("AZURE_LLM_MODEL", "gpt-4o")
+AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-10-01-preview")
+
+# ============================================
 # LLM DEFAULT SETTINGS
 # ============================================
 
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "ollama:llama3.3:70b")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "azure:gpt-4o")
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.3"))
 DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "120"))
 
 # ============================================
 # CORS CONFIGURATION
 # ============================================
-# Parse from environment variable or use secure defaults
 
+# Parse from environment variable or use secure defaults
 cors_env = os.getenv("CORS_ORIGINS", "")
 
 if cors_env == "*":
@@ -110,17 +121,16 @@ else:
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        
+
         # Ubuntu server (your production IP)
         "http://10.223.196.212:3000",  # Frontend
         "http://10.223.196.212:8000",  # Backend
-        
+
         # Add more IPs as needed
         # "http://another-server-ip:3000",
     ]
 
 # Log CORS configuration
-
 print(f"🌐 CORS Origins: {len(CORS_ORIGINS)} allowed")
 
 # ============================================
@@ -134,6 +144,7 @@ ENABLE_MODEL_SYNC = os.getenv("ENABLE_MODEL_SYNC", "true").lower() == "true"
 # STARTUP LOGGING
 # ============================================
 
+
 def log_configuration():
     """Log configuration on startup"""
     print("=" * 80)
@@ -143,6 +154,7 @@ def log_configuration():
     print(f"📄 Custom Models File: {CUSTOM_MODELS_FILE}")
     print(f"📊 Logs Directory: {LOGS_DIR}")
     print()
+
     print("🔌 ENABLED PROVIDERS:")
     if ENABLE_OLLAMA:
         print(f"   Ollama (Local): {OLLAMA_BASE_URL}")
@@ -154,34 +166,49 @@ def log_configuration():
         print(f"   OpenAI: {OPENAI_BASE_URL}")
     if ENABLE_ANTHROPIC:
         print(f"   Anthropic: {ANTHROPIC_BASE_URL}")
+    if ENABLE_AZURE:
+        print(f"   Azure OpenAI: {AZURE_ENDPOINT} (deployment: {AZURE_LLM_DEPLOYMENT})")
     print()
+
     print(f"🎯 Default Model: {DEFAULT_MODEL}")
     print(f"🌡️  Default Temperature: {DEFAULT_TEMPERATURE}")
     print("=" * 80)
+
 
 # ============================================
 # VALIDATION
 # ============================================
 
+
 def validate_configuration():
     """Validate configuration at startup"""
     errors = []
-    
+
     # Check if at least one provider is enabled
-    if not any([ENABLE_OLLAMA, ENABLE_FITS, ENABLE_GROQ, ENABLE_OPENAI, ENABLE_ANTHROPIC]):
+    if not any([ENABLE_OLLAMA, ENABLE_FITS, ENABLE_GROQ, ENABLE_OPENAI, ENABLE_ANTHROPIC, ENABLE_AZURE]):
         errors.append("  No providers enabled! Enable at least one in .env")
-    
+
     # Check API keys for enabled cloud providers
     if ENABLE_GROQ and not GROQ_API_KEY:
         errors.append("  GROQ_API_KEY missing but ENABLE_GROQ=true")
-    
+
     if ENABLE_OPENAI and not OPENAI_API_KEY:
         errors.append("  OPENAI_API_KEY missing but ENABLE_OPENAI=true")
-    
+
     if ENABLE_ANTHROPIC and not ANTHROPIC_API_KEY:
         errors.append("  ANTHROPIC_API_KEY missing but ENABLE_ANTHROPIC=true")
-    
+
+    if ENABLE_AZURE and not AZURE_OPENAI_API_KEY:
+        errors.append("  AZURE_OPENAI_API_KEY missing but ENABLE_AZURE=true")
+
+    if ENABLE_AZURE and not AZURE_ENDPOINT:
+        errors.append("  AZURE_ENDPOINT missing but ENABLE_AZURE=true")
+
+    if ENABLE_AZURE and not AZURE_LLM_DEPLOYMENT:
+        errors.append("  AZURE_LLM_DEPLOYMENT missing but ENABLE_AZURE=true")
+
     return errors
+
 
 # Run validation on import
 _validation_errors = validate_configuration()

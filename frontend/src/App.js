@@ -29,6 +29,7 @@ const Toast = ({ message, type = 'success', onClose }) => {
     warning: <AlertTriangle className="w-5 h-5" />,
     info: <Info className="w-5 h-5" />
   };
+
   const styles = {
     success: 'bg-green-500 text-white',
     error: 'bg-red-500 text-white',
@@ -94,6 +95,7 @@ const ODRLDemo = () => {
 
   // Store generation context for regeneration
   const [generationContext, setGenerationContext] = useState(null);
+
   const { getSignal, abort } = useAbortController();
 
   // Create abort controller ref for cancellation
@@ -697,7 +699,7 @@ const ODRLDemo = () => {
   };
 
   // ============================================
-  // MAIN PIPELINE FUNCTION
+  // MAIN PIPELINE FUNCTION (full auto-run)
   // ============================================
   const handleProcess = async () => {
     if (!inputText.trim()) {
@@ -732,40 +734,34 @@ const ODRLDemo = () => {
       updateAgentState('parser', 'processing');
       setProcessingStage('Parsing policy text...');
       setProcessingProgress(10);
-
+      
       const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
       const parserCustomConfig = getModelConfig(parserModel);
-
-      console.log('[DEBUG] Parse request:', {
-        text: inputText.substring(0, 50) + '...',
-        model: parserModel,
-        temperature,
-        custom_model: parserCustomConfig
-      });
-
+      
       const parseResult = await callAPI('parse', {
         text: inputText,
         model: parserModel,
         temperature,
         custom_model: parserCustomConfig
       }, signal);
-
+      
       setParsedData(parseResult);
       setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTimes.parse }));
       updateAgentState('parser', 'completed');
       completedStages.push('parser');
       setProcessingProgress(25);
       showToast('Policy parsed successfully!', 'success');
+
       startTimes.reason = Date.now();
 
       // STAGE 2: REASON
       updateAgentState('reasoner', 'processing');
       setProcessingStage('Analyzing policy...');
       setProcessingProgress(35);
-
+      
       const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
       const reasonerCustomConfig = getModelConfig(reasonerModel);
-
+      
       const reasonResult = await callAPI('reason', {
         parsed_data: parseResult,
         original_text: inputText,
@@ -773,7 +769,7 @@ const ODRLDemo = () => {
         temperature,
         custom_model: reasonerCustomConfig
       }, signal);
-
+      
       setReasoningResult(reasonResult);
       setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTimes.reason }));
       updateAgentState('reasoner', 'completed');
@@ -818,13 +814,10 @@ const ODRLDemo = () => {
       updateAgentState('generator', 'processing');
       setProcessingStage('Generating ODRL policy...');
       setProcessingProgress(65);
-
+      
       const generatorModel = advancedMode && agentModels.generator ? agentModels.generator : selectedModel;
       const generatorCustomConfig = getModelConfig(generatorModel);
-
-      console.log('[Generator] Using model:', generatorModel);
-      console.log('[Generator] Custom config:', generatorCustomConfig ? 'YES' : 'NO');
-
+      
       const genResult = await callAPI('generate', {
         parsed_data: parseResult,
         original_text: inputText,
@@ -833,7 +826,7 @@ const ODRLDemo = () => {
         temperature,
         custom_model: generatorCustomConfig
       }, signal);
-
+      
       setGeneratedODRL(genResult);
       setGenerationContext({
         parsed_data: parseResult,
@@ -845,25 +838,21 @@ const ODRLDemo = () => {
       completedStages.push('generator');
       setProcessingProgress(80);
       showToast('ODRL policy generated!', 'success');
+
       startTimes.validate = Date.now();
 
       // STAGE 4: VALIDATE
       updateAgentState('validator', 'processing');
       setProcessingStage('Validating with SHACL...');
       setProcessingProgress(90);
-
+      
       const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
       const validatorCustomConfig = getModelConfig(validatorModel);
 
       if (!genResult.odrl_turtle) {
         throw new Error('Generator did not return odrl_turtle format');
       }
-
-      console.log('[Validator] Validating Turtle policy');
-      console.log('[Validator] Length:', genResult.odrl_turtle.length, 'characters');
-      console.log('[Validator] Model:', validatorModel);
-      console.log('[Validator] Has custom config?', !!validatorCustomConfig);
-
+      
       const valResult = await callAPI('validate', {
         odrl_turtle: genResult.odrl_turtle,
         original_text: inputText,
@@ -871,7 +860,7 @@ const ODRLDemo = () => {
         temperature,
         custom_model: validatorCustomConfig
       }, signal);
-
+      
       setValidationResult(valResult);
       setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTimes.validate }));
       updateAgentState('validator', 'completed');
@@ -883,6 +872,7 @@ const ODRLDemo = () => {
       } else {
         showToast(`Complete! ${valResult.issues?.length || 0} SHACL violations found`, 'warning');
       }
+
       setActiveTab('validator');
 
       // SAVE HISTORY
@@ -953,14 +943,154 @@ const ODRLDemo = () => {
   };
 
   // ============================================
-  // handleGenerate Function
+  // STEP-BY-STEP HANDLERS (with auto-progress fix)
   // ============================================
-  const handleGenerate = async () => {
-    if (!reasoningResult) {
+  // FIX: Each handler accepts an optional parameter from the previous
+  // stage so auto-progress doesn't read stale React state.
+  // ============================================
+
+  const handleParse = async () => {
+    if (!inputText.trim()) {
+      showToast('Please enter a policy description', 'warning');
+      return;
+    }
+    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
+    const validation = validateModelConfig(parserModel, 'Parser');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
+    }
+
+    setLoading(true);
+    setProcessingStage('parsing');
+    setProcessingProgress(25);
+    setError(null);
+    setParsedData(null);
+    
+    const startTime = Date.now();
+    const signal = getSignal();
+
+    try {
+      updateAgentState('parser', 'processing');
+      const parserCustomConfig = validation.config;
+      
+      const parseResult = await callAPI('parse', {
+        text: inputText,
+        model: parserModel,
+        temperature,
+        custom_model: parserCustomConfig
+      }, signal);
+      
+      setParsedData(parseResult);
+      setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTime }));
+      updateAgentState('parser', 'completed');
+      
+      setProcessingStage('parsing_done');
+      setProcessingProgress(0); 
+      setActiveTab('parser');
+      showToast('Parsing complete!', 'success');
+      
+      // AUTO-PROGRESS FIX: pass parseResult directly to handleReason
+      if (autoProgress) {
+        console.log('[AutoProgress] Parse done → auto-triggering Reason');
+        setLoading(false);
+        setTimeout(() => handleReason(parseResult), 50);
+        return;
+      }
+      
+    } catch (err) {
+      const errorMessage = err?.message || 'Parsing failed';
+      setError(errorMessage);
+      showToast(`Parse error: ${errorMessage}`, 'error');
+      updateAgentState('parser', 'error');
+      setProcessingStage('idle');
+      setProcessingProgress(0); 
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * handleReason
+   * @param {object} [parsedDataOverride] - When called from auto-progress,
+   *   the parse result is passed directly to avoid stale state.
+   */
+  const handleReason = async (parsedDataOverride) => {
+    // Use override if provided (auto-progress), otherwise fall back to state
+    const effectiveParsedData = parsedDataOverride || parsedData;
+
+    if (!effectiveParsedData) {
+      showToast('Please parse text first!', 'warning');
+      return;
+    }
+    const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
+    const validation = validateModelConfig(reasonerModel, 'Reasoner');
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return;
+    }
+
+    setLoading(true);
+    setProcessingStage('reasoning');
+    setReasoningResult(null);
+    
+    const startTime = Date.now();
+    const signal = getSignal();
+
+    try {
+      updateAgentState('reasoner', 'processing');
+      const reasonerCustomConfig = validation.config;
+      
+      const reasonResult = await callAPI('reason', {
+        parsed_data: effectiveParsedData,
+        original_text: inputText,
+        model: reasonerModel,
+        temperature,
+        custom_model: reasonerCustomConfig
+      }, signal);
+      
+      setReasoningResult(reasonResult);
+      setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTime }));
+      updateAgentState('reasoner', 'completed');
+      
+      setProcessingStage('reasoning_done');
+      setProcessingProgress(0); 
+      setActiveTab('reasoner');
+      showToast('Analysis complete!', 'success');
+      
+      // AUTO-PROGRESS FIX: pass both results directly to handleGenerate
+      if (autoProgress) {
+        console.log('[AutoProgress] Reason done → auto-triggering Generate');
+        setLoading(false);
+        setTimeout(() => handleGenerate(effectiveParsedData, reasonResult), 50);
+        return;
+      }
+      
+    } catch (err) {
+      const errorMessage = err?.message || 'Reasoning failed';
+      setError(errorMessage);
+      showToast(`Reasoning error: ${errorMessage}`, 'error');
+      updateAgentState('reasoner', 'error');
+      setProcessingStage('parsing_done');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * handleGenerate
+   * @param {object} [parsedDataOverride] - Parsed data from auto-progress chain
+   * @param {object} [reasoningOverride]  - Reasoning result from auto-progress chain
+   */
+  const handleGenerate = async (parsedDataOverride, reasoningOverride) => {
+    const effectiveParsedData = parsedDataOverride || parsedData;
+    const effectiveReasoning = reasoningOverride || reasoningResult;
+
+    if (!effectiveReasoning) {
       showToast('Please run analysis first!', 'warning');
       return;
     }
-    if (!parsedData) {
+    if (!effectiveParsedData) {
       showToast('Parser data missing - please run parsing again', 'error');
       return;
     }
@@ -979,11 +1109,10 @@ const ODRLDemo = () => {
     setValidationResult(null);
     
     const startTime = Date.now();
-    const signal = abortControllerRef.current.signal;
+    const signal = getSignal();
     
     try {
       updateAgentState('generator', 'processing');
-      
       const generatorCustomConfig = validation.config;
       
       console.log('[Generator] Sending generate request...');
@@ -994,9 +1123,9 @@ const ODRLDemo = () => {
           'X-Session-ID': sessionId.current
         },
         body: JSON.stringify({
-          parsed_data: parsedData,
+          parsed_data: effectiveParsedData,
           original_text: inputText,
-          reasoning: reasoningResult,
+          reasoning: effectiveReasoning,
           attempt_number: 1,
           model: generatorModel,
           temperature,
@@ -1014,9 +1143,9 @@ const ODRLDemo = () => {
       
       setGeneratedODRL(genResult);
       setGenerationContext({
-        parsed_data: parsedData,
+        parsed_data: effectiveParsedData,
         original_text: inputText,
-        reasoning: reasoningResult
+        reasoning: effectiveReasoning
       });
       
       setMetrics(prev => ({
@@ -1031,10 +1160,11 @@ const ODRLDemo = () => {
       
       showToast('ODRL generated!', 'success');
       
-      // Auto-progress: trigger next stage automatically
+      // AUTO-PROGRESS FIX: pass genResult directly to handleValidate
       if (autoProgress) {
         console.log('[AutoProgress] Generate done → auto-triggering Validate');
-        setTimeout(() => handleValidate(), 100);
+        setLoading(false);
+        setTimeout(() => handleValidate(genResult), 50);
         return;
       }
       setActiveTab('generator');
@@ -1055,18 +1185,21 @@ const ODRLDemo = () => {
     }
   };
 
-  // ============================================
-  // handleValidate Function
-  // ============================================
-  const handleValidate = async () => {
-    if (!generatedODRL) {
+  /**
+   * handleValidate
+   * @param {object} [generatedODRLOverride] - Generated ODRL from auto-progress chain
+   */
+  const handleValidate = async (generatedODRLOverride) => {
+    const effectiveODRL = generatedODRLOverride || generatedODRL;
+
+    if (!effectiveODRL) {
       showToast('Please generate ODRL first!', 'warning');
       return;
     }
     
-    if (!generatedODRL.odrl_turtle) {
+    if (!effectiveODRL.odrl_turtle) {
       showToast('Generated ODRL missing Turtle format!', 'error');
-      console.error('[Validator] Generated ODRL:', generatedODRL);
+      console.error('[Validator] Generated ODRL:', effectiveODRL);
       return;
     }
     
@@ -1078,6 +1211,7 @@ const ODRLDemo = () => {
     }
     
     setValidating(true);
+    setLoading(true);
     setProcessingStage('Validating ODRL...');
     setProcessingProgress(90);
     
@@ -1086,16 +1220,14 @@ const ODRLDemo = () => {
     
     try {
       updateAgentState('validator', 'processing');
-      
       const validatorCustomConfig = validation.config;
       
-      console.log('[Validator] Manual validation starting...');
-      console.log('[Validator] Turtle length:', generatedODRL.odrl_turtle.length, 'chars');
+      console.log('[Validator] Validation starting...');
+      console.log('[Validator] Turtle length:', effectiveODRL.odrl_turtle.length, 'chars');
       console.log('[Validator] Model:', validatorModel);
-      console.log('[Validator] Has custom config?', !!validatorCustomConfig);
       
       const valResult = await callAPI('validate', {
-        odrl_turtle: generatedODRL.odrl_turtle,
+        odrl_turtle: effectiveODRL.odrl_turtle,
         original_text: inputText,
         model: validatorModel,
         temperature,
@@ -1124,6 +1256,7 @@ const ODRLDemo = () => {
       updateAgentState('validator', 'error');
     } finally {
       setValidating(false);
+      setLoading(false);
       setProcessingProgress(0);
       setProcessingStage('');
     }
@@ -1154,14 +1287,7 @@ const ODRLDemo = () => {
       const regenerateCustomConfig = validation.config;
       
       console.log('[Generator] Regenerating ODRL with validation fixes...');
-      console.log('[Generator] Context preview:', {
-        original_text: generationContext.original_text?.substring(0, 50) + '...',
-        has_parsed_data: !!generationContext.parsed_data,
-        has_reasoning: !!generationContext.reasoning,
-        validation_issues: validationResult.issues?.length
-      });
       console.log('[Regenerate] Model:', regenerateModel);
-      console.log('[Regenerate] Has custom config?', !!regenerateCustomConfig);
       
       const response = await fetch(`${API_BASE_URL}/api/generate`, {
         method: 'POST',
@@ -1185,8 +1311,7 @@ const ODRLDemo = () => {
       }
       
       const data = await response.json();
-      console.log('[Generator] Regeneration complete');
-      console.log('[Generator] Attempt number:', data.attempt_number);
+      console.log('[Generator] Regeneration complete, attempt:', data.attempt_number);
       
       setGeneratedODRL(data);
       setActiveTab('generator');
@@ -1223,6 +1348,7 @@ const ODRLDemo = () => {
   const handleStop = () => {
     console.log('Stop button clicked - cancelling operations');
     
+    abort();
     abortControllerRef.current.abort();
     resetAbortController();
     
@@ -1244,6 +1370,7 @@ const ODRLDemo = () => {
   // ============================================
   const handleLoadHistory = (historyItem) => {
     console.log('Loading history item:', historyItem.id);
+
     setInputText(historyItem.inputText);
     setSelectedModel(historyItem.model || selectedModel);
     setTemperature(historyItem.temperature || 0.3);
@@ -1276,16 +1403,19 @@ const ODRLDemo = () => {
 
   const handleFileUpload = async (file) => {
     if (!file) return;
+
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       setUploadStatus({ type: 'error', message: 'File too large (max 5MB)' });
       return;
     }
+
     const allowedTypes = ['text/plain', 'text/markdown', 'application/json'];
     if (!allowedTypes.includes(file.type) && !file.name.match(/\.(txt|md|json)$/i)) {
       setUploadStatus({ type: 'error', message: 'Invalid file type. Use .txt, .md, or .json' });
       return;
     }
+
     try {
       const text = await file.text();
       setInputText(text);
@@ -1370,146 +1500,6 @@ const ODRLDemo = () => {
     showToast('Pipeline reset', 'info');
   };
 
-  const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
-  const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const textClass = darkMode ? 'text-white' : 'text-gray-900';
-  const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
-
-  const getAgentIcon = (agent) => {
-    const icons = {
-      parser: FileText,
-      reasoner: Brain,
-      generator: Code,
-      validator: Shield
-    };
-    return icons[agent] || FileText;
-  };
-
-  // ============================================
-  // STEP-BY-STEP PROCESSING HANDLERS
-  // ============================================
-  const handleParse = async () => {
-    if (!inputText.trim()) {
-      showToast('Please enter a policy description', 'warning');
-      return;
-    }
-
-    const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
-    const validation = validateModelConfig(parserModel, 'Parser');
-    if (!validation.valid) {
-      showToast(validation.error, 'error');
-      return;
-    }
-
-    setLoading(true);
-    setProcessingStage('parsing');
-    setProcessingProgress(25);
-    setError(null);
-    setParsedData(null);
-    
-    const startTime = Date.now();
-    const signal = getSignal();
-
-    try {
-      updateAgentState('parser', 'processing');
-      const parserCustomConfig = validation.config;
-      
-      const parseResult = await callAPI('parse', {
-        text: inputText,
-        model: parserModel,
-        temperature,
-        custom_model: parserCustomConfig
-      }, signal);
-      
-      setParsedData(parseResult);
-      setMetrics(prev => ({ ...prev, parseTime: Date.now() - startTime }));
-      updateAgentState('parser', 'completed');
-      
-      setProcessingStage('parsing_done');
-      setProcessingProgress(0); 
-      setActiveTab('parser');
-      showToast('Parsing complete!', 'success');
-      
-      // Auto-progress: trigger next stage automatically
-      if (autoProgress) {
-        console.log('[AutoProgress] Parse done → auto-triggering Reason');
-        // Use setTimeout to let state settle before next stage
-        setTimeout(() => handleReason(), 100);
-        return;
-      }
-      
-    } catch (err) {
-      const errorMessage = err?.message || 'Parsing failed';
-      setError(errorMessage);
-      showToast(`Parse error: ${errorMessage}`, 'error');
-      updateAgentState('parser', 'error');
-      setProcessingStage('idle');
-      setProcessingProgress(0); 
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReason = async () => {
-    if (!parsedData) {
-      showToast('Please parse text first!', 'warning');
-      return;
-    }
-
-    const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
-    const validation = validateModelConfig(reasonerModel, 'Reasoner');
-    if (!validation.valid) {
-      showToast(validation.error, 'error');
-      return;
-    }
-
-    setLoading(true);
-    setProcessingStage('reasoning');
-    setReasoningResult(null);
-    
-    const startTime = Date.now();
-    const signal = getSignal();
-
-    try {
-      updateAgentState('reasoner', 'processing');
-      
-      const reasonerCustomConfig = validation.config;
-      
-      const reasonResult = await callAPI('reason', {
-        parsed_data: parsedData,
-        original_text: inputText,
-        model: reasonerModel,
-        temperature,
-        custom_model: reasonerCustomConfig
-      }, signal);
-      
-      setReasoningResult(reasonResult);
-      setMetrics(prev => ({ ...prev, reasonTime: Date.now() - startTime }));
-      updateAgentState('reasoner', 'completed');
-      
-      setProcessingStage('reasoning_done');
-      setProcessingProgress(0); 
-      setActiveTab('reasoner');
-      showToast('Analysis complete!', 'success');
-      
-      // Auto-progress: trigger next stage automatically
-      if (autoProgress) {
-        console.log('[AutoProgress] Reason done → auto-triggering Generate');
-        setTimeout(() => handleGenerate(), 100);
-        return;
-      }
-      
-    } catch (err) {
-      const errorMessage = err?.message || 'Reasoning failed';
-      setError(errorMessage);
-      showToast(`Reasoning error: ${errorMessage}`, 'error');
-      updateAgentState('reasoner', 'error');
-      setProcessingStage('parsing_done');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // ============================================
   // handleUpdateODRL Function 
   // ============================================
@@ -1548,6 +1538,21 @@ const ODRLDemo = () => {
     } catch (error) {
       showToast(`Failed to save: ${error.message}`, 'error');
     }
+  };
+
+  const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
+  const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
+  const textClass = darkMode ? 'text-white' : 'text-gray-900';
+  const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
+
+  const getAgentIcon = (agent) => {
+    const icons = {
+      parser: FileText,
+      reasoner: Brain,
+      generator: Code,
+      validator: Shield
+    };
+    return icons[agent] || FileText;
   };
 
   // ============================================
@@ -1721,9 +1726,9 @@ const ODRLDemo = () => {
         </div>
       </div>
 
-      {/* UNIFIED PIPELINE NAV — tabs + status in one bar */}
+      {/* UNIFIED PIPELINE NAV */}
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
-        {/* Progress bar (thin, at top of nav) */}
+        {/* Progress bar */}
         {loading && processingProgress > 0 && (
           <div className={`h-1 w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
             <div 
@@ -1732,6 +1737,7 @@ const ODRLDemo = () => {
             />
           </div>
         )}
+
         <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center gap-2">
             {/* Agent Tabs */}
@@ -1794,7 +1800,7 @@ const ODRLDemo = () => {
             {/* Divider */}
             <div className={`w-px h-8 mx-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
 
-            {/* SSE indicator (compact) */}
+            {/* SSE indicator */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
               sseConnected 
                 ? 'text-green-600 dark:text-green-400' 
@@ -1822,7 +1828,7 @@ const ODRLDemo = () => {
             </button>
           </div>
 
-          {/* Processing stage label (only when active) */}
+          {/* Processing stage label */}
           {loading && processingStage && (
             <div className={`mt-2 text-xs font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} flex items-center gap-2`}>
               <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1844,6 +1850,7 @@ const ODRLDemo = () => {
                   Enter Policy Description
                 </h2>
               </div>
+
               <div className="p-6 space-y-4">
                 {/* Example Cards */}
                 <ExamplePolicies
@@ -1926,7 +1933,7 @@ const ODRLDemo = () => {
                   </div>
                 )}
 
-                {/* ADVANCED SETTINGS - COLLAPSIBLE SECTION */}
+                {/* ADVANCED SETTINGS */}
                 <div
                   className={`rounded-lg border ${
                     advancedMode
@@ -2120,7 +2127,7 @@ const ODRLDemo = () => {
                     )}
                   </button>
 
-                  {/* Stop button (during processing) */}
+                  {/* Stop button */}
                   {loading && (
                     <button
                       onClick={handleStop}
@@ -2130,7 +2137,7 @@ const ODRLDemo = () => {
                     </button>
                   )}
                   
-                  {/* Reset button (always available) */}
+                  {/* Reset button */}
                   <button
                     onClick={resetDemo}
                     className={`px-6 py-3 rounded-lg font-medium transition ${
@@ -2264,7 +2271,7 @@ const ODRLDemo = () => {
         )}
       </div>
 
-      {/* PERSISTENT PIPELINE ACTION BAR — visible on non-parser tabs when pipeline is mid-flow */}
+      {/* PERSISTENT PIPELINE ACTION BAR */}
       {activeTab !== 'parser' && processingStage !== 'idle' && (
         <div className={`border-t ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-sm sticky bottom-0 z-30`}>
           <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
@@ -2297,7 +2304,7 @@ const ODRLDemo = () => {
               </div>
             )}
 
-            {/* Stop button (during processing) */}
+            {/* Stop button */}
             {loading && (
               <button
                 onClick={handleStop}
@@ -2307,7 +2314,7 @@ const ODRLDemo = () => {
               </button>
             )}
 
-            {/* Reset button (always visible) */}
+            {/* Reset button */}
             <button
               onClick={resetDemo}
               className={`px-5 py-2.5 rounded-lg font-medium transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
@@ -2352,12 +2359,14 @@ const ODRLDemo = () => {
         advancedMode={advancedMode}
         temperature={temperature}
       />
+
       <StopButton
         isProcessing={loading}
         onStop={handleStop}
         currentStage={processingStage}
         darkMode={darkMode}
       />
+
       <ChatHistory
         history={history}
         onLoadHistory={handleLoadHistory}
@@ -2388,8 +2397,7 @@ const ODRLDemo = () => {
   .animate-slide-in-right {
     animation: slide-in-right 0.3s ease-out;
   }
-
-  /* Loading screen: pipeline nodes light up */
+  
   @keyframes init-pulse {
     0%, 100% { opacity: 0.3; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.08); }
@@ -2399,7 +2407,6 @@ const ODRLDemo = () => {
     50% { opacity: 0.8; }
   }
 
-  /* Active agent tab subtle glow */
   @keyframes agent-active {
     0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.2); }
     50% { box-shadow: 0 0 12px 2px rgba(59,130,246,0.15); }
@@ -2408,14 +2415,12 @@ const ODRLDemo = () => {
     animation: agent-active 1.5s ease-in-out infinite;
   }
 
-  /* Stage completion flash */
   @keyframes stage-complete {
     0% { background-color: transparent; }
     30% { background-color: rgba(16,185,129,0.1); }
     100% { background-color: transparent; }
   }
 
-  /* Better focus states for accessibility */
   button:focus-visible,
   input:focus-visible,
   select:focus-visible,

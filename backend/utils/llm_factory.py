@@ -1,6 +1,7 @@
 """
 LLM Factory - Provider-Agnostic LLM Creation
 ======================================================
+
 This factory creates the appropriate LLM instance based on:
 1. Model string format (provider:model_name)
 2. Environment configuration (.env file)
@@ -11,13 +12,14 @@ Agents remain completely LLM-agnostic - they just call:
     llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
     llm = LLMFactory.create_llm(model="azure:gpt-4o")
 
-Updated: 2025 — added azure-openai custom provider type
+Updated: 2025 — Azure OpenAI as first-class provider (FHGenie)
 """
 
 import os
 import time
 import logging
 from typing import Optional, Any
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -74,14 +76,12 @@ class LLMFactory:
     Usage in agents:
         from utils.llm_factory import LLMFactory
 
-        # Simple usage (uses defaults from .env)
+        # Simple usage (uses defaults from .env — Azure FHGenie by default)
         llm = LLMFactory.create_llm()
 
         # Specify model explicitly
-        llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
-
-        # Azure OpenAI (FHGenie)
         llm = LLMFactory.create_llm(model="azure:gpt-4o")
+        llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
 
         # With custom parameters
         llm = LLMFactory.create_llm(
@@ -100,7 +100,7 @@ class LLMFactory:
         "claude-3-sonnet": {"input": 3.0, "output": 15.0},
         "groq": {"input": 0.0, "output": 0.0},  # Free tier
         "ollama": {"input": 0.0, "output": 0.0},  # Local/FITS
-        "azure": {"input": 2.5, "output": 10.0},  # Azure = OpenAI pricing
+        "azure": {"input": 2.5, "output": 10.0},  # Azure ≈ OpenAI pricing
     }
 
     @staticmethod
@@ -161,7 +161,7 @@ class LLMFactory:
             "ollama:llama3.1:70b" -> ("ollama", "llama3.1:70b")
             "groq:llama-3.3-70b-versatile" -> ("groq", "llama-3.3-70b-versatile")
             "azure:gpt-4o" -> ("azure", "gpt-4o")
-            "gpt-4" -> ("openai", "gpt-4")  or ("azure", "gpt-4") if Azure enabled
+            "gpt-4" -> ("azure", "gpt-4") if Azure enabled, else ("openai", "gpt-4")
             "auto" -> Auto-select best free provider
             "auto:quality" -> Auto-select best quality provider
             None -> Uses DEFAULT_MODEL from .env
@@ -174,13 +174,9 @@ class LLMFactory:
 
         if not model:
             # Check for DEFAULT_MODEL in .env
-            default = os.getenv("DEFAULT_MODEL")
-            if default:
-                model = default
-                logger.info(f"Using DEFAULT_MODEL from .env: {model}")
-            else:
-                # Auto-select if no default configured
-                model = LLMFactory.get_best_available_model(prefer_free=True)
+            default = os.getenv("DEFAULT_MODEL", "azure:gpt-4o")
+            model = default
+            logger.info(f"Using DEFAULT_MODEL: {model}")
 
         # Parse provider:model format
         if ":" in model:
@@ -190,11 +186,13 @@ class LLMFactory:
         else:
             # Auto-detect provider from model name
             if "gpt" in model.lower():
-                # Prefer Azure over plain OpenAI when both available
-                if os.getenv("ENABLE_AZURE", "false").lower() == "true":
+                # Prefer Azure over plain OpenAI when Azure is available
+                if os.getenv("ENABLE_AZURE", "true").lower() == "true":
                     provider = "azure"
-                else:
+                elif os.getenv("ENABLE_OPENAI", "false").lower() == "true":
                     provider = "openai"
+                else:
+                    provider = "azure"  # Still default to Azure; validation will catch it
                 model_name = model
             elif "claude" in model.lower():
                 provider = "anthropic"
@@ -261,6 +259,7 @@ class LLMFactory:
         elif provider_type == "openai-compatible":
             if not OPENAI_AVAILABLE:
                 raise ImportError("langchain-openai required. Install: pip install langchain-openai")
+
             safe_max_tokens = max_tokens if max_tokens else min(4096, context_length // 2)
             return ChatOpenAI(
                 model_name=model_id,
@@ -276,14 +275,6 @@ class LLMFactory:
             if not AZURE_AVAILABLE:
                 raise ImportError("langchain-openai required. Install: pip install langchain-openai")
 
-            # Azure needs: endpoint, deployment, api_version, api_key
-            # These can come from custom_config fields or be derived.
-            #
-            # IMPORTANT: azure_deployment is the deployment NAME on Azure,
-            # which may differ from the model_id. If the custom_models.json
-            # entry doesn't have an explicit "azure_deployment" field, we
-            # fall back to model_id — but users should verify their
-            # deployment name in Azure Portal / FHGenie.
             azure_endpoint = base_url.rstrip("/")
             azure_deployment = custom_config.get("azure_deployment") or model_id
             azure_api_version = custom_config.get("azure_api_version", "2024-10-01-preview")
@@ -302,18 +293,6 @@ class LLMFactory:
                 f"api_key={'***' + api_key[-4:] if api_key else 'MISSING'}"
             )
 
-            # Compare with .env values for debugging
-            env_endpoint = os.getenv("AZURE_ENDPOINT", "")
-            env_deployment = os.getenv("AZURE_LLM_DEPLOYMENT", "")
-            if env_endpoint and env_deployment:
-                if azure_endpoint != env_endpoint or azure_deployment != env_deployment:
-                    logger.warning(
-                        f"[Azure Custom] Differs from .env! "
-                        f".env endpoint={env_endpoint}, .env deployment={env_deployment}"
-                    )
-                else:
-                    logger.info("[Azure Custom] Matches .env configuration ✓")
-
             config = {
                 "azure_endpoint": azure_endpoint,
                 "openai_api_key": api_key,
@@ -321,10 +300,8 @@ class LLMFactory:
                 "openai_api_version": azure_api_version,
                 "temperature": temperature,
             }
-
             if max_tokens:
                 config["max_tokens"] = max_tokens
-
             config.update(kwargs)
             return AzureChatOpenAI(**config)
 
@@ -362,30 +339,32 @@ class LLMFactory:
         Create LLM client with optional custom configuration or 'custom:' prefix.
 
         Supports:
-        - Standard providers (groq, openai, azure, ollama, anthropic)
+        - Standard providers (azure, groq, openai, ollama, anthropic)
         - Custom model configs from frontend (all provider types)
         - 'custom:' prefix model strings for user-defined endpoints
 
         Example:
-            model="custom:gpt-4o"
-            custom_config={
-                "provider_type": "azure-openai",
-                "base_url": "https://fhgenie-api-fit-ems30127.openai.azure.com",
-                "api_key": "your-key",
-                "model_id": "gpt-4o-2024-05-13",
-                "azure_deployment": "gpt-4o-2024-05-13",
-                "azure_api_version": "2024-10-01-preview",
-                "context_length": 128000
-            }
+            # Default (Azure FHGenie)
+            llm = LLMFactory.create_llm()
+
+            # Explicit
+            llm = LLMFactory.create_llm(model="azure:gpt-4o")
+            llm = LLMFactory.create_llm(model="groq:llama-3.3-70b-versatile")
+
+            # Custom model from frontend settings
+            llm = LLMFactory.create_llm(
+                model="custom:gpt-4o",
+                custom_config={...}
+            )
         """
         if verbose:
             logger.setLevel(logging.DEBUG)
 
         # Default model and temperature
         if not model:
-            model = os.getenv("DEFAULT_MODEL", "groq:llama-3.3-70b-versatile")
+            model = os.getenv("DEFAULT_MODEL", "azure:gpt-4o")
         if not temperature:
-            temperature = float(os.getenv("LLM_TEMPERATURE_PRECISE", "0.3"))
+            temperature = float(os.getenv("DEFAULT_TEMPERATURE", "0.3"))
 
         # ─── CUSTOM PREFIX: model starts with "custom:" ───────
         if model and model.startswith("custom:"):
@@ -416,22 +395,22 @@ class LLMFactory:
 
         # ─── STANDARD PROVIDERS (.env based) ─────────────────
         provider, model_name = LLMFactory.parse_model_string(model)
+
         cost_info = LLMFactory.get_cost_info(provider, model_name)
         cost_str = "FREE" if cost_info["input"] == 0.0 else f"~${cost_info['input']}/{cost_info['output']} per 1M tokens"
-
         logger.info(f"Creating {provider} LLM: {model_name} (T={temperature}, Cost: {cost_str})")
 
         last_error = None
         for attempt in range(max_retries):
             try:
-                if provider == "ollama":
+                if provider == "azure":
+                    return LLMFactory._create_azure(model_name, temperature, max_tokens, **kwargs)
+                elif provider == "ollama":
                     return LLMFactory._create_ollama(model_name, temperature, max_tokens, **kwargs)
                 elif provider == "groq":
                     return LLMFactory._create_groq(model_name, temperature, max_tokens, **kwargs)
                 elif provider == "openai":
                     return LLMFactory._create_openai(model_name, temperature, max_tokens, **kwargs)
-                elif provider == "azure":
-                    return LLMFactory._create_azure(model_name, temperature, max_tokens, **kwargs)
                 elif provider == "anthropic":
                     return LLMFactory._create_anthropic(model_name, temperature, max_tokens, **kwargs)
                 else:
@@ -473,140 +452,32 @@ class LLMFactory:
 
     @staticmethod
     def _get_fallback_order(failed_provider: str) -> list[str]:
-        """Get ordered list of fallback providers"""
+        """Get ordered list of fallback providers (Azure-first, then free)"""
         available = LLMFactory.get_available_providers()
 
         # Remove the failed provider
         if failed_provider in available:
             available.remove(failed_provider)
 
-        # Prioritize free/local options
-        priority_order = ["groq", "ollama", "azure", "openai", "anthropic"]
+        # Azure first, then free/local options, then paid
+        priority_order = ["azure", "groq", "ollama", "openai", "anthropic"]
         return [p for p in priority_order if p in available]
 
     @staticmethod
     def _get_default_model(provider: str) -> str:
         """Get default model for a provider"""
         defaults = {
+            "azure": os.getenv("AZURE_LLM_MODEL", "gpt-4o"),
             "ollama": "llama3.1:70b",
             "groq": "llama-3.3-70b-versatile",
             "openai": "gpt-3.5-turbo",
-            "azure": os.getenv("AZURE_LLM_MODEL", "gpt-4o"),
-            "anthropic": "claude-3-sonnet-20240229"
+            "anthropic": "claude-3-sonnet-20240229",
         }
         return defaults.get(provider, "llama3.1:70b")
 
-    @staticmethod
-    def _create_ollama(
-        model: str,
-        temperature: float,
-        max_tokens: Optional[int],
-        **kwargs
-    ) -> ChatOllama:
-        """Create Ollama LLM (local or FITS server)"""
-
-        # Check if FITS is enabled (priority)
-        if os.getenv("ENABLE_FITS", "false").lower() == "true":
-            fits_url = os.getenv("FITS_SERVER_URL")
-            if not fits_url:
-                raise ValueError("ENABLE_FITS=true but FITS_SERVER_URL not configured")
-            base_url = fits_url
-            logger.debug(f"Using FITS server: {base_url}")
-
-        # Check if local Ollama is enabled
-        elif os.getenv("ENABLE_OLLAMA", "false").lower() == "true":
-            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-            logger.debug(f"Using local Ollama: {base_url}")
-
-        else:
-            raise ValueError(
-                "Ollama provider requested but neither ENABLE_OLLAMA nor ENABLE_FITS is enabled\n"
-                "Set ENABLE_OLLAMA=true or ENABLE_FITS=true in .env"
-            )
-
-        config = {
-            "base_url": base_url,
-            "model": model,
-            "temperature": temperature,
-        }
-
-        if max_tokens:
-            config["num_predict"] = max_tokens
-
-        config.update(kwargs)
-        return ChatOllama(**config)
-
-    @staticmethod
-    def _create_groq(
-        model: str,
-        temperature: float,
-        max_tokens: Optional[int],
-        **kwargs
-    ) -> "ChatGroq":
-        """Create Groq LLM (cloud, FREE tier)"""
-
-        if os.getenv("ENABLE_GROQ", "false").lower() != "true":
-            raise ValueError("Groq provider not enabled in .env")
-
-        if not GROQ_AVAILABLE:
-            raise ImportError("Install with: pip install langchain-groq")
-
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not found in .env")
-
-        logger.debug("Using Groq Cloud API (FREE tier)")
-
-        config = {
-            "groq_api_key": api_key,
-            "model_name": model,
-            "temperature": temperature,
-        }
-
-        if max_tokens:
-            config["max_tokens"] = max_tokens
-
-        config.update(kwargs)
-        return ChatGroq(**config)
-
-    @staticmethod
-    def _create_openai(
-        model: str,
-        temperature: float,
-        max_tokens: Optional[int],
-        **kwargs
-    ) -> "ChatOpenAI":
-        """Create OpenAI LLM (cloud, paid)"""
-
-        if os.getenv("ENABLE_OPENAI", "false").lower() != "true":
-            raise ValueError("OpenAI provider not enabled in .env")
-
-        if not OPENAI_AVAILABLE:
-            raise ImportError("Install with: pip install langchain-openai")
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY not found in .env")
-
-        logger.debug("Using OpenAI API")
-
-        config = {
-            "openai_api_key": api_key,
-            "model_name": model,
-            "temperature": temperature,
-        }
-
-        if max_tokens:
-            config["max_tokens"] = max_tokens
-
-        # Support custom base URL
-        base_url = os.getenv("OPENAI_BASE_URL")
-        if base_url:
-            config["openai_api_base"] = base_url
-            logger.debug(f"Custom endpoint: {base_url}")
-
-        config.update(kwargs)
-        return ChatOpenAI(**config)
+    # ──────────────────────────────────────────────────────
+    # Provider creation methods
+    # ──────────────────────────────────────────────────────
 
     @staticmethod
     def _create_azure(
@@ -621,11 +492,11 @@ class LLMFactory:
         Reads from .env:
             AZURE_OPENAI_API_KEY   - API key
             AZURE_ENDPOINT         - e.g. https://fhgenie-api-fit-ems30127.openai.azure.com
-            AZURE_LLM_DEPLOYMENT   - deployment name, e.g. gpt-4o-2024-05-13
+            AZURE_LLM_DEPLOYMENT   - deployment name, e.g. gpt-4o-2024-08-06
             AZURE_API_VERSION      - e.g. 2024-10-01-preview
             AZURE_LLM_MODEL        - model name for display, e.g. gpt-4o
         """
-        if os.getenv("ENABLE_AZURE", "false").lower() != "true":
+        if os.getenv("ENABLE_AZURE", "true").lower() != "true":
             raise ValueError(
                 "Azure provider not enabled in .env\n"
                 "Set ENABLE_AZURE=true in .env"
@@ -660,12 +531,113 @@ class LLMFactory:
             "openai_api_version": api_version,
             "temperature": temperature,
         }
+        if max_tokens:
+            config["max_tokens"] = max_tokens
+        config.update(kwargs)
+        return AzureChatOpenAI(**config)
 
+    @staticmethod
+    def _create_ollama(
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int],
+        **kwargs
+    ) -> ChatOllama:
+        """Create Ollama LLM (local or FITS server)"""
+        # Check if FITS is enabled (priority)
+        if os.getenv("ENABLE_FITS", "false").lower() == "true":
+            fits_url = os.getenv("FITS_SERVER_URL")
+            if not fits_url:
+                raise ValueError("ENABLE_FITS=true but FITS_SERVER_URL not configured")
+            base_url = fits_url
+            logger.debug(f"Using FITS server: {base_url}")
+
+        # Check if local Ollama is enabled
+        elif os.getenv("ENABLE_OLLAMA", "false").lower() == "true":
+            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            logger.debug(f"Using local Ollama: {base_url}")
+        else:
+            raise ValueError(
+                "Ollama provider requested but neither ENABLE_OLLAMA nor ENABLE_FITS is enabled\n"
+                "Set ENABLE_OLLAMA=true or ENABLE_FITS=true in .env"
+            )
+
+        config = {
+            "base_url": base_url,
+            "model": model,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            config["num_predict"] = max_tokens
+        config.update(kwargs)
+        return ChatOllama(**config)
+
+    @staticmethod
+    def _create_groq(
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int],
+        **kwargs
+    ) -> "ChatGroq":
+        """Create Groq LLM (cloud, FREE tier)"""
+        if os.getenv("ENABLE_GROQ", "false").lower() != "true":
+            raise ValueError("Groq provider not enabled in .env")
+
+        if not GROQ_AVAILABLE:
+            raise ImportError("Install with: pip install langchain-groq")
+
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not found in .env")
+
+        logger.debug("Using Groq Cloud API (FREE tier)")
+
+        config = {
+            "groq_api_key": api_key,
+            "model_name": model,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            config["max_tokens"] = max_tokens
+        config.update(kwargs)
+        return ChatGroq(**config)
+
+    @staticmethod
+    def _create_openai(
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int],
+        **kwargs
+    ) -> "ChatOpenAI":
+        """Create OpenAI LLM (cloud, paid)"""
+        if os.getenv("ENABLE_OPENAI", "false").lower() != "true":
+            raise ValueError("OpenAI provider not enabled in .env")
+
+        if not OPENAI_AVAILABLE:
+            raise ImportError("Install with: pip install langchain-openai")
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not found in .env")
+
+        logger.debug("Using OpenAI API")
+
+        config = {
+            "openai_api_key": api_key,
+            "model_name": model,
+            "temperature": temperature,
+        }
         if max_tokens:
             config["max_tokens"] = max_tokens
 
+        # Support custom base URL
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if base_url:
+            config["openai_api_base"] = base_url
+            logger.debug(f"Custom endpoint: {base_url}")
+
         config.update(kwargs)
-        return AzureChatOpenAI(**config)
+        return ChatOpenAI(**config)
 
     @staticmethod
     def _create_anthropic(
@@ -675,7 +647,6 @@ class LLMFactory:
         **kwargs
     ) -> "ChatAnthropic":
         """Create Anthropic Claude LLM (cloud, paid)"""
-
         if os.getenv("ENABLE_ANTHROPIC", "false").lower() != "true":
             raise ValueError("Anthropic provider not enabled in .env")
 
@@ -693,17 +664,23 @@ class LLMFactory:
             "model_name": model,
             "temperature": temperature,
         }
-
         if max_tokens:
             config["max_tokens_to_sample"] = max_tokens
-
         config.update(kwargs)
         return ChatAnthropic(**config)
+
+    # ──────────────────────────────────────────────────────
+    # Diagnostics & Health
+    # ──────────────────────────────────────────────────────
 
     @staticmethod
     def get_available_providers() -> list[str]:
         """Get list of currently enabled providers from .env"""
         providers = []
+
+        # Azure first (primary provider)
+        if os.getenv("ENABLE_AZURE", "true").lower() == "true":
+            providers.append("azure")
 
         if os.getenv("ENABLE_OLLAMA", "false").lower() == "true":
             providers.append("ollama")
@@ -717,9 +694,6 @@ class LLMFactory:
 
         if os.getenv("ENABLE_OPENAI", "false").lower() == "true":
             providers.append("openai")
-
-        if os.getenv("ENABLE_AZURE", "false").lower() == "true":
-            providers.append("azure")
 
         if os.getenv("ENABLE_ANTHROPIC", "false").lower() == "true":
             providers.append("anthropic")
@@ -746,7 +720,24 @@ class LLMFactory:
             return diagnostics
 
         # Provider-specific checks
-        if provider == "ollama":
+        if provider == "azure":
+            api_key = os.getenv("AZURE_OPENAI_API_KEY")
+            endpoint = os.getenv("AZURE_ENDPOINT")
+            deployment = os.getenv("AZURE_LLM_DEPLOYMENT")
+            diagnostics["configuration"]["api_key"] = "present" if api_key else "missing"
+            diagnostics["configuration"]["endpoint"] = endpoint if endpoint else "missing"
+            diagnostics["configuration"]["deployment"] = deployment if deployment else "missing"
+            diagnostics["configuration"]["api_version"] = os.getenv("AZURE_API_VERSION", "not set")
+            if not api_key:
+                diagnostics["issues"].append("AZURE_OPENAI_API_KEY not found in .env")
+            if not endpoint:
+                diagnostics["issues"].append("AZURE_ENDPOINT not found in .env")
+            if not deployment:
+                diagnostics["issues"].append("AZURE_LLM_DEPLOYMENT not found in .env")
+            if not AZURE_AVAILABLE:
+                diagnostics["issues"].append("langchain-openai not installed (provides AzureChatOpenAI)")
+
+        elif provider == "ollama":
             if os.getenv("ENABLE_FITS", "false").lower() == "true":
                 fits_url = os.getenv("FITS_SERVER_URL")
                 diagnostics["configuration"]["mode"] = "FITS"
@@ -775,23 +766,6 @@ class LLMFactory:
                 diagnostics["issues"].append("OPENAI_API_KEY not found in .env")
             if not OPENAI_AVAILABLE:
                 diagnostics["issues"].append("langchain-openai not installed")
-
-        elif provider == "azure":
-            api_key = os.getenv("AZURE_OPENAI_API_KEY")
-            endpoint = os.getenv("AZURE_ENDPOINT")
-            deployment = os.getenv("AZURE_LLM_DEPLOYMENT")
-            diagnostics["configuration"]["api_key"] = "present" if api_key else "missing"
-            diagnostics["configuration"]["endpoint"] = endpoint if endpoint else "missing"
-            diagnostics["configuration"]["deployment"] = deployment if deployment else "missing"
-            diagnostics["configuration"]["api_version"] = os.getenv("AZURE_API_VERSION", "not set")
-            if not api_key:
-                diagnostics["issues"].append("AZURE_OPENAI_API_KEY not found in .env")
-            if not endpoint:
-                diagnostics["issues"].append("AZURE_ENDPOINT not found in .env")
-            if not deployment:
-                diagnostics["issues"].append("AZURE_LLM_DEPLOYMENT not found in .env")
-            if not AZURE_AVAILABLE:
-                diagnostics["issues"].append("langchain-openai not installed (provides AzureChatOpenAI)")
 
         elif provider == "anthropic":
             api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -883,6 +857,7 @@ class LLMFactory:
                     llm.invoke("Hi")
 
                 status[provider] = "healthy"
+
             except Exception as e:
                 error_msg = str(e)
                 # Simplify error message
@@ -905,9 +880,8 @@ def create_llm(model: Optional[str] = None, temperature: float = 0.3, **kwargs) 
 
     Usage:
         from utils.llm_factory import create_llm
-
-        llm = create_llm("groq:llama-3.3-70b-versatile")
         llm = create_llm("azure:gpt-4o")
+        llm = create_llm("groq:llama-3.3-70b-versatile")
     """
     return LLMFactory.create_llm(model, temperature, **kwargs)
 
@@ -927,9 +901,10 @@ if __name__ == "__main__":
     for provider, status in health.items():
         print(f"  {provider}: {status}")
 
-    # Detailed diagnostics for failed providers
+    # Detailed diagnostics for all providers
     print("\nDetailed diagnostics:")
     print("=" * 50)
+
     for provider in providers:
         diag = LLMFactory.diagnose_provider(provider)
         print(f"\n{provider.upper()}:")
@@ -942,9 +917,9 @@ if __name__ == "__main__":
             for issue in diag['issues']:
                 print(f"    - {issue}")
 
-    # Test creating LLM with default model
+    # Test creating LLM with default model (Azure)
     print("\n" + "=" * 50)
-    print("\nTest 1: Default model with retry and fallback")
+    print("\nTest 1: Default model (Azure FHGenie)")
     try:
         llm = LLMFactory.create_llm(verbose=True)
         print(f"Success: {type(llm).__name__}")
@@ -954,10 +929,10 @@ if __name__ == "__main__":
     # Test specific models
     print("\n" + "=" * 50)
     test_models = [
-        "ollama:llama3.1:70b",
-        "groq:llama-3.3-70b-versatile",
         "azure:gpt-4o",
-        "openai:gpt-4"
+        "groq:llama-3.3-70b-versatile",
+        "ollama:llama3.1:70b",
+        "openai:gpt-4",
     ]
 
     for model in test_models:
