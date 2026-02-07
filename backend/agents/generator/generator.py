@@ -5,6 +5,7 @@ Universal ODRL Turtle generator with domain-specific prefix support
 Generates ODRL policies from parsed data with SHACL compliance
 """
 from typing import Dict, Any, Optional
+from datetime import datetime, timezone
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from utils.llm_factory import LLMFactory
@@ -206,6 +207,8 @@ drk:policy:abc123 a odrl:Policy, odrl:Offer ;
 6. **Use appropriate domain prefixes** (drk: or ex:)
 7. **Add rdfs:comment to complex constraints** for clarity
 
+Use the provided DCT_CREATED_VALUE for the dct:created value.
+
 Generate the policy now.
 """
 
@@ -219,6 +222,7 @@ REGENERATION_PROMPT = """You are an ODRL expert fixing SHACL validation errors i
 2. **FIX ONLY technical issues** - Syntax, URIs, operators, structure
 3. **KEEP all semantic content** - Actions, constraints, parties, targets
 4. **MAINTAIN human-readable metadata** - Keep dct:title and dct:description
+5. **Use provided DCT_CREATED_VALUE** for dct:created
 
 ## COMMON SHACL FIXES:
 
@@ -410,11 +414,17 @@ class Generator:
             logger.info(f"[Generator] Policy URI: {policy_uri}")
             logger.info(f"[Generator] Domain prefix: {domain_prefix}")
             
+            current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            dct_created_value = self._extract_created_value(parsed_data) or current_time
+            
             prompt = ChatPromptTemplate.from_messages([
                 ("system", FRESH_GENERATION_PROMPT),
                 ("human", """Generate a complete ODRL policy in Turtle format.
 
 POLICY URI: {policy_uri}
+
+DCT_CREATED_VALUE (use for dct:created):
+{dct_created_value}
 
 ORIGINAL USER REQUEST:
 {original_text}
@@ -434,6 +444,7 @@ IMPORTANT:
             
             odrl_turtle = chain.invoke({
                 "policy_uri": policy_uri,
+                "dct_created_value": dct_created_value,
                 "original_text": original_text,
                 "parsed_data": str(parsed_data)
             })
@@ -478,12 +489,18 @@ IMPORTANT:
             for line in issues_text.split('\n'):
                 logger.info(f"[Generator]   {line}")
             
+            current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            dct_created_value = self._extract_created_value(parsed_data) or current_time
+            
             prompt = ChatPromptTemplate.from_messages([
                 ("system", REGENERATION_PROMPT),
                 ("human", """Fix the SHACL validation errors while preserving the original policy intent.
 
 ORIGINAL USER REQUEST:
 {original_text}
+
+DCT_CREATED_VALUE (use for dct:created):
+{dct_created_value}
 
 PARSED POLICY STRUCTURE:
 {parsed_data}
@@ -507,6 +524,7 @@ INSTRUCTIONS:
             
             odrl_turtle = chain.invoke({
                 "original_text": original_text,
+                "dct_created_value": dct_created_value,
                 "parsed_data": str(parsed_data),
                 "previous_odrl": previous_odrl,
                 "validation_errors": issues_text
@@ -553,3 +571,43 @@ INSTRUCTIONS:
         turtle_str = turtle_str.strip()
         
         return turtle_str
+
+    def _extract_created_value(self, parsed_data: Dict[str, Any]) -> Optional[str]:
+        """Extract dct:created value from parsed data if provided."""
+        if not isinstance(parsed_data, dict):
+            return None
+
+        key_names = {"dct:created", "dct_created", "dctCreated", "created"}
+
+        def _normalize(value: Any) -> Optional[str]:
+            if isinstance(value, str):
+                return value.strip() or None
+            if isinstance(value, dict):
+                for candidate_key in ("value", "literal", "dateTime", "datetime", "created"):
+                    candidate = value.get(candidate_key)
+                    if isinstance(candidate, str) and candidate.strip():
+                        return candidate.strip()
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str) and item.strip():
+                        return item.strip()
+            return None
+
+        def _search(obj: Any) -> Optional[str]:
+            if isinstance(obj, dict):
+                for key, val in obj.items():
+                    if key in key_names:
+                        normalized = _normalize(val)
+                        if normalized:
+                            return normalized
+                    found = _search(val)
+                    if found:
+                        return found
+            elif isinstance(obj, list):
+                for item in obj:
+                    found = _search(item)
+                    if found:
+                        return found
+            return None
+
+        return _search(parsed_data)
