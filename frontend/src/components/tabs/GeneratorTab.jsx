@@ -103,7 +103,7 @@ export const GeneratorTab = ({
         </div>
         {!isEditing && (
           <div className="px-6 pb-6">
-            <button onClick={onValidate} disabled={isValidating}
+            <button onClick={() => onValidate()} disabled={isValidating}
               className={`w-full px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2 ${isValidating ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}>
               {isValidating ? (<><Loader2 className="w-5 h-5 animate-spin" /> Validating...</>) : (<><Shield className="w-5 h-5" /> Validate with SHACL</>)}
             </button>
