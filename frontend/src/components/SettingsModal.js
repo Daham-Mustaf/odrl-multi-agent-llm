@@ -175,7 +175,7 @@ const SettingsModal = ({
                     >
                       <option value="ollama">Ollama</option>
                       <option value="groq">Groq</option>
-                      <option value="openai">OpenAI Compatible</option>
+                      <option value="openai-compatible">OpenAI Compatible</option>
                       <option value="google-genai">Google GenAI</option>
                     </select>
                   </div>
