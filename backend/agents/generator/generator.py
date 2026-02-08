@@ -573,17 +573,17 @@ INSTRUCTIONS:
         return turtle_str
 
     def _extract_created_value(self, parsed_data: Dict[str, Any]) -> Optional[str]:
-        """Extract dct:created value from parsed data if provided."""
+        """Extract timestamp for dct:created from parsed data if provided."""
         if not isinstance(parsed_data, dict):
             return None
 
-        key_names = {"dct:created", "dct_created", "dctCreated", "created"}
+        key_names = {"dct:created", "dct_created", "dctCreated", "created", "timestamp"}
 
         def _normalize(value: Any) -> Optional[str]:
             if isinstance(value, str):
                 return value.strip() or None
             if isinstance(value, dict):
-                for candidate_key in ("value", "literal", "dateTime", "datetime", "created"):
+                for candidate_key in ("value", "literal", "dateTime", "datetime", "created", "timestamp"):
                     candidate = value.get(candidate_key)
                     if isinstance(candidate, str) and candidate.strip():
                         return candidate.strip()
@@ -595,6 +595,11 @@ INSTRUCTIONS:
 
         def _search(obj: Any) -> Optional[str]:
             if isinstance(obj, dict):
+                if "metadata" in obj and isinstance(obj["metadata"], dict):
+                    metadata_timestamp = obj["metadata"].get("timestamp")
+                    normalized = _normalize(metadata_timestamp)
+                    if normalized:
+                        return normalized
                 for key, val in obj.items():
                     if key in key_names:
                         normalized = _normalize(val)
