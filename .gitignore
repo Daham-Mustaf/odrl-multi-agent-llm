@@ -1,1 +1,5 @@
 fit-tunnel.bat
+
+# Evaluation outputs (do not commit)
+evaluation/results/
+evaluation/__pycache__/
