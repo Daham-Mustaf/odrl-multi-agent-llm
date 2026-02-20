@@ -13,6 +13,7 @@ import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
 import StatusTab from "./components/tabs/StatusTab";
+import EvaluatorPage from './components/EvaluatorPage';
 import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 import SettingsModal from './components/SettingsModal';
 
@@ -330,7 +331,7 @@ const ODRLDemo = () => {
     
     try {
       const response = await fetch(`${API_BASE_URL}/api/available-providers`, { 
-        signal: AbortSignal.timeout(5000) 
+        signal: AbortSignal.timeout(15000) 
       });
       
       if (!response.ok) throw new Error('Backend not responding');
@@ -367,6 +368,10 @@ const ODRLDemo = () => {
       setError('Backend not connected');
       setBackendConnected(false);
       showToast('Backend connection failed', 'error');
+      // Keep trying in background so transient backend reloads recover automatically.
+      setTimeout(() => {
+        loadProviders();
+      }, 5000);
     } finally {
       setLoadingProviders(false);
     }
@@ -1719,11 +1724,11 @@ const ODRLDemo = () => {
 
               {/* Metrics Toggle */}
               <button
-                onClick={() => setShowMetrics(!showMetrics)}
+                onClick={() => setActiveTab('evaluators')}
                 className={`p-2 rounded-lg transition ${
                   darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
                 }`}
-                title="Toggle Metrics"
+                title="Open Evaluator Dashboard"
               >
                 <BarChart3 className={`w-5 h-5 ${mutedTextClass}`} />
               </button>
@@ -1831,6 +1836,21 @@ const ODRLDemo = () => {
               title="View pipeline details"
             >
               <Activity className="w-4 h-4" />
+            </button>
+
+            {/* Evaluator tab button */}
+            <button
+              onClick={() => setActiveTab('evaluators')}
+              className={`p-2 rounded-lg transition ${
+                activeTab === 'evaluators'
+                  ? 'bg-indigo-600 text-white'
+                  : darkMode
+                    ? 'hover:bg-gray-700 text-gray-400'
+                    : 'hover:bg-gray-100 text-gray-500'
+              }`}
+              title="Evaluator dashboard"
+            >
+              <BarChart3 className="w-4 h-4" />
             </button>
           </div>
 
@@ -2176,7 +2196,7 @@ const ODRLDemo = () => {
               </button>
               <span>•</span>
               <a
-                href="http://localhost:8000/docs"
+                href={`${API_BASE_URL}/docs`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
@@ -2273,6 +2293,19 @@ const ODRLDemo = () => {
             sseConnected={sseConnected}
             sessionId={sessionId.current}
             darkMode={darkMode}
+          />
+        )}
+
+        {activeTab === 'evaluators' && (
+          <EvaluatorPage
+            darkMode={darkMode}
+            textClass={textClass}
+            mutedTextClass={mutedTextClass}
+            selectedModel={selectedModel}
+            customModels={customModels}
+            temperature={temperature}
+            apiBaseUrl={API_BASE_URL}
+            showToast={showToast}
           />
         )}
       </div>

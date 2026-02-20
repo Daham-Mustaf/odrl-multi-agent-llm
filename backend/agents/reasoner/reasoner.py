@@ -71,6 +71,10 @@ class Issue(BaseModel):
     policy_id: Optional[str] = None
     message: str
     suggestion: Optional[str] = None
+    conflict_type: Optional[str] = Field(
+        default=None,
+        description="Type of conflict detected. MUST be one of the 12 specific conflict types: 'unmeasurable_terms', 'temporal_overlap', 'temporal_expired_policy', 'temporal_impossible_sequence', 'spatial_hierarchy_conflict', 'spatial_overlap_conflict', 'action_hierarchy_conflict', 'action_subsumption_conflict', 'role_hierarchy_conflict', 'party_specification_inconsistency', 'circular_approval_dependency', 'workflow_cycle_conflict'. If a conflict is detected, this field MUST be set to the appropriate type."
+    )
 
 class ReasoningResult(BaseModel):
     """Pure analysis output - NO data modification"""
@@ -392,6 +396,35 @@ For each issue found, specify:
 - **policy_id**: Which policy/policies
 - **message**: Clear description of the issue
 - **suggestion**: How to resolve it (with specific measurable criteria)
+- **conflict_type**: Type of conflict detected. **MUST be one of the following 12 specific types if a conflict is detected, otherwise use None:**
+
+### CONFLICT TYPE DEFINITIONS (12 types):
+
+1. **unmeasurable_terms** - Policy contains vague, unmeasurable, or subjective terms that cannot be objectively enforced (e.g., "urgent", "soon", "responsibly", "everyone", "nobody", "when necessary")
+
+2. **temporal_overlap** - Conflicting temporal constraints that overlap or contradict each other (e.g., "access 9am-5pm" + "prohibited 2pm-6pm", "until 2025" + "indefinitely", contradictory count/usage limits)
+
+3. **temporal_expired_policy** - Policy has expired (validity period is before current date)
+
+4. **temporal_impossible_sequence** - Temporally impossible sequence of events (e.g., "available after 2025" + "can use in 2024", "delete before X" + "use after X" where X is the same date)
+
+5. **spatial_hierarchy_conflict** - Geographic hierarchy conflicts (e.g., "allowed in Germany" + "prohibited in EU" where Germany is in EU)
+
+6. **spatial_overlap_conflict** - Overlapping spatial locations with contradictory rules
+
+7. **action_hierarchy_conflict** - Action hierarchy conflicts (e.g., "can use" + "cannot read" where use includes read, "can modify" + "cannot modify")
+
+8. **action_subsumption_conflict** - Action subsumption conflicts where one action includes another but policies conflict
+
+9. **role_hierarchy_conflict** - Role hierarchy conflicts (e.g., "managers allowed" + "administrators prohibited" + "all managers are administrators")
+
+10. **party_specification_inconsistency** - Party/actor specification inconsistencies (e.g., "only UC4" + "all registered users" where UC4 is a user)
+
+11. **circular_approval_dependency** - Circular approval or dependency loops (e.g., "Access needs Committee approval" → "Committee needs Rights verification" → "Rights needs preliminary access")
+
+12. **workflow_cycle_conflict** - Workflow cycle conflicts where steps form a circular dependency
+
+**CRITICAL**: If you detect ANY conflict, you MUST set conflict_type to the most specific matching type from the above list. Do NOT use generic terms like "actor_conflict" or "temporal_conflict" - use the specific types listed above.
 
 ---
 

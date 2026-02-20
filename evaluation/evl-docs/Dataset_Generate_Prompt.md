@@ -1,4 +1,4 @@
-I'm trying to create a Golden Dataset of ODRL Policies that can be uploaded to Hugginface (.jsonl file), with columns containing: | Input | policy_type | assigner | assignee | targets | Permission.actions | Permission.Constraints.Triplets (leftOperand, operator, rightOperand) | Permission.duties | Prohibition.actions | Prohibition.Constraints.Triplets (leftOperand, operator, rightOperand) | Prohibition.duties | start_date | end_date | duration | | ----- | ----------- | -------- | -------- | ------- | ------------------ | ---------------------------------- | ------------------------------- | ----------------------------------- | ----------------- | ------------------- | ----------------------------------- | -------------------------------- | ------------------------------------ | ------------------ | ---------- | -------- | -------- | \n  The data types of the items contained in each column are shown below : - policy_type: str ("odrl:Set" / "odrl:Offer" / "odrl:Agreement") - assigner: [(str)] - assignee: [(str)] - targets: [(str)] -Permission.actions:[(str)] | Permission.Constraints.Triplets: [(str, str, str)] | Permission.duties:[(str)] | Prohibition.actions:[(str)] | Prohibition.Constraints.Triplets: [(str, str, str)] - duties: [(str)] - end_date: str - start_date: str - duration: str \n
+I'm trying to create a Golden Dataset of 60 correct Turtle format ODRL Policies that can be uploaded to Hugginface (.jsonl file), with columns containing: | Input | policy_type | Permission.assigner | Permission.assignee | Permission.target | Permission.actions | Permission.Constraints.Triplets (leftOperand, operator, rightOperand) | Permission.duties | Permission.assigner | Permission.assignee | Permission.target | Prohibition.actions | Prohibition.Constraints.Triplets (leftOperand, operator, rightOperand) | Prohibition.duties | start_date | end_date | duration |  \n  The data types of the items contained in each column are shown below : - policy_type: str ("odrl:Set" / "odrl:Offer" / "odrl:Agreement") - assigner: [(str)] - assignee: [(str)] - targets: [(str)] -Permission.actions:[(str)] | Permission.Constraints.Triplets: [(str, str, str)] | Permission.duties:[(str)] | Prohibition.actions:[(str)] | Prohibition.Constraints.Triplets: [(str, str, str)] - duties: [(str)] - end_date: str - start_date: str - duration: str \n
 
 Each triplet in Constraints.Triplets represent: (leftOperand, operator, rightOperand)
 Please refer to the rules below, from the proposed Input (which is a natural language), extract the content of the other columns generated. Please just provide me the dataset file directly.
@@ -114,3 +114,24 @@ Extract from phrases like:
 **Execution:** odrl:execute, odrl:stream
 **Communication:** odrl:attribute, odrl:inform, odrl:compensate
 ```
+An example from User Input to ODRL Policy in Turtle:
+
+"user_input": "Users can read and print the document but cannot modify or distribute it.",
+
+Correct Data:
+{
+    "input": "Users can read and print the document but cannot modify or distribute it.",
+    "policy_type": "odrl:Set",
+    "permission_actions": [
+      "odrl:read",
+      "odrl:print"
+    ],
+    "permission_triplets": [],
+    "permission_duties": [],
+    "prohibition_actions": [
+      "odrl:modify",
+      "odrl:distribute"
+    ],
+    "prohibition_triplets": [],
+    "prohibition_duties": []
+  }

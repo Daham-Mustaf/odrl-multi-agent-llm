@@ -1,6 +1,8 @@
 // src/utils/storageApi.js
 
-const API_BASE = 'http://localhost:8000';
+import { API_URL } from '../config/api';
+
+const API_BASE = API_URL;
 
 /* ---------------------------------------------
    SAVE REASONING ANALYSIS

@@ -3,13 +3,29 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+import importlib.util
 import json
 import os
 import re
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from run_workflow import _load_default_custom_model, run_workflow
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+RUN_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, "evaluation", "run_auto-agent_workflow.py")
+
+
+def _load_workflow_module():
+    spec = importlib.util.spec_from_file_location("run_auto_agent_workflow", RUN_WORKFLOW_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load workflow module from: {RUN_WORKFLOW_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_workflow_module = _load_workflow_module()
+_load_default_custom_model = _workflow_module._load_default_custom_model
+run_workflow = _workflow_module.run_workflow
 
 try:
     from rdflib import Graph, Namespace, RDF
@@ -880,7 +896,15 @@ def main() -> None:
     parser.add_argument(
         "--models",
         type=str,
-        default=os.path.join(os.path.dirname(__file__), "..", "backend", "config", "custom_models.json"),
+        default=os.path.join(PROJECT_ROOT, "backend", "config", "custom_models.json"),
+    )
+    parser.add_argument("--model", type=str, default=None, help="Override model value (e.g., custom:deepseek-chat)")
+    parser.add_argument("--temperature", type=float, default=None, help="Override temperature")
+    parser.add_argument(
+        "--custom-config-json",
+        type=str,
+        default=None,
+        help="Custom model config as JSON string (used when --model is provided)",
     )
     args = parser.parse_args()
 
@@ -900,23 +924,42 @@ def main() -> None:
             limit=args.limit,
         )
 
-    model, custom_config, temperature = _load_default_custom_model(args.models)
+    if args.model:
+        model = args.model
+        temperature = args.temperature if args.temperature is not None else 0.3
+        if args.custom_config_json:
+            try:
+                custom_config = json.loads(args.custom_config_json)
+                if not isinstance(custom_config, dict):
+                    raise ValueError("custom config must be a JSON object")
+            except Exception as exc:
+                raise ValueError(f"Invalid --custom-config-json: {exc}") from exc
+        else:
+            custom_config = {}
+    else:
+        model, custom_config, default_temperature = _load_default_custom_model(args.models)
+        temperature = args.temperature if args.temperature is not None else default_temperature
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join(os.path.dirname(__file__), "results", "evaluation")
     batch_dir = os.path.join(results_dir, f"batch_{timestamp}")
     os.makedirs(batch_dir, exist_ok=True)
+    print(f"EVAL_BATCH_DIR|path={batch_dir}", flush=True)
 
     gold_rows: List[Dict[str, Any]] = []
     parsed_preds: List[Dict[str, Any]] = []
     turtle_preds: List[Dict[str, Any]] = []
     runtime_rows: List[Dict[str, Any]] = []
 
+    total_rows = len(rows)
     for idx, row in enumerate(rows, 1):
         gold = extract_gold_row(row)
         user_text = gold.get("input") or ""
         if not user_text:
             raise ValueError(f"Row {idx} is missing Input text")
+
+        preview = user_text.replace("\n", " ").replace("|", "/")[:160]
+        print(f"EVAL_ITEM_START|idx={idx}|total={total_rows}|input={preview}", flush=True)
 
         result = run_workflow(
             user_text=user_text,
@@ -962,6 +1005,21 @@ def main() -> None:
             "total_output_tokens": total_metrics.get("output_tokens", ""),
         }
         runtime_rows.append(runtime_row)
+        print(
+            "EVAL_ITEM_TOKENS|"
+            f"idx={idx}|"
+            f"parser_in={runtime_row['parser_input_tokens']}|"
+            f"parser_out={runtime_row['parser_output_tokens']}|"
+            f"reasoner_in={runtime_row['reasoner_input_tokens']}|"
+            f"reasoner_out={runtime_row['reasoner_output_tokens']}|"
+            f"generator_in={runtime_row['generator_input_tokens']}|"
+            f"generator_out={runtime_row['generator_output_tokens']}|"
+            f"validator_in={runtime_row['validator_input_tokens']}|"
+            f"validator_out={runtime_row['validator_output_tokens']}|"
+            f"total_in={runtime_row['total_input_tokens']}|"
+            f"total_out={runtime_row['total_output_tokens']}",
+            flush=True,
+        )
 
         _save_evaluation_record(
             batch_dir=batch_dir,
@@ -976,6 +1034,7 @@ def main() -> None:
             runtime_row=runtime_row,
             last_generator_turtle=last_turtle,
         )
+        print(f"EVAL_ITEM_DONE|idx={idx}", flush=True)
 
     record_path = os.path.join(batch_dir, "records.csv")
     metrics_path = os.path.join(batch_dir, "metrics.csv")
@@ -989,10 +1048,10 @@ def main() -> None:
     parsed_metrics = evaluate_predictions(gold_rows, parsed_preds)
     turtle_metrics = evaluate_predictions(gold_rows, turtle_preds)
 
-    print("\n=== Parsed Data Evaluation ===")
-    print(json.dumps(parsed_metrics, ensure_ascii=False, indent=2))
-    print("\n=== Turtle Final Output Evaluation ===")
-    print(json.dumps(turtle_metrics, ensure_ascii=False, indent=2))
+    print("\n=== Parsed Data Evaluation ===", flush=True)
+    print(json.dumps(parsed_metrics, ensure_ascii=False, indent=2), flush=True)
+    print("\n=== Turtle Final Output Evaluation ===", flush=True)
+    print(json.dumps(turtle_metrics, ensure_ascii=False, indent=2), flush=True)
 
     combined_metrics = {
         "parsed_data": parsed_metrics,
@@ -1001,11 +1060,11 @@ def main() -> None:
     _write_metrics_file(metrics_path, combined_metrics)
     _write_time_metrics_file(time_path, runtime_rows)
     _write_token_metrics_file(tokens_path, runtime_rows)
-    print(f"\nBatch dir: {batch_dir}")
-    print(f"Records saved: {record_path}")
-    print(f"Metrics saved: {metrics_path}")
-    print(f"Time saved: {time_path}")
-    print(f"Tokens saved: {tokens_path}")
+    print(f"\nBatch dir: {batch_dir}", flush=True)
+    print(f"Records saved: {record_path}", flush=True)
+    print(f"Metrics saved: {metrics_path}", flush=True)
+    print(f"Time saved: {time_path}", flush=True)
+    print(f"Tokens saved: {tokens_path}", flush=True)
 
 
 if __name__ == "__main__":

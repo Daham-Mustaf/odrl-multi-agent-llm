@@ -1,0 +1,15 @@
+{
+    "ODRL_POLICY_DIRECTORY": "generated_odrl_from_template",
+    "ODRL_POLICY_ONTOLOGY_GEN": "generated_odrl_from_ontology",
+    "REFINED_ODRL": "refined_odrl",
+    "ODRL_ONTOLOGY_PATH": "data/ontology/odrl.ttl",
+    "AGREEMENT_SHAPES": "ODRL_policy_validation_shapes/ODRL_Agreement_Shape.ttl",
+    "OFFER_SHAPES": "ODRL_policy_validation_shapes/ODRL_Offer_Shape.ttl",
+    "RULE_SHAPES": "ODRL_policy_validation_shapes/ODRL_Rule_Shapes.ttl",
+    "SELF_CORRECTION_PATH": "refined_odrl",
+    "POLICY_FILE_NAME": "ODRL-Policy_v4.pdf",
+    "TRANSLATOR_FILE_NAME": "ODRL-Translator.pdf",
+    "OFFER_TEMPLATE": "llm_guidance_template/templates/ODRL-Offer_Generator_Template.pdf",
+    "AGREEMENT_TEMPLATE": "llm_guidance_template/templates/ODRL-Agreement_Generator_template.pdf",
+    "RULE_TEMPLATE": "llm_guidance_template/templates/ODRL_Rule_Generator_template.pdf"
+}

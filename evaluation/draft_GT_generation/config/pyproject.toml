@@ -1,0 +1,29 @@
+[project]
+name = "llm4odrl"
+version = "0.1.0"
+description = "ODRL policy generation with LLM guidance and self-correction"
+requires-python = ">=3.10"
+dependencies = [
+  "aiohttp",
+  "dataclasses-json",
+  "jsonpatch",
+  "langchain",
+  "langchain-community",
+  "langchain-core",
+  "langsmith",
+  "numpy",
+  "openai",
+  "pydantic",
+  "pypdf",
+  "PyMuPDF",
+  "pyshacl",
+  "PyYAML",
+  "rdflib",
+  "requests",
+  "SQLAlchemy",
+  "tenacity",
+  "tiktoken",
+]
+
+[tool.uv]
+package = false

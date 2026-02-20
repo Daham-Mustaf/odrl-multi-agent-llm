@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { API_URL } from '../config/api';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = `${API_URL}/api`;
 
 export const useBackend = () => {
   const [loading, setLoading] = useState(false);

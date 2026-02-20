@@ -1,0 +1,73 @@
+# =====================================
+# Python
+# =====================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+.Python
+.python-version
+
+# Virtual environment
+.venv/
+venv/
+env/
+# =====================================
+# Environment & Config
+# =====================================
+# All environment files (never commit secrets)
+.env
+.env.*       # ignores everything like .env.local, .env.production
+!.env.example  # allow the template file
+
+# Custom model storage (local data)
+config/llm_custom_models.json
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.python-version
+
+# Virtual environments
+.venv
+
+# =====================================
+# Logs & runtime files
+# =====================================
+logs/
+*.log
+# =====================================
+# Dependencies & build artifacts
+# =====================================
+uv.lock
+poetry.lock
+Pipfile.lock
+dist/
+build/
+*.spec
+
+# =====================================
+# OS & IDE specific
+# =====================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =====================================
+# Test artifacts
+# =====================================
+.pytest_cache/
+coverage/
+*.cover
+htmlcov/
+
+odrl-architecture.excalidraw
+paper/

@@ -119,11 +119,14 @@ else:
         # Local development
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
 
         # Ubuntu server (your production IP)
         "http://10.223.196.212:3000",  # Frontend
+        "http://10.223.196.212:3002",  # Frontend (alt port)
         "http://10.223.196.212:8000",  # Backend
 
         # Add more IPs as needed

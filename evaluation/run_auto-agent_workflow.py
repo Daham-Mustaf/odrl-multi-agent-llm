@@ -139,7 +139,7 @@ def run_workflow(
         model,
         parser_elapsed,
     )
-    print("[Workflow] Parser complete")
+    print("[Workflow] Parser complete", flush=True)
 
     reasoner_start = time.time()
     reasoning = reasoner.reason(parsed_data, user_text)
@@ -152,7 +152,7 @@ def run_workflow(
         model,
         reasoner_elapsed,
     )
-    print("[Workflow] Reasoner complete")
+    print("[Workflow] Reasoner complete", flush=True)
 
     generator_start = time.time()
     generation = generator.generate(
@@ -170,7 +170,7 @@ def run_workflow(
         model,
         generator_elapsed,
     )
-    print("[Workflow] Generator complete")
+    print("[Workflow] Generator complete", flush=True)
     odrl_turtle = generation["odrl_turtle"]
 
     validator_start = time.time()
@@ -184,7 +184,7 @@ def run_workflow(
         model,
         validator_elapsed,
     )
-    print("[Workflow] Validator complete")
+    print("[Workflow] Validator complete", flush=True)
 
     result: Dict[str, Any] = {
         "parsed_data": parsed_data,
@@ -194,6 +194,7 @@ def run_workflow(
     }
 
     if not validation.get("is_valid", False):
+        print("[Workflow] Regeneration start", flush=True)
         regeneration_start = time.time()
         regeneration = generator.generate(
             parsed_data=parsed_data,
@@ -220,8 +221,9 @@ def run_workflow(
             model,
             regeneration_elapsed,
         )
-        print("[Workflow] Regeneration complete")
+        print("[Workflow] Regeneration complete", flush=True)
         regenerated_turtle = regeneration["odrl_turtle"]
+        print("[Workflow] Revalidation start", flush=True)
         revalidation_start = time.time()
         revalidation = _quiet_validate(validator, regenerated_turtle, user_text)
         revalidation_elapsed = int((time.time() - revalidation_start) * 1000)
@@ -233,7 +235,7 @@ def run_workflow(
             model,
             revalidation_elapsed,
         )
-        print("[Workflow] Revalidation complete")
+        print("[Workflow] Revalidation complete", flush=True)
 
         result["regeneration"] = regeneration
         result["revalidation"] = revalidation
@@ -309,7 +311,7 @@ def main() -> None:
     user_text = _read_input_text(args.text, args.file)
 
     model, custom_config, temperature = _load_default_custom_model(args.models)
-    print(f"[Workflow] Using model: {model}")
+    print(f"[Workflow] Using model: {model}", flush=True)
 
     result = run_workflow(
         user_text=user_text,
@@ -327,16 +329,16 @@ def main() -> None:
         result=result,
     )
 
-    print("\n[Workflow] Completed.")
-    print(f"[Workflow] Session saved: {saved_path}")
+    print("\n[Workflow] Completed.", flush=True)
+    print(f"[Workflow] Session saved: {saved_path}", flush=True)
     if result.get("validation", {}).get("is_valid"):
-        print("[Workflow] Initial validation: PASS")
+        print("[Workflow] Initial validation: PASS", flush=True)
     else:
-        print("[Workflow] Initial validation: FAIL")
+        print("[Workflow] Initial validation: FAIL", flush=True)
         if result.get("revalidation", {}).get("is_valid"):
-            print("[Workflow] Revalidation after regeneration: PASS")
+            print("[Workflow] Revalidation after regeneration: PASS", flush=True)
         else:
-            print("[Workflow] Revalidation after regeneration: FAIL")
+            print("[Workflow] Revalidation after regeneration: FAIL", flush=True)
 
 
 if __name__ == "__main__":
