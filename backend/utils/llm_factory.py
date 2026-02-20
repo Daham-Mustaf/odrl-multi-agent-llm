@@ -231,12 +231,17 @@ class LLMFactory:
         Supported provider_type values:
           - "ollama"             → ChatOllama
           - "openai-compatible"  → ChatOpenAI (generic OpenAI-compatible endpoints)
-          - "azure-openai"       → AzureChatOpenAI (Azure OpenAI with deployment routing)
           - "google-genai"       → ChatGoogleGenerativeAI
 
         This is called for both 'custom:' prefixed models AND legacy custom_config dicts.
         """
         provider_type = custom_config.get("provider_type", "")
+        if isinstance(provider_type, str):
+            normalized = provider_type.strip().lower().replace("_", "-")
+            if normalized in {"openai", "openai-compatible", "azure", "azure-openai"}:
+                provider_type = "openai-compatible"
+            else:
+                provider_type = normalized
         base_url = custom_config.get("base_url", "")
         api_key = custom_config.get("api_key", "")
         model_id = custom_config.get("model_id") or model.replace("custom:", "")
@@ -270,41 +275,6 @@ class LLMFactory:
                 **kwargs
             )
 
-        # ─── Azure OpenAI (FHGenie, enterprise Azure) ────────
-        elif provider_type == "azure-openai":
-            if not AZURE_AVAILABLE:
-                raise ImportError("langchain-openai required. Install: pip install langchain-openai")
-
-            azure_endpoint = base_url.rstrip("/")
-            azure_deployment = custom_config.get("azure_deployment") or model_id
-            azure_api_version = custom_config.get("azure_api_version", "2024-10-01-preview")
-
-            if not api_key:
-                raise ValueError(
-                    f"Azure OpenAI custom model '{model_id}' requires an api_key. "
-                    "Set it in Settings → Custom Models."
-                )
-
-            logger.info(
-                f"[Azure Custom] endpoint={azure_endpoint}, "
-                f"deployment={azure_deployment}, "
-                f"model_id={model_id}, "
-                f"api_version={azure_api_version}, "
-                f"api_key={'***' + api_key[-4:] if api_key else 'MISSING'}"
-            )
-
-            config = {
-                "azure_endpoint": azure_endpoint,
-                "openai_api_key": api_key,
-                "azure_deployment": azure_deployment,
-                "openai_api_version": azure_api_version,
-                "temperature": temperature,
-            }
-            if max_tokens:
-                config["max_tokens"] = max_tokens
-            config.update(kwargs)
-            return AzureChatOpenAI(**config)
-
         # ─── Google GenAI ─────────────────────────────────────
         elif provider_type == "google-genai":
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -320,7 +290,7 @@ class LLMFactory:
         else:
             raise ValueError(
                 f"Unknown custom provider_type: '{provider_type}'. "
-                f"Supported: ollama, openai-compatible, azure-openai, google-genai"
+                f"Supported: ollama, openai-compatible, google-genai"
             )
 
     @staticmethod

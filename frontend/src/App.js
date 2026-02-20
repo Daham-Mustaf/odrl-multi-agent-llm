@@ -846,7 +846,9 @@ const ODRLDemo = () => {
       setProcessingStage('Validating with SHACL...');
       setProcessingProgress(90);
       
-      const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+      const validatorModel = advancedMode && agentModels.validator
+        ? agentModels.validator
+        : (selectedModel || (genResult.model_used && genResult.model_used !== 'default' ? genResult.model_used : null));
       const validatorCustomConfig = getModelConfig(validatorModel);
 
       if (!genResult.odrl_turtle) {
@@ -1190,7 +1192,9 @@ const ODRLDemo = () => {
    * @param {object} [generatedODRLOverride] - Generated ODRL from auto-progress chain
    */
   const handleValidate = async (generatedODRLOverride) => {
-    const effectiveODRL = generatedODRLOverride || generatedODRL;
+    const effectiveODRL = (generatedODRLOverride && generatedODRLOverride.odrl_turtle)
+      ? generatedODRLOverride
+      : generatedODRL;
 
     if (!effectiveODRL) {
       showToast('Please generate ODRL first!', 'warning');
@@ -1203,7 +1207,9 @@ const ODRLDemo = () => {
       return;
     }
     
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+    const validatorModel = advancedMode && agentModels.validator
+      ? agentModels.validator
+      : (selectedModel || (effectiveODRL?.model_used && effectiveODRL.model_used !== 'default' ? effectiveODRL.model_used : null));
     const validation = validateModelConfig(validatorModel, 'Validator');
     if (!validation.valid) {
       showToast(validation.error, 'error');
