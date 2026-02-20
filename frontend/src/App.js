@@ -1,20 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { encodingForModel } from 'js-tiktoken';
-import { API_URL } from './config/api';
-import { AlertCircle, FileText, Brain, Code, CheckCircle, Shield, Settings, Info, RefreshCw, Plus, Trash2, Save, X, Moon, Sun, BarChart3, Clock, Activity, ArrowRight, Sparkles, PlayCircle, Upload, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import DebugPanel from './components/DebugPanel'; 
+
+// Utilities
+import { countTokens } from './utils/tokenCounter';
+import { getAgentIcon, getAgentColor, getMetricsKey } from './utils/agentHelpers';
+
+// Hooks
+import { useToast } from './hooks/useToast';
+import { useFileUpload } from './hooks/useFileUpload';
 import { useAbortController } from './hooks/useAbortController';
 import { useChatHistory, createHistoryItem } from './hooks/useChatHistory';
+
+// Config & API
+import { API_URL } from './config/api';
+
+// Icons
+import { 
+  AlertCircle, FileText, Brain, Code, CheckCircle, Shield, 
+  Settings, Info, RefreshCw, X, Moon, Sun, BarChart3, 
+  Clock, Activity, ArrowRight, PlayCircle, Upload, 
+  ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle 
+} from 'lucide-react';
+
+// Components
+import DebugPanel from './components/DebugPanel'; 
 import { ChatHistory } from './components/ChatHistory';
 import { StopButton } from './components/StopButton';
 import { ParserTab } from './components/tabs/ParserTab';
 import { ReasonerTab } from './components/tabs/ReasonerTab';
-import ExamplePolicies from './components/ExamplePolicies';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
 import StatusTab from "./components/tabs/StatusTab";
-import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 import SettingsModal from './components/SettingsModal';
+import SimpleExampleCards from './components/SimpleExampleCards';
+import CompactHeader from './components/CompactHeader';
+import CompactAgentNav from './components/CompactAgentNav';
+import PerAgentModelSettings from './components/PerAgentModelSettings';
+import PerAgentModelModal from './components/PerAgentModelModal';
+
+// Utils
+import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 
 // API Configuration
 const API_BASE_URL = API_URL;
@@ -81,65 +105,45 @@ const ProgressBar = ({ progress, label, darkMode }) => {
 };
 
 const ODRLDemo = () => {
+  // ============================================
+  // STATE VARIABLES
+  // ============================================
   
+  // Tab & Navigation
   const [activeTab, setActiveTab] = useState('parser');
+  
+  // Pipeline Data
   const [inputText, setInputText] = useState('');
   const [parsedData, setParsedData] = useState(null);
   const [reasoningResult, setReasoningResult] = useState(null);
   const [generatedODRL, setGeneratedODRL] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
+  const [generationContext, setGenerationContext] = useState(null);
+  
+  // Loading & Error States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(null);
-
-  // Store generation context for regeneration
-  const [generationContext, setGenerationContext] = useState(null);
-
-  const { getSignal, abort } = useAbortController();
-
-  // Create abort controller ref for cancellation
-  const abortControllerRef = useRef(new AbortController());
-  const [sseConnected, setSseConnected] = useState(false);
-  const sessionId = useRef(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
-
-  // Reset abort controller when needed
-  const resetAbortController = () => {
-    abortControllerRef.current = new AbortController();
-  };
-
-  const [advancedMode, setAdvancedMode] = useState(false);
-  const [agentModels, setAgentModels] = useState({
-    parser: null,      
-    reasoner: null,
-    generator: null,
-    validator: null
-  });
-
-  const {
-    history,
-    addToHistory,
-    clearHistory
-  } = useChatHistory(50);
-
-  const [currentHistoryId, setCurrentHistoryId] = useState(null);
-  const [completedStages, setCompletedStages] = useState([]);
-  const [providers, setProviders] = useState([]);
-  const [loadingProviders, setLoadingProviders] = useState(true);
-  const [backendConnected, setBackendConnected] = useState(false);
-  
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(null);
-  const [temperature, setTemperature] = useState(0.3);
-  
-  const [darkMode, setDarkMode] = useState(false);
-  const [showMetrics, setShowMetrics] = useState(true);
-  const [autoProgress, setAutoProgress] = useState(false);
   const [validating, setValidating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const [attemptNumber, setAttemptNumber] = useState(1);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [loadingProviders, setLoadingProviders] = useState(true);
+  
+  // Processing States
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState('idle');
+  const [attemptNumber, setAttemptNumber] = useState(1);
 
+  const [perAgentModalOpen, setPerAgentModalOpen] = useState(false);
+  
+  // Agent States
+  const [agentStates, setAgentStates] = useState({
+    parser: 'idle',
+    reasoner: 'idle',
+    generator: 'idle',
+    validator: 'idle'
+  });
+  
+  // Metrics
   const [metrics, setMetrics] = useState({
     parseTime: 0,
     reasonTime: 0,
@@ -147,14 +151,20 @@ const ODRLDemo = () => {
     validateTime: 0
   });
   
-  const [agentStates, setAgentStates] = useState({
-    parser: 'idle',
-    reasoner: 'idle',
-    generator: 'idle',
-    validator: 'idle'
-  });
-
+  // Models & Providers
+  const [providers, setProviders] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [temperature, setTemperature] = useState(0.3);
   const [customModels, setCustomModels] = useState([]);
+  const [advancedMode, setAdvancedMode] = useState(false);
+  const [agentModels, setAgentModels] = useState({
+    parser: null,      
+    reasoner: null,
+    generator: null,
+    validator: null
+  });
+  
+  // Custom Model Management
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customForm, setCustomForm] = useState({
     name: '',
@@ -165,44 +175,57 @@ const ODRLDemo = () => {
     context_length: 4096,
     temperature: 0.3
   });
-  
   const [syncMode, setSyncMode] = useState('backend');
-  const [dragActive, setDragActive] = useState(false);
-  const [fileName, setFileName] = useState('');
-  const [showExamples, setShowExamples] = useState(false);
-
-  // Toast notification state
-  const [toasts, setToasts] = useState([]);
   
-  // Processing progress state
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingStage, setProcessingStage] = useState('idle');
-  const [reasonerLoading, setReasonerLoading] = useState(false);
-
+  // UI Settings
+  const [darkMode, setDarkMode] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(true);
+  const [autoProgress, setAutoProgress] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  
+  // Connection States
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
+  
+  // History
+  const {
+    history,
+    addToHistory,
+    clearHistory
+  } = useChatHistory(50);
+  const [currentHistoryId, setCurrentHistoryId] = useState(null);
+  const [completedStages, setCompletedStages] = useState([]);
+  
+  // Refs
+  const abortControllerRef = useRef(new AbortController());
+  const sessionId = useRef(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  
+  // Hooks
+  const { getSignal, abort } = useAbortController();
+  const { toasts, showToast, removeToast } = useToast();
+  const { 
+    dragActive, 
+    fileName, 
+    uploadStatus, 
+    handleFileUpload: uploadFile, 
+    handleDrag, 
+    handleDrop 
+  } = useFileUpload();
+  
   // ============================================
-  // TOAST NOTIFICATION HELPER
+  // HELPER FUNCTIONS
   // ============================================
-  const showToast = (message, type = 'success') => {
-    const id = Date.now() + Math.random();
-    const newToast = { id, message, type };
-    setToasts(prev => [...prev, newToast]);
-    
-    // Auto-remove after 4 seconds
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 4000);
+  
+  const resetAbortController = () => {
+    abortControllerRef.current = new AbortController();
   };
 
-  // ============================================
-  // HELPER: Get Custom Model Config
-  // ============================================
   const getModelConfig = React.useCallback((modelValue) => {
     console.log('[getModelConfig] Input:', modelValue);
     console.log('[getModelConfig] Available custom models:', customModels.map(m => m.value));
     
     if (!modelValue) return null;
     
-    // WAIT FOR CUSTOM MODELS TO LOAD
     if (modelValue.startsWith('custom:') && customModels.length === 0) {
       console.warn('[getModelConfig] Custom models not loaded yet');
       return null;
@@ -226,14 +249,12 @@ const ODRLDemo = () => {
     return config;
   }, [customModels]);
 
-  // ADD THE VALIDATION HELPER 
   const validateModelConfig = React.useCallback((modelValue, agentName = 'Agent') => {
     if (!modelValue) {
       console.error(`[${agentName}] No model specified`);
       return { valid: false, error: 'No model selected' };
     }
     
-    // Custom model validation
     if (modelValue.startsWith('custom:')) {
       if (customModels.length === 0) {
         console.error(`[${agentName}] Custom models not loaded yet`);
@@ -256,13 +277,8 @@ const ODRLDemo = () => {
       return { valid: true, config };
     }
     
-    // Standard model - no config needed
     return { valid: true, config: null };
   }, [customModels, getModelConfig]);
-
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
   
   // ============================================
   // INITIALIZATION
@@ -338,7 +354,6 @@ const ODRLDemo = () => {
       const data = await response.json();
       console.log('[loadProviders] Response:', data);
       
-      // EXTRACT CUSTOM MODELS
       const customProvider = data.providers?.find(p => p.id === 'custom');
       if (customProvider && customProvider.models) {
         console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
@@ -348,14 +363,12 @@ const ODRLDemo = () => {
         setCustomModels([]);
       }
       
-      // Set regular providers
       const regularProviders = data.providers?.filter(p => p.id !== 'custom') || [];
       setProviders(regularProviders);
       
       setBackendConnected(true);
       showToast('Backend connected successfully', 'success');
       
-      // Set default model
       if (data.default_model) {
         setSelectedModel(data.default_model);
       } else if (regularProviders.length > 0 && regularProviders[0].models.length > 0) {
@@ -542,17 +555,6 @@ const ODRLDemo = () => {
     }
   };
 
-  const countTokens = (text) => {
-    try {
-      const encoder = encodingForModel('gpt-4');
-      const tokens = encoder.encode(text);
-      encoder.free();
-      return tokens.length;
-    } catch {
-      return Math.ceil(text.length / 4);
-    }
-  };
-
   const callAPI = async (endpoint, body, signal = null) => {
     try {
       const url = endpoint.startsWith('/api/') 
@@ -593,9 +595,6 @@ const ODRLDemo = () => {
     }
   };
 
-  // ============================================
-  // SSE CONNECTION FOR REAL-TIME STATUS
-  // ============================================
   useEffect(() => {
     if (!backendConnected) {
       console.log('[SSE] Waiting for backend connection...');
@@ -698,9 +697,6 @@ const ODRLDemo = () => {
     setAgentStates(prev => ({ ...prev, [agent]: state }));
   };
 
-  // ============================================
-  // MAIN PIPELINE FUNCTION (full auto-run)
-  // ============================================
   const handleProcess = async () => {
     if (!inputText.trim()) {
       setError('Please enter a policy description');
@@ -730,7 +726,6 @@ const ODRLDemo = () => {
     const completedStages = [];
 
     try {
-      // STAGE 1: PARSE
       updateAgentState('parser', 'processing');
       setProcessingStage('Parsing policy text...');
       setProcessingProgress(10);
@@ -754,7 +749,6 @@ const ODRLDemo = () => {
 
       startTimes.reason = Date.now();
 
-      // STAGE 2: REASON
       updateAgentState('reasoner', 'processing');
       setProcessingStage('Analyzing policy...');
       setProcessingProgress(35);
@@ -777,7 +771,6 @@ const ODRLDemo = () => {
       setProcessingProgress(50);
       showToast('Analysis complete!', 'success');
 
-      // CHECKPOINT: Should we continue automatically?
       if (!autoProgress) {
         console.log('[App] Manual mode - pausing at Reasoner checkpoint');
         setActiveTab('reasoner');
@@ -800,17 +793,16 @@ const ODRLDemo = () => {
           },
           status: 'paused_at_reasoner'
         });
+
         addToHistory(historyItem);
         setCurrentHistoryId(historyItem.id);
         showToast('Review analysis and click Continue to generate ODRL', 'info');
         return;
       }
 
-      // AUTO-PROGRESS MODE: CONTINUE
       console.log('[App] Auto-progress mode - continuing to Generator');
       startTimes.generate = Date.now();
 
-      // STAGE 3: GENERATE
       updateAgentState('generator', 'processing');
       setProcessingStage('Generating ODRL policy...');
       setProcessingProgress(65);
@@ -841,7 +833,6 @@ const ODRLDemo = () => {
 
       startTimes.validate = Date.now();
 
-      // STAGE 4: VALIDATE
       updateAgentState('validator', 'processing');
       setProcessingStage('Validating with SHACL...');
       setProcessingProgress(90);
@@ -875,7 +866,6 @@ const ODRLDemo = () => {
 
       setActiveTab('validator');
 
-      // SAVE HISTORY
       const totalTime = Date.now() - startTimes.total;
       const historyItem = createHistoryItem({
         inputText,
@@ -895,6 +885,7 @@ const ODRLDemo = () => {
         },
         status: 'completed'
       });
+
       const historyId = addToHistory(historyItem);
       setCurrentHistoryId(historyId);
 
@@ -933,6 +924,7 @@ const ODRLDemo = () => {
         status: errorMessage === 'Request cancelled by user' ? 'cancelled' : 'failed',
         totalTime: Date.now() - startTimes.total
       });
+
       addToHistory(historyItem);
 
     } finally {
@@ -942,18 +934,12 @@ const ODRLDemo = () => {
     }
   };
 
-  // ============================================
-  // STEP-BY-STEP HANDLERS (with auto-progress fix)
-  // ============================================
-  // FIX: Each handler accepts an optional parameter from the previous
-  // stage so auto-progress doesn't read stale React state.
-  // ============================================
-
   const handleParse = async () => {
     if (!inputText.trim()) {
       showToast('Please enter a policy description', 'warning');
       return;
     }
+
     const parserModel = advancedMode && agentModels.parser ? agentModels.parser : selectedModel;
     const validation = validateModelConfig(parserModel, 'Parser');
     if (!validation.valid) {
@@ -990,7 +976,6 @@ const ODRLDemo = () => {
       setActiveTab('parser');
       showToast('Parsing complete!', 'success');
       
-      // AUTO-PROGRESS FIX: pass parseResult directly to handleReason
       if (autoProgress) {
         console.log('[AutoProgress] Parse done → auto-triggering Reason');
         setLoading(false);
@@ -1010,19 +995,13 @@ const ODRLDemo = () => {
     }
   };
 
-  /**
-   * handleReason
-   * @param {object} [parsedDataOverride] - When called from auto-progress,
-   *   the parse result is passed directly to avoid stale state.
-   */
   const handleReason = async (parsedDataOverride) => {
-    // Use override if provided (auto-progress), otherwise fall back to state
     const effectiveParsedData = parsedDataOverride || parsedData;
-
     if (!effectiveParsedData) {
       showToast('Please parse text first!', 'warning');
       return;
     }
+
     const reasonerModel = advancedMode && agentModels.reasoner ? agentModels.reasoner : selectedModel;
     const validation = validateModelConfig(reasonerModel, 'Reasoner');
     if (!validation.valid) {
@@ -1058,7 +1037,6 @@ const ODRLDemo = () => {
       setActiveTab('reasoner');
       showToast('Analysis complete!', 'success');
       
-      // AUTO-PROGRESS FIX: pass both results directly to handleGenerate
       if (autoProgress) {
         console.log('[AutoProgress] Reason done → auto-triggering Generate');
         setLoading(false);
@@ -1077,11 +1055,6 @@ const ODRLDemo = () => {
     }
   };
 
-  /**
-   * handleGenerate
-   * @param {object} [parsedDataOverride] - Parsed data from auto-progress chain
-   * @param {object} [reasoningOverride]  - Reasoning result from auto-progress chain
-   */
   const handleGenerate = async (parsedDataOverride, reasoningOverride) => {
     const effectiveParsedData = parsedDataOverride || parsedData;
     const effectiveReasoning = reasoningOverride || reasoningResult;
@@ -1160,7 +1133,6 @@ const ODRLDemo = () => {
       
       showToast('ODRL generated!', 'success');
       
-      // AUTO-PROGRESS FIX: pass genResult directly to handleValidate
       if (autoProgress) {
         console.log('[AutoProgress] Generate done → auto-triggering Validate');
         setLoading(false);
@@ -1185,13 +1157,8 @@ const ODRLDemo = () => {
     }
   };
 
-  /**
-   * handleValidate
-   * @param {object} [generatedODRLOverride] - Generated ODRL from auto-progress chain
-   */
   const handleValidate = async (generatedODRLOverride) => {
     const effectiveODRL = generatedODRLOverride || generatedODRL;
-
     if (!effectiveODRL) {
       showToast('Please generate ODRL first!', 'warning');
       return;
@@ -1262,9 +1229,6 @@ const ODRLDemo = () => {
     }
   };
 
-  // ============================================
-  // handleRegenerate Function
-  // ============================================
   const handleRegenerate = async () => {
     if (!validationResult || !generatedODRL || !generationContext) {
       showToast('Missing context for regeneration', 'error');
@@ -1332,9 +1296,6 @@ const ODRLDemo = () => {
     }
   };
 
-  // ============================================
-  // handleEditFromValidator Function 
-  // ============================================
   const handleEditFromValidator = () => {
     console.log('[App] User wants to edit input from validator');
     setActiveTab('parser');
@@ -1342,9 +1303,6 @@ const ODRLDemo = () => {
     showToast('Edit your input and click "Start Processing" to regenerate', 'info');
   };
 
-  // ============================================
-  // handleStop Function
-  // ============================================
   const handleStop = () => {
     console.log('Stop button clicked - cancelling operations');
     
@@ -1365,12 +1323,8 @@ const ODRLDemo = () => {
     showToast('Processing stopped', 'info'); 
   };
 
-  // ============================================
-  // handleLoadHistory Function
-  // ============================================
   const handleLoadHistory = (historyItem) => {
     console.log('Loading history item:', historyItem.id);
-
     setInputText(historyItem.inputText);
     setSelectedModel(historyItem.model || selectedModel);
     setTemperature(historyItem.temperature || 0.3);
@@ -1379,79 +1333,37 @@ const ODRLDemo = () => {
       setParsedData(historyItem.parsedData);
       updateAgentState('parser', 'completed');
     }
+
     if (historyItem.reasoningResult) {
       setReasoningResult(historyItem.reasoningResult);
       updateAgentState('reasoner', 'completed');
     }
+
     if (historyItem.generatedODRL) {
       setGeneratedODRL(historyItem.generatedODRL);
       updateAgentState('generator', 'completed');
     }
+
     if (historyItem.validationResult) {
       setValidationResult(historyItem.validationResult);
       updateAgentState('validator', 'completed');
     }
+
     if (historyItem.metrics) {
       setMetrics(historyItem.metrics);
     }
+
     if (historyItem.completedStages && historyItem.completedStages.length > 0) {
       setActiveTab(historyItem.completedStages[0]);
     }
+
     setCurrentHistoryId(historyItem.id);
     showToast('History loaded successfully', 'success');
   };
 
-  const handleFileUpload = async (file) => {
-    if (!file) return;
-
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setUploadStatus({ type: 'error', message: 'File too large (max 5MB)' });
-      return;
-    }
-
-    const allowedTypes = ['text/plain', 'text/markdown', 'application/json'];
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(txt|md|json)$/i)) {
-      setUploadStatus({ type: 'error', message: 'Invalid file type. Use .txt, .md, or .json' });
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      setInputText(text);
-      setFileName(file.name);
-      setUploadStatus({ type: 'success', message: `Loaded ${file.name}` });
-      setTimeout(() => setUploadStatus(null), 3000);
-    } catch (err) {
-      setUploadStatus({ type: 'error', message: 'Failed to read file' });
-    }
-  };
-
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
-
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    setCopied(true);
     showToast('Copied to clipboard!', 'success');
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const downloadJSON = (data, filename) => {
@@ -1468,7 +1380,6 @@ const ODRLDemo = () => {
   };
 
   const resetDemo = () => {
-    // Abort any running request first
     abort();
     abortControllerRef.current.abort();
     resetAbortController();
@@ -1495,14 +1406,10 @@ const ODRLDemo = () => {
       generateTime: 0,
       validateTime: 0,
     });
-    setFileName('');
     setCompletedStages([]);
     showToast('Pipeline reset', 'info');
   };
 
-  // ============================================
-  // handleUpdateODRL Function 
-  // ============================================
   const handleUpdateODRL = (updatedODRL, isTurtle = false) => {
     if (isTurtle) {
       console.log('[App] User updated ODRL Turtle manually');
@@ -1545,24 +1452,10 @@ const ODRLDemo = () => {
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
 
-  const getAgentIcon = (agent) => {
-    const icons = {
-      parser: FileText,
-      reasoner: Brain,
-      generator: Code,
-      validator: Shield
-    };
-    return icons[agent] || FileText;
-  };
-
-  // ============================================
-  // RENDER UI
-  // ============================================
   if (isInitializing) {
     return (
       <div className={`min-h-screen ${bgClass} flex items-center justify-center`}>
         <div className="text-center">
-          {/* Pipeline visualization */}
           <div className="flex items-center justify-center gap-3 mb-8">
             {[
               { icon: <FileText className="w-5 h-5" />, label: 'Parse', delay: '0s' },
@@ -1607,7 +1500,6 @@ const ODRLDemo = () => {
   return (
     <div className={`min-h-screen ${bgClass} transition-colors duration-300`}>
       
-      {/* Toast Notifications */}
       <div className="fixed top-20 right-6 z-50 space-y-3">
         {toasts.map(toast => (
           <Toast 
@@ -1619,583 +1511,241 @@ const ODRLDemo = () => {
         ))}
       </div>
 
-      {/* IMPROVED HEADER */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b shadow-sm`}>
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left: Logo and Title */}
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg shadow-lg">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className={`text-xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent`}>
-                  ODRL Policy Generator
-                </h1>
-                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  <span className="text-blue-600 dark:text-blue-400 font-medium">Transform Text to Policies</span>
-                  {' • '}
-                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">Multi-Model AI</span>
-                  {' • '}
-                  <span className="text-purple-600 dark:text-purple-400 font-medium">Instant Validation</span>
-                </p>
-              </div>
-            </div>
+     <CompactHeader
+  darkMode={darkMode}
+  setDarkMode={setDarkMode}
+  backendConnected={backendConnected}
+  selectedModel={selectedModel}
+  setSelectedModel={setSelectedModel}
+  providers={providers}
+  customModels={customModels}
+  autoProgress={autoProgress}
+  setAutoProgress={setAutoProgress}
+  advancedMode={advancedMode}
+  setAdvancedMode={setAdvancedMode}
+  onOpenSettings={() => setSettingsOpen(true)}
+  onOpenPerAgentSettings={() => setPerAgentModalOpen(true)}  // NEW!
+/>
 
-            {/* Right: Controls */}
-            <div className="flex items-center gap-3">
-              {/* Backend Status */}
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm ${
-                backendConnected 
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' 
-                  : 'bg-gradient-to-r from-red-500 to-rose-500 text-white'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${backendConnected ? 'bg-white' : 'bg-white'} animate-pulse`} />
-                <span className="text-xs font-semibold">
-                  {backendConnected ? 'Backend Connected' : 'Backend Offline'}
-                </span>
-              </div>
+      <CompactAgentNav
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      agentStates={agentStates}
+      parsedData={parsedData}
+      reasoningResult={reasoningResult}
+      generatedODRL={generatedODRL}
+      validationResult={validationResult}
+      darkMode={darkMode}
+    />
 
-              {/* SSE STATUS */}
-              {backendConnected && (
-                <button
-                  onClick={() => setActiveTab('status')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm transition ${
-                    sseConnected
-                      ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600'
-                      : 'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
-                  }`}
-                >
-                  <div className={`w-2 h-2 rounded-full ${sseConnected ? 'bg-white animate-pulse' : 'bg-white/50'}`} />
-                  <span className="text-xs font-semibold">
-                    {sseConnected ? 'Live Status' : 'Status Idle'}
-                  </span>
-                  <Activity className="w-3 h-3 ml-1" />
-                </button>
-              )}
-
-              {/* Model Info in Header */}
-              {backendConnected && selectedModel && (
-                <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
-                  {(() => {
-                    const customModel = customModels.find(m => m.value === selectedModel);
-                    if (customModel) return customModel.label;
-                    const providerModel = providers.flatMap(p => p.models).find(m => m.value === selectedModel);
-                    if (providerModel) return providerModel.label;
-                    return selectedModel;
-                  })()}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+       {activeTab === 'parser' && (
+          <div className="space-y-6 animate-fade-in">
+            
+            {/* Show INPUT SECTION only if no parsed data yet */}
+            {!parsedData && (
+              <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                  <h2 className={`text-lg font-bold ${textClass} flex items-center gap-2`}>
+                    <FileText className="w-5 h-5" />
+                    Enter Policy Description
+                  </h2>
                 </div>
-              )}
-
-              {/* Settings Button */}
-              <button
-                onClick={() => setSettingsOpen(true)}
-                aria-label="Open settings"
-                className={`p-2 rounded-lg transition ${
-                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                }`}
-                title="Settings"
-              >
-                <Settings className={`w-5 h-5 ${mutedTextClass}`} />
-              </button>
-
-              {/* Dark Mode Toggle */}
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-                className={`p-2 rounded-lg transition ${
-                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                }`}
-                title={darkMode ? 'Light Mode' : 'Dark Mode'}
-              >
-                {darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-gray-600" />}
-              </button>
-
-              {/* Metrics Toggle */}
-              <button
-                onClick={() => setShowMetrics(!showMetrics)}
-                className={`p-2 rounded-lg transition ${
-                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-                }`}
-                title="Toggle Metrics"
-              >
-                <BarChart3 className={`w-5 h-5 ${mutedTextClass}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* UNIFIED PIPELINE NAV */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
-        {/* Progress bar */}
-        {loading && processingProgress > 0 && (
-          <div className={`h-1 w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-            <div 
-              className="h-full bg-blue-500 transition-all duration-500 ease-out"
-              style={{ width: `${processingProgress}%` }}
-            />
-          </div>
-        )}
-
-        <div className="max-w-7xl mx-auto px-6 py-3">
-          <div className="flex items-center gap-2">
-            {/* Agent Tabs */}
-            {['parser', 'reasoner', 'generator', 'validator'].map((agent, idx) => {
-              const Icon = getAgentIcon(agent);
-              const isActive = activeTab === agent;
-              const state = agentStates[agent];
-              
-              const agentColor = {
-                parser: { solid: '#3b82f6', light: darkMode ? 'bg-blue-900/30' : 'bg-blue-50', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500' },
-                reasoner: { solid: '#8b5cf6', light: darkMode ? 'bg-violet-900/30' : 'bg-violet-50', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500' },
-                generator: { solid: '#10b981', light: darkMode ? 'bg-emerald-900/30' : 'bg-emerald-50', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500' },
-                validator: { solid: '#f59e0b', light: darkMode ? 'bg-amber-900/30' : 'bg-amber-50', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500' },
-              }[agent];
-
-              const metricsKey = agent === 'generator' ? 'generateTime' : agent === 'reasoner' ? 'reasonTime' : agent === 'validator' ? 'validateTime' : 'parseTime';
-              
-              return (
-                <React.Fragment key={agent}>
-                  <button
-                    onClick={() => setActiveTab(agent)}
-                    className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition border-2 ${
-                      isActive 
-                        ? `${agentColor.light} ${agentColor.border}` 
-                        : darkMode ? 'hover:bg-gray-700/50 border-transparent' : 'hover:bg-gray-50 border-transparent'
-                    } ${state === 'processing' ? 'animate-agent-active' : ''}`}
-                  >
-                    <div className={`p-1.5 rounded-lg ${
-                      state === 'completed' ? 'shadow-sm' :
-                      state === 'error' ? 'bg-red-500/20' :
-                      darkMode ? 'bg-gray-700' : 'bg-gray-200'
+                
+                <div className="p-6 space-y-4">
+                  {/* Example cards */}
+                  <SimpleExampleCards
+                    onSelectExample={(text) => setInputText(text)}
+                    darkMode={darkMode}
+                  />
+                  
+                  {/* Textarea */}
+                  <div
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    className={`relative rounded-lg border-2 border-dashed transition-all ${
+                      dragActive
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : darkMode
+                        ? 'border-gray-600 hover:border-gray-500'
+                        : 'border-gray-300 hover:border-gray-400'
                     }`}
-                      style={state === 'completed' || state === 'processing' ? { background: agentColor.solid } : {}}
-                    >
-                      <Icon className={`w-4 h-4 ${
-                        state === 'completed' || state === 'processing' ? 'text-white' : 
-                        state === 'error' ? 'text-red-500' :
-                        darkMode ? 'text-gray-400' : 'text-gray-500'
-                      }`} />
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className={`font-semibold text-sm leading-tight ${isActive ? agentColor.text : textClass}`}>
-                        {agent.charAt(0).toUpperCase() + agent.slice(1)}
+                  >
+                    <textarea
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Describe your policy in natural language... Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025. Or drag and drop a .txt, .md, or .json file here"
+                      className={`w-full h-32 px-4 py-3 bg-transparent rounded-lg resize-y focus:outline-none ${textClass}`}
+                      disabled={loading}
+                    />
+                    {dragActive && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 backdrop-blur-sm rounded-lg pointer-events-none">
+                        <div className="text-center">
+                          <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+                          <p className={`font-medium ${textClass}`}>Drop your file here</p>
+                        </div>
                       </div>
-                      {showMetrics && metrics[metricsKey] > 0 && (
-                        <div className={`text-xs flex items-center gap-1 ${isActive ? agentColor.text : mutedTextClass}`}>
-                          <Clock className="w-3 h-3" />
-                          {(metrics[metricsKey] / 1000).toFixed(2)}s
+                    )}
+                  </div>
+                  
+                  {/* File upload and token count */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition ${
+                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                      }`}>
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm font-medium">Choose File</span>
+                        <input
+                          type="file"
+                          accept=".txt,.md,.json"
+                          onChange={async (e) => {
+                            if (e.target.files[0]) {
+                              const text = await uploadFile(e.target.files[0]);
+                              if (text) setInputText(text);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      {fileName && (
+                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                          <FileText className="w-4 h-4" />
+                          <span className="text-sm">{fileName}</span>
                         </div>
                       )}
                     </div>
-                  </button>
-                  {idx < 3 && (
-                    <ArrowRight className={`w-4 h-4 flex-shrink-0 ${mutedTextClass}`} />
-                  )}
-                </React.Fragment>
-              );
-            })}
-
-            {/* Divider */}
-            <div className={`w-px h-8 mx-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`} />
-
-            {/* SSE indicator */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
-              sseConnected 
-                ? 'text-green-600 dark:text-green-400' 
-                : mutedTextClass
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                sseConnected ? 'bg-green-500 animate-pulse' : darkMode ? 'bg-gray-600' : 'bg-gray-400'
-              }`} />
-              {sseConnected ? 'Live' : 'Idle'}
-            </div>
-
-            {/* Status tab button */}
-            <button
-              onClick={() => setActiveTab('status')}
-              className={`p-2 rounded-lg transition ${
-                activeTab === 'status'
-                  ? 'bg-indigo-600 text-white'
-                  : darkMode 
-                    ? 'hover:bg-gray-700 text-gray-400' 
-                    : 'hover:bg-gray-100 text-gray-500'
-              }`}
-              title="View pipeline details"
-            >
-              <Activity className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Processing stage label */}
-          {loading && processingStage && (
-            <div className={`mt-2 text-xs font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'} flex items-center gap-2`}>
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              {processingStage}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'parser' && (
-          <div className="space-y-6 animate-fade-in">
-            {/* INPUT SECTION */}
-            <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className={`text-lg font-bold ${textClass} flex items-center gap-2`}>
-                  <FileText className="w-5 h-5" />
-                  Enter Policy Description
-                </h2>
-              </div>
-
-              <div className="p-6 space-y-4">
-                {/* Example Cards */}
-                <ExamplePolicies
-                  onSelectExample={(text) => setInputText(text)}
-                  darkMode={darkMode}
-                  textClass={textClass}
-                  mutedTextClass={mutedTextClass}
-                />
-
-                {/* Drag and Drop Text Area */}
-                <div
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  className={`relative rounded-lg border-2 border-dashed transition-all ${
-                    dragActive
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : darkMode
-                      ? 'border-gray-600 hover:border-gray-500'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <textarea
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Describe your policy in natural language... 
-                    Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025.
-                    Or drag and drop a .txt, .md, or .json file here"
-                    className={`w-full h-32 px-4 py-3 bg-transparent rounded-lg resize-y focus:outline-none ${textClass}`}
-                    disabled={loading}
-                  />
-                  {dragActive && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 backdrop-blur-sm rounded-lg pointer-events-none">
-                      <div className="text-center">
-                        <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
-                        <p className={`font-medium ${textClass}`}>Drop your file here</p>
-                      </div>
+                    <div className={`text-sm ${mutedTextClass}`}>
+                      {countTokens(inputText)} tokens • Max 5MB
                     </div>
-                  )}
-                </div>
-
-                {/* File Info and Upload Options */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition ${
-                      darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                  </div>
+              {/* Upload status */}
+                  {uploadStatus && (
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                      uploadStatus.type === 'success' 
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                     }`}>
-                      <Upload className="w-4 h-4" />
-                      <span className="text-sm font-medium">Choose File</span>
-                      <input
-                        type="file"
-                        aria-label="Upload policy file"
-                        accept=".txt,.md,.json"
-                        onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
-                        className="hidden"
-                      />
-                    </label>
-                    {fileName && (
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                        <FileText className="w-4 h-4" />
-                        <span className="text-sm">{fileName}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className={`text-sm ${mutedTextClass}`}>
-                    {countTokens(inputText)} tokens • Max 5MB
-                  </div>
-                </div>
-
-                {/* Upload Status */}
-                {uploadStatus && (
-                  <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                    uploadStatus.type === 'success' 
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>
-                    {uploadStatus.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                    <span className="text-sm">{uploadStatus.message}</span>
-                  </div>
-                )}
-
-                {/* ADVANCED SETTINGS */}
-                <div
-                  className={`rounded-lg border ${
-                    advancedMode
-                      ? darkMode
-                        ? 'border-green-600 bg-green-900/10'
-                        : 'border-green-500 bg-green-50'
-                      : darkMode
-                        ? 'border-gray-700'
-                        : 'border-gray-200'
-                  }`}
-                >
-                  <button
-                    onClick={() => setAdvancedMode(!advancedMode)}
-                    className={`w-full px-4 py-3 flex items-center justify-between transition ${
-                      darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Settings className={`w-4 h-4 ${advancedMode ? 'text-green-500' : ''}`} />
-                      <span className={`text-sm font-medium ${textClass}`}>
-                        Advanced Settings
-                      </span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded ${
-                          advancedMode
-                            ? 'bg-green-500 text-white'
-                            : darkMode
-                              ? 'bg-gray-700 text-gray-400'
-                              : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {advancedMode ? 'ON' : 'OFF'}
-                      </span>
-                    </div>
-                    {advancedMode ? (
-                      <ChevronUp className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  {/* Expanded content */}
-                  {advancedMode && (
-                    <div
-                      className={`px-4 py-4 border-t space-y-4 ${
-                        darkMode
-                          ? 'border-gray-700 bg-gray-800/50'
-                          : 'border-gray-200 bg-gray-50'
-                      }`}
-                    >
-                      {/* Info Tip */}
-                      <div
-                        className={`flex items-start gap-2 p-3 rounded-lg ${
-                          darkMode
-                            ? 'bg-blue-900/20 border border-blue-800'
-                            : 'bg-blue-50 border border-blue-200'
-                        }`}
-                      >
-                        <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                        <p
-                          className={`text-xs ${
-                            darkMode ? 'text-blue-300' : 'text-blue-700'
-                          }`}
-                        >
-                          <strong>Pro Tip:</strong> Use faster models for parsing/validation
-                          and powerful models for reasoning/generation.
-                        </p>
-                      </div>
-
-                      {['parser', 'reasoner', 'generator', 'validator'].map((agent) => (
-                        <div key={agent}>
-                          <label className={`block text-sm font-medium mb-2 ${textClass} capitalize`}>
-                            {agent} Model
-                          </label>
-                          <select
-                            value={agentModels[agent] || ''}
-                            onChange={(e) => {
-                              const newValue = e.target.value || null;
-                              console.log(`[Advanced] ${agent} model changed to:`, newValue);
-                              setAgentModels({
-                                ...agentModels,
-                                [agent]: newValue,
-                              });
-                            }}
-                            className={`w-full px-3 py-2 ${
-                              darkMode
-                                ? 'bg-gray-700 border-gray-600 text-white'
-                                : 'bg-white border-gray-300'
-                            } border rounded-lg text-sm`}
-                          >
-                            <option value="">
-                              Use default ({selectedModel
-                                ? providers.flatMap(p => p.models).find(m => m.value === selectedModel)?.label ||
-                                  customModels.find(m => m.value === selectedModel)?.label ||
-                                  'Unknown'
-                                : 'llama3.3'})
-                            </option>
-                            {providers.length > 0 && (
-                              <optgroup label="━━ Available Providers ━━">
-                                {providers.flatMap((p) => p.models).map((model) => (
-                                  <option key={model.value} value={model.value}>
-                                    {model.label}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                            {customModels.length > 0 && (
-                              <optgroup label="━━ Your Custom Models ━━">
-                                {customModels.map((model) => (
-                                  <option key={model.value} value={model.value}>
-                                    {model.label}{' '}
-                                    {model.context_length >= 1000000
-                                      ? `(${(model.context_length / 1000000).toFixed(1)}M ctx)`
-                                      : `(${(model.context_length / 1024).toFixed(0)}K ctx)`}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-                        </div>
-                      ))}
+                      {uploadStatus.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                      <span className="text-sm">{uploadStatus.message}</span>
                     </div>
                   )}
-                </div>
 
-                {/* Auto-progress Setting */}
-                <div className="flex items-center justify-between pt-2">
-                  <label className={`flex items-center gap-2 cursor-pointer ${autoProgress ? 'text-green-600 dark:text-green-400 font-medium' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={autoProgress}
-                      aria-label="Toggle automatic progression through stages"
-                      onChange={(e) => setAutoProgress(e.target.checked)}
-                      className="w-4 h-4 text-green-600 rounded"
-                    />
-                    <span className={`text-sm ${textClass}`}>Auto-Agent Pipeline</span>
-                    {autoProgress && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-green-500 text-white">ON</span>
-                    )}
-                  </label>
-                </div>
-
-                {/* Error Display */}
-                {error && (
-                  <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-red-900 dark:text-red-200">Error</p>
-                      <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+                
+                  
+                  {/* Error display */}
+                  {error && (
+                    <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-red-900 dark:text-red-200">Error</p>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => {
-                      if (processingStage === 'idle') {
-                        handleParse();
-                      } else if (processingStage === 'parsing_done') {
-                        handleReason();
-                      } else if (processingStage === 'reasoning_done') {
-                        handleGenerate();
-                      } else if (processingStage === 'generating_done') {
-                        handleValidate();
-                      } else if (processingStage === 'complete') {
-                        resetDemo();
-                      }
-                    }}
-                    disabled={loading || (!inputText.trim() && processingStage === 'idle')}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
-                  >
-                    {loading ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                        {processingStage === 'parsing' && 'Parsing...'}
-                        {processingStage === 'reasoning' && 'Analyzing...'}
-                        {processingStage === 'generating' && 'Generating...'}
-                        {processingStage === 'Generating ODRL policy...' && 'Generating...'}
-                        {processingStage === 'validating' && 'Validating...'}
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-5 h-5" />
-                        {processingStage === 'idle' && 'Start Parsing'}
-                        {processingStage === 'parsing_done' && 'Start Reasoning'}
-                        {processingStage === 'reasoning_done' && 'Generate ODRL'}
-                        {processingStage === 'generating_done' && 'Validate Policy'}
-                        {processingStage === 'complete' && 'Start Over'}
-                      </>
-                    )}
-                  </button>
-
-                  {/* Stop button */}
-                  {loading && (
-                    <button
-                      onClick={handleStop}
-                      className="px-6 py-3 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-                    >
-                      Stop
-                    </button>
                   )}
                   
-                  {/* Reset button */}
-                  <button
-                    onClick={resetDemo}
-                    className={`px-6 py-3 rounded-lg font-medium transition ${
-                      darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-                    }`}
-                  >
-                    Reset
-                  </button>
+                  {/* Action buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleParse}
+                      disabled={loading || !inputText.trim()}
+                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          Parsing...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="w-5 h-5" />
+                          Start Parsing
+                        </>
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={resetDemo}
+                      className={`px-6 py-3 rounded-lg font-medium transition ${
+                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+                      }`}
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-        
-            {/* Parser Results */}
-            {parsedData && (
-              <ParserTab
-                parsedData={parsedData}
-                darkMode={darkMode}
-                onCopy={copyToClipboard}
-                onDownload={downloadJSON}
-              />
             )}
-            
-            {/* Footer */}
-            <div className={`flex items-center justify-end gap-3 text-sm ${mutedTextClass} pt-2`}>
-              <button
-                onClick={resetDemo}
-                className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-              >
-                Reset
-              </button>
-              <span>•</span>
-              <a
-                href="http://localhost:8000/docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
-              >
-                API Docs
-              </a>
-            </div>
+
+            {/* Show RESULTS only if parsed data exists */}
+            {parsedData && (
+              <>
+                {/* Add a compact summary header */}
+                <div className={`${cardClass} border rounded-lg p-4`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <h3 className={`text-sm font-semibold ${textClass}`}>Original Input</h3>
+                      <p className={`text-xs ${mutedTextClass} mt-1 line-clamp-2`}>{inputText}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setParsedData(null);
+                        setReasoningResult(null);
+                        setGeneratedODRL(null);
+                        setValidationResult(null);
+                        updateAgentState('parser', 'idle');
+                        updateAgentState('reasoner', 'idle');
+                        updateAgentState('generator', 'idle');
+                        updateAgentState('validator', 'idle');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex-shrink-0 ${
+                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      Edit Input
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Parser Results */}
+                <ParserTab
+                  parsedData={parsedData}
+                  darkMode={darkMode}
+                  onCopy={copyToClipboard}
+                  onDownload={downloadJSON}
+                />
+              </>
+            )}
+
+            {/* Footer - only show when no parsed data */}
+            {!parsedData && (
+              <div className={`flex items-center justify-end gap-3 text-sm ${mutedTextClass} pt-2`}>
+                <button onClick={resetDemo} className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                  Reset
+                </button>
+                <span>•</span>
+                <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                  API Docs
+                </a>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Reasoner Tab */}
         {activeTab === 'reasoner' && (
           <div className="space-y-6 animate-fade-in">
             {!reasoningResult ? (
               <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
                 <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <h2 className={`text-xl font-bold ${textClass}`}>Step 2: Policy Analysis</h2>
-                  <p className={`text-sm ${mutedTextClass} mt-1`}>
-                    Review policy validation results
-                  </p>
+                  <p className={`text-sm ${mutedTextClass} mt-1`}>Review policy validation results</p>
                 </div>
                 <div className={`p-12 text-center ${mutedTextClass}`}>
                   <Brain className="w-16 h-16 mx-auto mb-4 opacity-50" />
                   <p>Please parse text first</p>
-                  <p className="text-sm mt-2">Go to Parser tab and click "Start Parsing"</p>
+                  <p className="text-sm mt-2">Go to Parser tab and click &quot;Start Parsing&quot;</p>
                 </div>
               </div>
             ) : (
@@ -2218,16 +1768,13 @@ const ODRLDemo = () => {
                 />
                 <div className={`flex items-center justify-between text-sm ${mutedTextClass}`}>
                   <span>Reasoner: Validation & Conflict Detection</span>
-                  <span>
-                    {reasoningResult.processing_time_ms}ms • {reasoningResult.model_used}
-                  </span>
+                  <span>{reasoningResult.processing_time_ms}ms • {reasoningResult.model_used}</span>
                 </div>
               </>
             )}
           </div>
         )}
 
-        {/* Generator Tab */}
         {activeTab === 'generator' && (
           <GeneratorTab
             generatedODRL={generatedODRL}
@@ -2242,7 +1789,6 @@ const ODRLDemo = () => {
           />
         )}
 
-        {/* Validator Tab */}
         {activeTab === 'validator' && (
           <ValidatorTab
             validationResult={validationResult}
@@ -2257,7 +1803,6 @@ const ODRLDemo = () => {
           />
         )}
  
-        {/* Status Tab */}
         {activeTab === 'status' && (
           <StatusTab
             agentStates={agentStates}
@@ -2271,11 +1816,9 @@ const ODRLDemo = () => {
         )}
       </div>
 
-      {/* PERSISTENT PIPELINE ACTION BAR */}
       {activeTab !== 'parser' && processingStage !== 'idle' && (
         <div className={`border-t ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-sm sticky bottom-0 z-30`}>
           <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
-            {/* Next step button */}
             {!loading && (
               <button
                 onClick={() => {
@@ -2294,38 +1837,26 @@ const ODRLDemo = () => {
               </button>
             )}
 
-            {/* Loading indicator */}
             {loading && (
               <div className={`flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                <span className={`text-sm font-medium ${textClass}`}>
-                  {processingStage}
-                </span>
+                <span className={`text-sm font-medium ${textClass}`}>{processingStage}</span>
               </div>
             )}
 
-            {/* Stop button */}
             {loading && (
-              <button
-                onClick={handleStop}
-                className="px-5 py-2.5 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-              >
+              <button onClick={handleStop} className="px-5 py-2.5 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50">
                 Stop
               </button>
             )}
 
-            {/* Reset button */}
-            <button
-              onClick={resetDemo}
-              className={`px-5 py-2.5 rounded-lg font-medium transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-            >
+            <button onClick={resetDemo} className={`px-5 py-2.5 rounded-lg font-medium transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>
               Reset
             </button>
           </div>
         </div>
       )}
 
-      {/* SETTINGS MODAL */}
       <SettingsModal
         darkMode={darkMode}
         textClass={textClass}
@@ -2349,8 +1880,7 @@ const ODRLDemo = () => {
         backendConnected={backendConnected}
         showToast={showToast}
       />
-
-      {/* DebugPanel */}
+      
       <DebugPanel 
         darkMode={darkMode}
         selectedModel={selectedModel}
@@ -2359,76 +1889,87 @@ const ODRLDemo = () => {
         advancedMode={advancedMode}
         temperature={temperature}
       />
-
+      
       <StopButton
         isProcessing={loading}
         onStop={handleStop}
         currentStage={processingStage}
         darkMode={darkMode}
       />
-
+      
       <ChatHistory
         history={history}
         onLoadHistory={handleLoadHistory}
         onClearHistory={clearHistory}
         darkMode={darkMode}
       />
+
+
+        {/* Per-Agent Model Settings Modal */}
+      <PerAgentModelModal
+        isOpen={perAgentModalOpen}
+        onClose={() => setPerAgentModalOpen(false)}
+        agentModels={agentModels}
+        setAgentModels={setAgentModels}
+        selectedModel={selectedModel}
+        providers={providers}
+        customModels={customModels}
+        darkMode={darkMode}
+        textClass={textClass}
+      />
       
       <style>{`
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .animate-fade-in {
-    animation: fade-in 0.3s ease-out;
-  }
-  
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  
-  @keyframes slide-in-right {
-    from { opacity: 0; transform: translateX(100%); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-  .animate-slide-in-right {
-    animation: slide-in-right 0.3s ease-out;
-  }
-  
-  @keyframes init-pulse {
-    0%, 100% { opacity: 0.3; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.08); }
-  }
-  @keyframes init-line {
-    0%, 100% { opacity: 0.2; }
-    50% { opacity: 0.8; }
-  }
-
-  @keyframes agent-active {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.2); }
-    50% { box-shadow: 0 0 12px 2px rgba(59,130,246,0.15); }
-  }
-  .animate-agent-active {
-    animation: agent-active 1.5s ease-in-out infinite;
-  }
-
-  @keyframes stage-complete {
-    0% { background-color: transparent; }
-    30% { background-color: rgba(16,185,129,0.1); }
-    100% { background-color: transparent; }
-  }
-
-  button:focus-visible,
-  input:focus-visible,
-  select:focus-visible,
-  textarea:focus-visible {
-    outline: 2px solid #3b82f6;
-    outline-offset: 2px;
-  }
-`}</style>
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out;
+        }
+        
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        @keyframes slide-in-right {
+          from { opacity: 0; transform: translateX(100%); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .animate-slide-in-right {
+          animation: slide-in-right 0.3s ease-out;
+        }
+        
+        @keyframes init-pulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.08); }
+        }
+        @keyframes init-line {
+          0%, 100% { opacity: 0.2; }
+          50% { opacity: 0.8; }
+        }
+        @keyframes agent-active {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.2); }
+          50% { box-shadow: 0 0 12px 2px rgba(59,130,246,0.15); }
+        }
+        .animate-agent-active {
+          animation: agent-active 1.5s ease-in-out infinite;
+        }
+        @keyframes stage-complete {
+          0% { background-color: transparent; }
+          30% { background-color: rgba(16,185,129,0.1); }
+          100% { background-color: transparent; }
+        }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
+          outline: 2px solid #3b82f6;
+          outline-offset: 2px;
+        }
+      `}</style>
     </div>
   );
 };
