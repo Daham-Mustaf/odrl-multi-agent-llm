@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Moon, Sun } from 'lucide-react';
+import { Settings, Moon, Sun, RotateCcw } from 'lucide-react'; // ✅ Add RotateCcw
 
 const CompactHeader = ({
   darkMode,
@@ -14,10 +14,11 @@ const CompactHeader = ({
   advancedMode,
   setAdvancedMode,
   onOpenSettings,
+  onReset,  // ✅ ADD THIS PROP
 }) => {
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
-
+  
   return (
     <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b`}>
       <div className="max-w-7xl mx-auto px-6 py-3">
@@ -109,6 +110,20 @@ const CompactHeader = ({
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* ✅ ADD RESET BUTTON HERE */}
+          <button
+            onClick={onReset}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+              darkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
+            title="Reset Pipeline"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Reset
+          </button>
 
           {/* Settings & Theme */}
           <div className="flex items-center gap-2">

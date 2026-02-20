@@ -232,7 +232,7 @@ const ODRLDemo = () => {
     }
     
     const customModel = customModels.find(m => m.value === modelValue);
-    console.log('[getModelConfig] Found model:', customModel ? '✅' : '❌');
+    console.log('[getModelConfig] Found model:', customModel ? '' : '❌');
     
     if (!customModel) return null;
     
@@ -310,7 +310,7 @@ const ODRLDemo = () => {
             
             if (exists) {
               setSelectedModel(savedModel);
-              console.log('[Init] ✅ Restored:', savedModel);
+              console.log('[Init]  Restored:', savedModel);
             } else {
               console.warn('[Init] ⚠️ Model not found, clearing');
               localStorage.removeItem('selectedModel');
@@ -321,7 +321,7 @@ const ODRLDemo = () => {
           }
         }
         
-        console.log('[Init] ✅ Complete');
+        console.log('[Init]  Complete');
         
       } catch (error) {
         console.error('[Init] ❌ Failed:', error);
@@ -356,7 +356,7 @@ const ODRLDemo = () => {
       
       const customProvider = data.providers?.find(p => p.id === 'custom');
       if (customProvider && customProvider.models) {
-        console.log(`[loadProviders] ✅ Found ${customProvider.models.length} custom models`);
+        console.log(`[loadProviders]  Found ${customProvider.models.length} custom models`);
         setCustomModels(customProvider.models);
       } else {
         console.warn('[loadProviders] No custom models found in response');
@@ -392,11 +392,11 @@ const ODRLDemo = () => {
       if (syncMode === 'localStorage') {
         const localModels = loadFromLocalStorage();
         setCustomModels(localModels);
-        console.log(`[loadCustomModels] ✅ Loaded ${localModels.length} from localStorage`);
+        console.log(`[loadCustomModels]  Loaded ${localModels.length} from localStorage`);
         return localModels;
       }
       
-      console.log(`[loadCustomModels] ✅ Using models from providers (${customModels.length})`);
+      console.log(`[loadCustomModels]  Using models from providers (${customModels.length})`);
       return customModels;
       
     } catch (err) {
@@ -622,7 +622,7 @@ const ODRLDemo = () => {
       let connectionConfirmed = false;
       
       eventSource.onopen = () => {
-        console.log('[SSE] ✅ Connected');
+        console.log('[SSE]  Connected');
         setSseConnected(true);
         connectionConfirmed = true;
         reconnectAttempts = 0;
@@ -631,7 +631,7 @@ const ODRLDemo = () => {
       eventSource.onmessage = (event) => {
         try {
           if (!connectionConfirmed) {
-            console.log('[SSE] ✅ First message received');
+            console.log('[SSE]  First message received');
             setSseConnected(true);
             connectionConfirmed = true;
           }
@@ -1113,7 +1113,11 @@ const ODRLDemo = () => {
       
       const genResult = await response.json();
       console.log('[Generator] Generation complete');
-      
+      console.log('[Generator]  Full response:', genResult);
+      console.log('[Generator] Has odrl_turtle:', !!genResult.odrl_turtle);
+      console.log('[Generator] Turtle length:', genResult.odrl_turtle?.length);
+
+            
       setGeneratedODRL(genResult);
       setGenerationContext({
         parsed_data: effectiveParsedData,
@@ -1157,77 +1161,115 @@ const ODRLDemo = () => {
     }
   };
 
-  const handleValidate = async (generatedODRLOverride) => {
-    const effectiveODRL = generatedODRLOverride || generatedODRL;
-    if (!effectiveODRL) {
-      showToast('Please generate ODRL first!', 'warning');
-      return;
+const handleValidate = async (generatedODRLOverride) => {
+  const effectiveODRL = generatedODRLOverride || generatedODRL;
+  
+  // Check if ODRL exists
+  if (!effectiveODRL) {
+    showToast('Please generate ODRL first!', 'warning');
+    return;
+  }
+  
+  // Check for turtle format - CRITICAL
+  if (!effectiveODRL.odrl_turtle) {
+    console.error('[Validator] Missing odrl_turtle field');
+    console.error('[Validator] Available fields:', Object.keys(effectiveODRL));
+    console.error('[Validator] Full object:', effectiveODRL);
+    showToast('Generated ODRL missing Turtle format! Please regenerate the policy.', 'error');
+    return;
+  }
+  
+  // Validate model configuration
+  const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
+  const validation = validateModelConfig(validatorModel, 'Validator');
+  if (!validation.valid) {
+    showToast(validation.error, 'error');
+    return;
+  }
+  
+  // Start validation
+  setValidating(true);
+  setLoading(true);
+  setProcessingStage('Validating ODRL...');
+  setProcessingProgress(90);
+  
+  const startTime = Date.now();
+  const signal = getSignal();
+  
+  try {
+    updateAgentState('validator', 'processing');
+    const validatorCustomConfig = validation.config;
+    
+    console.log('[Validator]  Starting validation...');
+    console.log('[Validator] Turtle length:', effectiveODRL.odrl_turtle.length, 'characters');
+    console.log('[Validator] Model:', validatorModel);
+    console.log('[Validator] Original text length:', inputText.length, 'characters');
+    
+    // Call validation API
+    const valResult = await callAPI('validate', {
+      odrl_turtle: effectiveODRL.odrl_turtle,
+      original_text: inputText,
+      model: validatorModel,
+      temperature,
+      custom_model: validatorCustomConfig
+    }, signal);
+    
+    console.log('[Validator]  Validation complete');
+    console.log('[Validator] Is valid:', valResult.is_valid);
+    console.log('[Validator] Issues found:', valResult.issues?.length || 0);
+    
+    // Update state with results
+    setValidationResult(valResult);
+    setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
+    updateAgentState('validator', 'completed');
+    setProcessingProgress(100);
+    
+    // Switch to validator tab
+    setActiveTab('validator');
+    
+    // Show appropriate toast
+    if (valResult.is_valid) {
+      showToast(' SHACL validation passed!', 'success');
+    } else {
+      const issueCount = valResult.issues?.length || 0;
+      showToast(`⚠️ ${issueCount} SHACL violation${issueCount !== 1 ? 's' : ''} found`, 'warning');
     }
     
-    if (!effectiveODRL.odrl_turtle) {
-      showToast('Generated ODRL missing Turtle format!', 'error');
-      console.error('[Validator] Generated ODRL:', effectiveODRL);
-      return;
-    }
+    // Mark as complete
+    setProcessingStage('complete');
     
-    const validatorModel = advancedMode && agentModels.validator ? agentModels.validator : selectedModel;
-    const validation = validateModelConfig(validatorModel, 'Validator');
-    if (!validation.valid) {
-      showToast(validation.error, 'error');
-      return;
-    }
+  } catch (error) {
+    console.error('[Validator] ❌ Validation error:', error);
+    console.error('[Validator] Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
     
-    setValidating(true);
-    setLoading(true);
-    setProcessingStage('Validating ODRL...');
-    setProcessingProgress(90);
-    
-    const startTime = Date.now();
-    const signal = getSignal();
-    
-    try {
-      updateAgentState('validator', 'processing');
-      const validatorCustomConfig = validation.config;
-      
-      console.log('[Validator] Validation starting...');
-      console.log('[Validator] Turtle length:', effectiveODRL.odrl_turtle.length, 'chars');
-      console.log('[Validator] Model:', validatorModel);
-      
-      const valResult = await callAPI('validate', {
-        odrl_turtle: effectiveODRL.odrl_turtle,
-        original_text: inputText,
-        model: validatorModel,
-        temperature,
-        custom_model: validatorCustomConfig
-      }, signal);
-      
-      setValidationResult(valResult);
-      setMetrics(prev => ({ ...prev, validateTime: Date.now() - startTime }));
-      updateAgentState('validator', 'completed');
-      setProcessingProgress(100);
-      
-      setActiveTab('validator');
-      
-      if (valResult.is_valid) {
-        showToast('SHACL validation passed! ✅', 'success');
-      } else {
-        showToast(`${valResult.issues?.length || 0} SHACL violations found`, 'warning');
-      }
-      
-      setProcessingStage('complete');
-      setProcessingProgress(0);
-      
-    } catch (error) {
-      console.error('[Validator] Error:', error);
-      showToast('Validation failed: ' + error.message, 'error');
+    // Handle specific error types
+    if (error.name === 'AbortError') {
+      showToast('Validation cancelled', 'info');
+      updateAgentState('validator', 'cancelled');
+    } else {
+      showToast(`Validation failed: ${error.message}`, 'error');
       updateAgentState('validator', 'error');
-    } finally {
-      setValidating(false);
-      setLoading(false);
-      setProcessingProgress(0);
+    }
+    
+  } finally {
+    // Always clean up, regardless of success or failure
+    setValidating(false);
+    setLoading(false);
+    setProcessingProgress(0);
+    
+    // Only clear processingStage if we're not in 'complete' state
+    // (complete state is set in the try block on success)
+    if (processingStage !== 'complete') {
       setProcessingStage('');
     }
-  };
+    
+    console.log('[Validator] Cleanup complete');
+  }
+};
 
   const handleRegenerate = async () => {
     if (!validationResult || !generatedODRL || !generationContext) {
@@ -1400,6 +1442,7 @@ const ODRLDemo = () => {
       generator: 'idle',
       validator: 'idle'
     });
+
     setMetrics({
       parseTime: 0,
       reasonTime: 0,
@@ -1446,6 +1489,97 @@ const ODRLDemo = () => {
       showToast(`Failed to save: ${error.message}`, 'error');
     }
   };
+
+// Function to start completely over
+const handleStartNew = () => {
+  // Clear all state
+  setInputText('');
+  setParsedData(null);
+  setReasoningResult(null);
+  setGeneratedODRL(null);
+  setValidationResult(null);
+  setError(null);
+  
+  // Reset all agent states
+  updateAgentState('parser', 'idle');
+  updateAgentState('reasoner', 'idle');
+  updateAgentState('generator', 'idle');
+  updateAgentState('validator', 'idle');
+  
+  // Reset processing stage
+  setProcessingStage('idle');
+  setProcessingProgress(0);
+  
+  // Go back to parser tab
+  setActiveTab('parser');
+  
+  showToast('Ready to create a new policy', 'success');
+};
+
+// Function to edit the generated ODRL manually
+const handleEditManually = () => {
+  // Switch to generator tab where editing happens
+  setActiveTab('generator');
+  showToast('Switched to editor. Click "Edit" to modify the policy.', 'info');
+};
+
+// Function to download the ODRL policy
+const handleDownloadODRL = (content, filename = 'policy.ttl') => {
+  try {
+    const blob = new Blob([content], { type: 'text/turtle' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Policy downloaded successfully!', 'success');
+  } catch (error) {
+    console.error('Download error:', error);
+    showToast('Failed to download policy', 'error');
+  }
+};
+
+// Function to save ODRL to backend storage
+const handleSaveToBackend = async () => {
+  if (!generatedODRL?.odrl_turtle) {
+    showToast('No policy to save', 'warning');
+    return;
+  }
+  
+  try {
+    const metadata = {
+      name: `Policy_${new Date().toISOString().split('T')[0]}`,
+      description: originalText || inputText,
+      odrl_turtle: generatedODRL.odrl_turtle,
+      validation_status: validationResult?.is_valid ? 'valid' : 'invalid',
+      created_at: new Date().toISOString(),
+      metadata: {
+        model_used: generatedODRL.model_used,
+        processing_time_ms: generatedODRL.processing_time_ms,
+        attempt_number: generatedODRL.attempt_number
+      }
+    };
+    
+    // Call your storage API
+    const response = await fetch(`${API_BASE_URL}/api/storage/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata)
+    });
+    
+    if (response.ok) {
+      showToast('Policy saved to library!', 'success');
+    } else {
+      throw new Error('Save failed');
+    }
+  } catch (error) {
+    console.error('Save error:', error);
+    showToast('Failed to save policy', 'error');
+  }
+};
 
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -1525,6 +1659,7 @@ const ODRLDemo = () => {
   setAdvancedMode={setAdvancedMode}
   onOpenSettings={() => setSettingsOpen(true)}
   onOpenPerAgentSettings={() => setPerAgentModalOpen(true)}  // NEW!
+  
 />
 
       <CompactAgentNav
@@ -1539,200 +1674,203 @@ const ODRLDemo = () => {
     />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+
        {activeTab === 'parser' && (
-          <div className="space-y-6 animate-fade-in">
-            
-            {/* Show INPUT SECTION only if no parsed data yet */}
-            {!parsedData && (
-              <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
-                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                  <h2 className={`text-lg font-bold ${textClass} flex items-center gap-2`}>
-                    <FileText className="w-5 h-5" />
-                    Enter Policy Description
-                  </h2>
+  <div className="space-y-6 animate-fade-in">
+    
+    {/* Show INPUT SECTION only if no parsed data yet */}
+    {!parsedData && (
+      <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden`}>
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className={`text-lg font-bold ${textClass} flex items-center gap-2`}>
+            <FileText className="w-5 h-5" />
+            Enter Policy Description
+          </h2>
+        </div>
+        
+        <div className="p-6 space-y-4">
+          {/* Example cards */}
+          <SimpleExampleCards
+            onSelectExample={(text) => setInputText(text)}
+            darkMode={darkMode}
+          />
+          
+          {/* Textarea */}
+          <div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            className={`relative rounded-lg border-2 border-dashed transition-all ${
+              dragActive
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : darkMode
+                ? 'border-gray-600 hover:border-gray-500'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Describe your policy in natural language... Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025. Or drag and drop a .txt, .md, or .json file here"
+              className={`w-full h-32 px-4 py-3 bg-transparent rounded-lg resize-y focus:outline-none ${textClass}`}
+              disabled={loading}
+            />
+            {dragActive && (
+              <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 backdrop-blur-sm rounded-lg pointer-events-none">
+                <div className="text-center">
+                  <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+                  <p className={`font-medium ${textClass}`}>Drop your file here</p>
                 </div>
-                
-                <div className="p-6 space-y-4">
-                  {/* Example cards */}
-                  <SimpleExampleCards
-                    onSelectExample={(text) => setInputText(text)}
-                    darkMode={darkMode}
-                  />
-                  
-                  {/* Textarea */}
-                  <div
-                    onDragEnter={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDragOver={handleDrag}
-                    onDrop={handleDrop}
-                    className={`relative rounded-lg border-2 border-dashed transition-all ${
-                      dragActive
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : darkMode
-                        ? 'border-gray-600 hover:border-gray-500'
-                        : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    <textarea
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      placeholder="Describe your policy in natural language... Example: Users can read and print the document but cannot modify or distribute it. The policy expires on December 31, 2025. Or drag and drop a .txt, .md, or .json file here"
-                      className={`w-full h-32 px-4 py-3 bg-transparent rounded-lg resize-y focus:outline-none ${textClass}`}
-                      disabled={loading}
-                    />
-                    {dragActive && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-blue-500/10 backdrop-blur-sm rounded-lg pointer-events-none">
-                        <div className="text-center">
-                          <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
-                          <p className={`font-medium ${textClass}`}>Drop your file here</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* File upload and token count */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition ${
-                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                      }`}>
-                        <Upload className="w-4 h-4" />
-                        <span className="text-sm font-medium">Choose File</span>
-                        <input
-                          type="file"
-                          accept=".txt,.md,.json"
-                          onChange={async (e) => {
-                            if (e.target.files[0]) {
-                              const text = await uploadFile(e.target.files[0]);
-                              if (text) setInputText(text);
-                            }
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                      {fileName && (
-                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                          <FileText className="w-4 h-4" />
-                          <span className="text-sm">{fileName}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className={`text-sm ${mutedTextClass}`}>
-                      {countTokens(inputText)} tokens • Max 5MB
-                    </div>
-                  </div>
-              {/* Upload status */}
-                  {uploadStatus && (
-                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                      uploadStatus.type === 'success' 
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    }`}>
-                      {uploadStatus.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                      <span className="text-sm">{uploadStatus.message}</span>
-                    </div>
-                  )}
-
-                
-                  
-                  {/* Error display */}
-                  {error && (
-                    <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-red-900 dark:text-red-200">Error</p>
-                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Action buttons */}
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={handleParse}
-                      disabled={loading || !inputText.trim()}
-                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
-                    >
-                      {loading ? (
-                        <>
-                          <RefreshCw className="w-5 h-5 animate-spin" />
-                          Parsing...
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="w-5 h-5" />
-                          Start Parsing
-                        </>
-                      )}
-                    </button>
-                    
-                    <button
-                      onClick={resetDemo}
-                      className={`px-6 py-3 rounded-lg font-medium transition ${
-                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-                      }`}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Show RESULTS only if parsed data exists */}
-            {parsedData && (
-              <>
-                {/* Add a compact summary header */}
-                <div className={`${cardClass} border rounded-lg p-4`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0 mr-4">
-                      <h3 className={`text-sm font-semibold ${textClass}`}>Original Input</h3>
-                      <p className={`text-xs ${mutedTextClass} mt-1 line-clamp-2`}>{inputText}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setParsedData(null);
-                        setReasoningResult(null);
-                        setGeneratedODRL(null);
-                        setValidationResult(null);
-                        updateAgentState('parser', 'idle');
-                        updateAgentState('reasoner', 'idle');
-                        updateAgentState('generator', 'idle');
-                        updateAgentState('validator', 'idle');
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex-shrink-0 ${
-                        darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      Edit Input
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Parser Results */}
-                <ParserTab
-                  parsedData={parsedData}
-                  darkMode={darkMode}
-                  onCopy={copyToClipboard}
-                  onDownload={downloadJSON}
-                />
-              </>
-            )}
-
-            {/* Footer - only show when no parsed data */}
-            {!parsedData && (
-              <div className={`flex items-center justify-end gap-3 text-sm ${mutedTextClass} pt-2`}>
-                <button onClick={resetDemo} className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                  Reset
-                </button>
-                <span>•</span>
-                <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                  API Docs
-                </a>
               </div>
             )}
           </div>
-        )}
+          
+          {/* File upload and token count */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              }`}>
+                <Upload className="w-4 h-4" />
+                <span className="text-sm font-medium">Choose File</span>
+                <input
+                  type="file"
+                  accept=".txt,.md,.json"
+                  onChange={async (e) => {
+                    if (e.target.files[0]) {
+                      const text = await uploadFile(e.target.files[0]);
+                      if (text) setInputText(text);
+                    }
+                  }}
+                  className="hidden"
+                />
+              </label>
+              {fileName && (
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                  <FileText className="w-4 h-4" />
+                  <span className="text-sm">{fileName}</span>
+                </div>
+              )}
+            </div>
+            <div className={`text-sm ${mutedTextClass}`}>
+              {countTokens(inputText)} tokens • Max 5MB
+            </div>
+          </div>
+      
+          {/* Upload status */}
+          {uploadStatus && (
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+              uploadStatus.type === 'success' 
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            }`}>
+              {uploadStatus.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              <span className="text-sm">{uploadStatus.message}</span>
+            </div>
+          )}
+        
+          
+          {/* Error display */}
+          {error && (
+            <div className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-900 dark:text-red-200">Error</p>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Action buttons */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleParse}
+              disabled={loading || !inputText.trim()}
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-500/30"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Parsing...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="w-5 h-5" />
+                  Start Parsing
+                </>
+              )}
+            </button>
+            
+            {/* <button
+              onClick={resetDemo}
+              className={`px-6 py-3 rounded-lg font-medium transition ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+              }`}
+            >
+              Reset
+            </button> */}
+          </div>
+        </div>
+      </div>
+    )}
+    
+    {/* Show RESULTS only if parsed data exists */}
+    {parsedData && (
+      <>
+        {/* Add a compact summary header */}
+        <div className={`${cardClass} border rounded-lg p-4`}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0 mr-4">
+              <h3 className={`text-sm font-semibold ${textClass}`}>Original Input</h3>
+              <p className={`text-xs ${mutedTextClass} mt-1 line-clamp-2`}>{inputText}</p>
+            </div>
+            <button
+              onClick={() => {
+                setParsedData(null);
+                setReasoningResult(null);
+                setGeneratedODRL(null);
+                setValidationResult(null);
+                updateAgentState('parser', 'idle');
+                updateAgentState('reasoner', 'idle');
+                updateAgentState('generator', 'idle');
+                updateAgentState('validator', 'idle');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex-shrink-0 ${
+                darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              Edit Input
+            </button>
+          </div>
+        </div>
+        
+        {/* Parser Results with Continue button */}
+        <ParserTab
+          parsedData={parsedData}
+          darkMode={darkMode}
+          onCopy={copyToClipboard}
+          onDownload={downloadJSON}
+          onContinue={() => handleReason()}
+          isLoading={loading}         
+        />
+      </>
+    )}
+    
+    {/* Footer - only show when no parsed data */}
+    {!parsedData && (
+      <div className={`flex items-center justify-end gap-3 text-sm ${mutedTextClass} pt-2`}>
+        <button onClick={resetDemo} className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+          Reset
+        </button>
+        <span>•</span>
+        <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+          API Docs
+        </a>
+      </div>
+    )}
+  </div>
+)}
 
         {activeTab === 'reasoner' && (
           <div className="space-y-6 animate-fade-in">
@@ -1790,73 +1928,96 @@ const ODRLDemo = () => {
         )}
 
         {activeTab === 'validator' && (
-          <ValidatorTab
-            validationResult={validationResult}
-            generatedODRL={generatedODRL}
-            darkMode={darkMode}
-            onCopy={copyToClipboard}
-            onDownload={downloadJSON}
-            onRegenerate={handleRegenerate}        
-            onEditInput={handleEditFromValidator}   
-            isRegenerating={regenerating}  
-            originalText={inputText}       
-          />
-        )}
+  <ValidatorTab
+    validationResult={validationResult}
+    generatedODRL={generatedODRL}
+    darkMode={darkMode}
+    onRegenerate={handleRegenerate}
+    isRegenerating={regenerating}
+    originalText={inputText}
+    
+    // ✅ ADD THESE PROPS:
+    onDownload={(content, filename) => handleDownloadODRL(content, filename)}
+    onSave={handleSaveToBackend}
+    onStartNew={handleStartNew}
+    onEditManually={handleEditManually}
+    metrics={{
+      parseTime: metrics.parseTime,
+      reasonTime: metrics.reasonTime,
+      generateTime: metrics.generateTime,
+      validateTime: metrics.validateTime
+    }}
+  />
+)}
  
-        {activeTab === 'status' && (
-          <StatusTab
-            agentStates={agentStates}
-            metrics={metrics}
-            processingProgress={processingProgress}
-            processingStage={processingStage}
-            sseConnected={sseConnected}
-            sessionId={sessionId.current}
-            darkMode={darkMode}
-          />
-        )}
-      </div>
+      {activeTab === 'status' && (
+  <StatusTab
+    agentStates={agentStates}
+    metrics={metrics}
+    processingProgress={processingProgress}
+    processingStage={processingStage}
+    sseConnected={sseConnected}
+    sessionId={sessionId.current}
+    darkMode={darkMode}
+  />
+)}
+</div>
 
-      {activeTab !== 'parser' && processingStage !== 'idle' && (
-        <div className={`border-t ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-sm sticky bottom-0 z-30`}>
-          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
-            {!loading && (
-              <button
-                onClick={() => {
-                  if (processingStage === 'parsing_done') handleReason();
-                  else if (processingStage === 'reasoning_done') handleGenerate();
-                  else if (processingStage === 'generating_done') handleValidate();
-                  else if (processingStage === 'complete') resetDemo();
-                }}
-                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/20"
-              >
-                <PlayCircle className="w-4 h-4" />
-                {processingStage === 'parsing_done' && 'Continue → Reasoning'}
-                {processingStage === 'reasoning_done' && 'Continue → Generate ODRL'}
-                {processingStage === 'generating_done' && 'Continue → Validate'}
-                {processingStage === 'complete' && 'Start Over'}
-              </button>
-            )}
+{/* FIX: Remove activeTab === 'validator' check so it shows on all tabs */}
+{processingStage !== 'idle' && activeTab !== 'generator' && activeTab !== 'validator' && (  <div className={`border-t ${darkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-200'} backdrop-blur-sm sticky bottom-0 z-30`}>
+    <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
+      
+      {/* Continue button - hide on parser, reasoner tabs since they have their own buttons */}
+      {!loading && activeTab !== 'parser' && activeTab !== 'reasoner' && (
+        <button
+          onClick={() => {
+            if (processingStage === 'parsing_done') handleReason();
+            else if (processingStage === 'reasoning_done') handleGenerate();
+            else if (processingStage === 'generating_done') handleValidate();
+            else if (processingStage === 'complete') resetDemo();
+          }}
+          className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/20"
+        >
+          <PlayCircle className="w-4 h-4" />
+          {processingStage === 'parsing_done' && 'Continue → Reasoning'}
+          {processingStage === 'reasoning_done' && 'Continue → Generate ODRL'}
+          {processingStage === 'generating_done' && 'Continue → Validate'}
+          {processingStage === 'complete' && 'Start Over'}
+        </button>
+      )}
 
-            {loading && (
-              <div className={`flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                <span className={`text-sm font-medium ${textClass}`}>{processingStage}</span>
-              </div>
-            )}
-
-            {loading && (
-              <button onClick={handleStop} className="px-5 py-2.5 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50">
-                Stop
-              </button>
-            )}
-
-            <button onClick={resetDemo} className={`px-5 py-2.5 rounded-lg font-medium transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>
-              Reset
-            </button>
-          </div>
+      {/* Loading indicator */}
+      {loading && (
+        <div className={`flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+          <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+          <span className={`text-sm font-medium ${textClass}`}>{processingStage}</span>
         </div>
       )}
 
+      {/* Stop button when loading */}
+      {loading && (
+        <button 
+          onClick={handleStop} 
+          className="px-5 py-2.5 rounded-lg font-medium transition bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+        >
+          Stop
+        </button>
+      )}
+
+      {/* Reset button - ALWAYS VISIBLE */}
+      <button 
+        onClick={resetDemo} 
+        className={`px-5 py-2.5 rounded-lg font-medium transition ${
+          darkMode 
+            ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+        }`}
+      >
+        Reset
+      </button>
+    </div>
+  </div>
+)}
       <SettingsModal
         darkMode={darkMode}
         textClass={textClass}

@@ -693,28 +693,25 @@ async def reason(request: Request, data: ReasonRequest):
         logger.error(f"Reason error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/api/generate")
 async def generate_odrl(request: GenerateRequest):
     """Generate ODRL policy in Turtle format"""
     start_time = time.time()
-
     try:
         logger.info(f"Generate request: model={request.model}")
         logger.info(f"   Attempt #{request.attempt_number}")
-
         if request.validation_errors:
             logger.info(f"   Fixing {len(request.validation_errors.get('issues', []))} SHACL issues")
-
+        
         if not AGENTS_AVAILABLE:
             raise HTTPException(status_code=503, detail="Agents not available")
-
+        
         generator = Generator(
             model=request.model,
             temperature=request.temperature,
             custom_config=request.custom_model
         )
-
+        
         result = generator.generate(
             parsed_data=request.parsed_data,
             original_text=request.original_text,
@@ -723,12 +720,19 @@ async def generate_odrl(request: GenerateRequest):
             previous_odrl=request.previous_odrl,
             attempt_number=request.attempt_number
         )
-
+        
         processing_time = int((time.time() - start_time) * 1000)
+        
+        #  LOG WHAT WE GOT FROM GENERATOR
         logger.info(f"Generate complete: {processing_time}ms")
-
-        return {
-            "odrl_turtle": result['odrl_turtle'],
+        logger.info(f"   Has odrl_turtle: {bool(result.get('odrl_turtle'))}")
+        logger.info(f"   Has odrl_policy: {bool(result.get('odrl_policy'))}")
+        logger.info(f"   Generator result keys: {list(result.keys())}")
+        
+        #  FIXED: Return BOTH formats
+        response = {
+            "odrl_turtle": result.get('odrl_turtle'),
+            "odrl_policy": result.get('odrl_policy'),  #  ADD THIS!
             "format": "turtle",
             "processing_time_ms": processing_time,
             "model_used": request.model or "default",
@@ -739,11 +743,26 @@ async def generate_odrl(request: GenerateRequest):
                 "reasoning": request.reasoning
             }
         }
-
+        
+        #  VALIDATE BEFORE RETURNING
+        if not response.get('odrl_turtle'):
+            logger.error("❌ Generator did not produce odrl_turtle!")
+            raise HTTPException(
+                status_code=500, 
+                detail="Generator failed to produce ODRL Turtle format"
+            )
+        
+        logger.info(" Returning generator response with both formats")
+        return response
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Generate error: {e}")
+        logger.error(f"❌ Generate error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 
 @app.post("/api/validate")
 async def validate_odrl(request: ValidateRequest):
