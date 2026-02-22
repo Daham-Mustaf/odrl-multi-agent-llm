@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +20,46 @@ if BACKEND_DIR not in sys.path:
 
 from agents.reasoner.reasoner import Reasoner
 from agents.text_parser.parser import TextParser
+
+
+def _resolve_project_path(path: str) -> str:
+    """Resolve relative paths from project root."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_ROOT, path)
+
+
+_MODEL_ERROR_HINTS = (
+    "502",
+    "503",
+    "504",
+    "bad gateway",
+    "service unavailable",
+    "gateway timeout",
+    "connection error",
+    "connection refused",
+    "connection reset",
+    "read timeout",
+    "timed out",
+    "rate limit",
+    "api key",
+    "unauthorized",
+    "forbidden",
+    "authentication",
+    "invalid_request_error",
+    "model_not_found",
+    "provider",
+    "litellm",
+    "openai",
+    "anthropic",
+)
+
+
+def _is_model_runtime_error(exc: Exception) -> bool:
+    text = normalize_text(str(exc))
+    if not text:
+        return False
+    return any(hint in text for hint in _MODEL_ERROR_HINTS)
 
 
 def normalize_text(value: Any) -> str:
@@ -97,14 +138,33 @@ def _to_gold_reasoning_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def _normalize_eval_row(row: Dict[str, Any]) -> Dict[str, Any]:
     user_text = _pick_first(row, ["input", "Input", "policy_text", "text"])
+    gold_reasoning = _to_gold_reasoning_from_row(row)
+    gold_conflict = _pick_first(
+        row,
+        [
+            "conflict",
+            "conflict_type",
+            "rejection_category",
+            "rejection_category_description",
+            "acceptance_category",
+        ],
+    )
+    if not gold_conflict:
+        for issue in gold_reasoning.get("issues", []) or []:
+            conflict = (issue or {}).get("conflict_type")
+            if conflict:
+                gold_conflict = conflict
+                break
     return {
         "input": user_text or "",
-        "gold_reasoning": _to_gold_reasoning_from_row(row),
+        "gold_conflict": normalize_conflict_type(gold_conflict) or "",
+        "gold_reasoning": gold_reasoning,
     }
 
 
 def _load_default_custom_model(config_path: str) -> Tuple[str, Dict[str, Any], float]:
     """Load the first model entry from custom_models.json."""
+    config_path = _resolve_project_path(config_path)
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"custom_models.json not found: {config_path}")
 
@@ -158,9 +218,13 @@ def run_reasoner_only(
     parser = TextParser(model=model, temperature=temperature, custom_config=custom_config)
     reasoner = Reasoner(model=model, temperature=temperature, custom_config=custom_config)
 
+    parser_start = time.time()
     parsed_data = parser.parse(user_text)
+    parser_elapsed = int((time.time() - parser_start) * 1000)
     print("[ReasonerEval] Parser complete", flush=True)
+    reasoner_start = time.time()
     reasoning = reasoner.reason(parsed_data, user_text)
+    reasoner_elapsed = int((time.time() - reasoner_start) * 1000)
     print("[ReasonerEval] Reasoner complete", flush=True)
 
     parser_input_tokens = _count_tokens(user_text, model)
@@ -182,6 +246,8 @@ def run_reasoner_only(
             "reasoner_output_tokens": reasoner_output_tokens,
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
+            "parser_time_ms": parser_elapsed,
+            "reasoner_time_ms": reasoner_elapsed,
         },
     }
 
@@ -198,6 +264,16 @@ def extract_reasoner_output(result: Dict[str, Any]) -> Dict[str, Any]:
         "risk_level": reasoning.get("risk_level", ""),
         "policies_analyzed": reasoning.get("policies_analyzed", 0),
     }
+
+
+def extract_primary_conflict(pred_reasoning: Dict[str, Any]) -> str:
+    """Extract a single conflict label from reasoner output."""
+    issues = pred_reasoning.get("issues", []) or []
+    for issue in issues:
+        conflict = normalize_conflict_type((issue or {}).get("conflict_type"))
+        if conflict:
+            return conflict
+    return ""
 
 
 def normalize_issue(issue: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,6 +396,17 @@ def evaluate_reasoner(
         "conflict_types": conflict_types_metrics,
         "gold_issues_count": len(gold_issues),
         "pred_issues_count": len(pred_issues),
+    }
+
+
+def evaluate_conflict_accuracy(gold_conflict: str, pred_conflict: str) -> Dict[str, Any]:
+    """Evaluate only conflict label accuracy."""
+    gold = normalize_conflict_type(gold_conflict) or ""
+    pred = normalize_conflict_type(pred_conflict) or ""
+    return {
+        "conflict_accuracy": 1.0 if gold == pred else 0.0,
+        "conflict_gold": gold,
+        "conflict_pred": pred,
     }
 
 
@@ -471,13 +558,15 @@ def main() -> None:
     parser.add_argument(
         "--dataset-json",
         type=str,
-        default=None,
-        help="Path to JSON file containing groundtruth data with 'input' and 'gold_reasoning' fields. If provided, overrides --dataset.",
+        default=os.path.join(
+            "evaluation", "data", "reasoner", "Ground_Truth", "reasoner_GT.json"
+        ),
+        help="Path to reasoner ground truth JSON file.",
     )
     parser.add_argument(
         "--models",
         type=str,
-        default=os.path.join(PROJECT_ROOT, "backend", "config", "custom_models.json"),
+        default=os.path.join("backend", "config", "custom_models.json"),
         help="Path to custom_models.json (first entry used when --model is not provided)",
     )
     parser.add_argument("--model", type=str, default=None, help="Override model value (e.g., custom:deepseek-chat)")
@@ -490,21 +579,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.dataset_json:
-        rows = _load_rows_from_json(
-            args.dataset_json,
-            start=args.start,
-            end=args.end,
-            limit=args.limit,
-        )
-    else:
-        rows = _load_dataset_rows(
-            args.dataset,
-            args.split,
-            start=args.start,
-            end=args.end,
-            limit=args.limit,
-        )
+    rows = _load_rows_from_json(
+        _resolve_project_path(args.dataset_json),
+        start=args.start,
+        end=args.end,
+        limit=args.limit,
+    )
 
     if args.model:
         model = args.model
@@ -519,50 +599,81 @@ def main() -> None:
         else:
             custom_config = {}
     else:
-        model, custom_config, default_temperature = _load_default_custom_model(args.models)
+        model, custom_config, default_temperature = _load_default_custom_model(
+            _resolve_project_path(args.models)
+        )
         temperature = args.temperature if args.temperature is not None else default_temperature
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    results_dir = os.path.join(os.path.dirname(__file__), "results", "reasoner_evaluation")
+    results_dir = _resolve_project_path(
+        os.path.join("evaluation", "evaluator", "results", "reasoner_evaluation")
+    )
     batch_dir = os.path.join(results_dir, f"batch_{timestamp}")
     os.makedirs(batch_dir, exist_ok=True)
-    print(f"EVAL_BATCH_DIR|path={batch_dir}", flush=True)
+    print(f"EVAL_BATCH_DIR|path={os.path.relpath(batch_dir)}", flush=True)
 
     evaluations: List[Dict[str, Any]] = []
-    decision_correct_count = 0
-    total_issues_precision = []
-    total_issues_recall = []
-    total_issues_f1 = []
-    total_conflict_types_precision = []
-    total_conflict_types_recall = []
-    total_conflict_types_f1 = []
+    conflict_correct_count = 0
+    failed_records = 0
+    reasoner_times_ms: List[float] = []
 
     total_rows = len(rows)
     for idx, row in enumerate(rows, 1):
         normalized = _normalize_eval_row(row)
         user_text = normalized.get("input") or ""
+        gold_reasoning = normalized.get("gold_reasoning", {})
+        gold_conflict = normalized.get("gold_conflict", "")
+        row_error = ""
+        result: Dict[str, Any] = {"metrics": {}}
+
+        preview = (user_text or "").replace("\n", " ").replace("|", "/")[:160]
+        print(f"EVAL_ITEM_START|idx={idx}|total={total_rows}|input={preview}", flush=True)
+
         if not user_text:
             available = ", ".join(sorted(row.keys()))
-            raise ValueError(
+            row_error = (
                 f"Row {idx} is missing input text. Expected one of: input, Input, policy_text, text. "
                 f"Available keys: {available}"
             )
+            failed_records += 1
+            print(f"EVAL_ITEM_ERROR|idx={idx}|error={row_error}", flush=True)
+            print(
+                f"EVAL_ATTEMPT_FATAL|idx={idx}|error={row_error}",
+                flush=True,
+            )
+            raise SystemExit(1)
+        else:
+            # Run parse -> reason only (stop after reasoner)
+            try:
+                result = run_reasoner_only(
+                    user_text=user_text,
+                    model=model,
+                    custom_config=custom_config,
+                    temperature=temperature,
+                )
+            except Exception as exc:
+                row_error = str(exc).replace("\n", " ")[:1000]
+                failed_records += 1
+                print(f"EVAL_ITEM_ERROR|idx={idx}|error={row_error}", flush=True)
+                if _is_model_runtime_error(exc):
+                    print(
+                        f"EVAL_ATTEMPT_MODEL_ERROR|idx={idx}|error={row_error}",
+                        flush=True,
+                    )
+                    raise SystemExit(2)
+                print(
+                    f"EVAL_ATTEMPT_FATAL|idx={idx}|error={row_error}",
+                    flush=True,
+                )
+                raise SystemExit(1)
 
-        gold_reasoning = normalized.get("gold_reasoning", {})
-        if not gold_reasoning:
-            raise ValueError(f"Row {idx} is missing 'gold_reasoning' field")
-
-        preview = user_text.replace("\n", " ").replace("|", "/")[:160]
-        print(f"EVAL_ITEM_START|idx={idx}|total={total_rows}|input={preview}", flush=True)
-
-        # Run parse -> reason only (stop after reasoner)
-        result = run_reasoner_only(
-            user_text=user_text,
-            model=model,
-            custom_config=custom_config,
-            temperature=temperature,
-        )
         token_metrics = result.get("metrics", {})
+        try:
+            rt = token_metrics.get("reasoner_time_ms")
+            if rt not in (None, ""):
+                reasoner_times_ms.append(float(rt))
+        except Exception:
+            pass
         print(
             "EVAL_ITEM_TOKENS|"
             f"idx={idx}|"
@@ -577,22 +688,20 @@ def main() -> None:
         )
 
         pred_reasoning = extract_reasoner_output(result)
+        if row_error:
+            pred_reasoning["error"] = row_error
 
-        # Evaluate
-        evaluation = evaluate_reasoner(gold_reasoning, pred_reasoning)
+        # Evaluate only conflict label accuracy.
+        pred_conflict = extract_primary_conflict(pred_reasoning)
+        evaluation = evaluate_conflict_accuracy(gold_conflict, pred_conflict)
+        if row_error:
+            evaluation["conflict_accuracy"] = 0.0
+            evaluation["conflict_pred"] = "__error__"
+            evaluation["run_error"] = row_error
         evaluations.append(evaluation)
 
-        # Accumulate metrics
-        if evaluation["decision_accuracy"] > 0:
-            decision_correct_count += 1
-
-        total_issues_precision.append(evaluation["issues"]["precision"])
-        total_issues_recall.append(evaluation["issues"]["recall"])
-        total_issues_f1.append(evaluation["issues"]["f1"])
-
-        total_conflict_types_precision.append(evaluation["conflict_types"]["precision"])
-        total_conflict_types_recall.append(evaluation["conflict_types"]["recall"])
-        total_conflict_types_f1.append(evaluation["conflict_types"]["f1"])
+        if evaluation["conflict_accuracy"] > 0:
+            conflict_correct_count += 1
 
         # Save individual record
         _save_evaluation_record(
@@ -610,18 +719,12 @@ def main() -> None:
     # Compute aggregate metrics
     n = len(evaluations)
     aggregate_metrics = {
-        "decision_accuracy": decision_correct_count / n if n > 0 else 0.0,
-        "issues": {
-            "precision": sum(total_issues_precision) / n if n > 0 else 0.0,
-            "recall": sum(total_issues_recall) / n if n > 0 else 0.0,
-            "f1": sum(total_issues_f1) / n if n > 0 else 0.0,
-        },
-        "conflict_types": {
-            "precision": sum(total_conflict_types_precision) / n if n > 0 else 0.0,
-            "recall": sum(total_conflict_types_recall) / n if n > 0 else 0.0,
-            "f1": sum(total_conflict_types_f1) / n if n > 0 else 0.0,
-        },
+        "conflict_accuracy": conflict_correct_count / n if n > 0 else 0.0,
         "total_records": n,
+        "failed_records": failed_records,
+        "reasoner_avg_time_s": round(
+            (sum(reasoner_times_ms) / len(reasoner_times_ms)) / 1000.0, 2
+        ) if reasoner_times_ms else None,
     }
 
     # Save aggregate metrics
@@ -631,9 +734,8 @@ def main() -> None:
 
     print("\n=== Reasoner Evaluation Results ===", flush=True)
     print(json.dumps(aggregate_metrics, ensure_ascii=False, indent=2), flush=True)
-    print(f"\nBatch dir: {batch_dir}", flush=True)
-    print(f"Metrics saved: {metrics_path}", flush=True)
-
+    print(f"\nBatch dir: {os.path.relpath(batch_dir)}", flush=True)
+    print(f"Metrics saved: {os.path.relpath(metrics_path)}", flush=True)
 
 if __name__ == "__main__":
     main()

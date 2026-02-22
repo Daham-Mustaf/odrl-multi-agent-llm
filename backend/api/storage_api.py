@@ -18,6 +18,7 @@ import logging
 import subprocess
 import threading
 import uuid
+import signal
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +43,27 @@ EVALUATOR_DIR = STORAGE_ROOT / "evaluator"
 EVALUATOR_DIR.mkdir(parents=True, exist_ok=True)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CUSTOM_MODELS_REL_PATH = Path("backend") / "config" / "custom_models.json"
+EVALUATOR_SCRIPT_REL_PATHS = {
+    "workflow": Path("evaluation") / "evaluator" / "workflow-evaluator.py",
+    "reasoner": Path("evaluation") / "evaluator" / "reasoner_evaluator.py",
+}
+
+
+def _resolve_project_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return (PROJECT_ROOT / path).resolve()
+
+
+CUSTOM_MODELS_FILE = _resolve_project_path(CUSTOM_MODELS_REL_PATH)
 EVALUATOR_SCRIPTS = {
-    "workflow": PROJECT_ROOT / "evaluation" / "evaluator" / "workflow-evaluator.py",
-    "reasoner": PROJECT_ROOT / "evaluation" / "evaluator" / "reasoner_evaluator.py",
+    key: _resolve_project_path(rel_path)
+    for key, rel_path in EVALUATOR_SCRIPT_REL_PATHS.items()
 }
 
 _evaluator_runs: Dict[str, Dict[str, Any]] = {}
-_evaluator_lock = threading.Lock()
+_evaluator_lock = threading.RLock()
 
 # ============================================
 # REQUEST MODELS
@@ -97,6 +112,7 @@ def _new_item(index: int, input_preview: str, nodes: List[str]) -> Dict[str, Any
         "index": index,
         "input_preview": input_preview,
         "status": "pending",
+        "error": "",
         "record_available": False,
         "stages": {node: "pending" for node in nodes},
         "stage_times": {
@@ -203,14 +219,14 @@ def _mark_unstarted_as_skipped(item: Dict[str, Any], nodes: List[str]) -> None:
 
 def _normalize_progress_items(progress: Dict[str, Any], evaluator: str) -> None:
     nodes = _workflow_nodes_for(evaluator)
-    terminal_states = {"complete", "skipped", "cancelled"}
+    terminal_states = {"complete", "skipped", "cancelled", "failed"}
     items: List[Dict[str, Any]] = progress.get("items", [])
 
     for item in items:
         stages = item.get("stages", {})
         if not stages:
             continue
-        if item.get("status") == "cancelled":
+        if item.get("status") in {"cancelled", "failed"}:
             continue
         # If all stages are terminal, force item into completed.
         if all(stages.get(node) in terminal_states for node in nodes if node in stages):
@@ -332,6 +348,53 @@ def _parse_progress_line(run: Dict[str, Any], line: str) -> None:
             _refresh_item_record_status(run, idx)
         return
 
+    if stripped_line.startswith("EVAL_ITEM_ERROR|"):
+        fields = {}
+        for part in stripped_line.split("|")[1:]:
+            if "=" in part:
+                k, v = part.split("=", 1)
+                fields[k] = v
+        idx = int(fields.get("idx", "0"))
+        err = fields.get("error", "").strip()
+        if 0 < idx <= len(items):
+            item = items[idx - 1]
+            item["status"] = "failed"
+            item["error"] = err
+            # Mark currently running stage as failed; remaining stages as skipped.
+            active_stage = None
+            for node in nodes:
+                if item["stages"].get(node) == "running":
+                    active_stage = node
+                    break
+            if active_stage is None:
+                for node in nodes:
+                    if item["stages"].get(node) == "pending":
+                        active_stage = node
+                        break
+            if active_stage is not None and active_stage in item["stages"]:
+                item["stages"][active_stage] = "failed"
+                stage_time = item["stage_times"].get(active_stage)
+                if stage_time:
+                    now = time.time()
+                    if stage_time.get("started_at") is None:
+                        stage_time["started_at"] = now
+                    stage_time["finished_at"] = now
+                    stage_time["duration_ms"] = int((now - stage_time["started_at"]) * 1000)
+            for node in nodes:
+                if item["stages"].get(node) in {"pending", "running"}:
+                    item["stages"][node] = "skipped"
+            progress["active_index"] = idx + 1 if idx < progress["total"] else None
+            _refresh_item_record_status(run, idx)
+        return
+
+    if stripped_line.startswith("EVAL_ATTEMPT_MODEL_ERROR|"):
+        run["attempt_failure_kind"] = "model"
+        return
+
+    if stripped_line.startswith("EVAL_ATTEMPT_FATAL|"):
+        run["attempt_failure_kind"] = "fatal"
+        return
+
     if stripped_line.startswith("EVAL_ITEM_TOKENS|"):
         fields = {}
         for part in stripped_line.split("|")[1:]:
@@ -397,7 +460,10 @@ def _extract_metrics_path(logs: str) -> Optional[Path]:
     matches = re.findall(r"Metrics saved:\s*(.+)", logs)
     if not matches:
         return None
-    path = Path(matches[-1].strip())
+    raw_path = matches[-1].strip()
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = (PROJECT_ROOT / path).resolve()
     return path if path.exists() else None
 
 
@@ -407,13 +473,8 @@ def _load_metrics_table(evaluator: str, metrics_path: Path) -> Optional[Dict[str
             with open(metrics_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             rows = [
-                ["decision_accuracy", data.get("decision_accuracy", 0.0)],
-                ["issues.precision", data.get("issues", {}).get("precision", 0.0)],
-                ["issues.recall", data.get("issues", {}).get("recall", 0.0)],
-                ["issues.f1", data.get("issues", {}).get("f1", 0.0)],
-                ["conflict_types.precision", data.get("conflict_types", {}).get("precision", 0.0)],
-                ["conflict_types.recall", data.get("conflict_types", {}).get("recall", 0.0)],
-                ["conflict_types.f1", data.get("conflict_types", {}).get("f1", 0.0)],
+                ["conflict_accuracy", data.get("conflict_accuracy", 0.0)],
+                ["reasoner_avg_time_s", data.get("reasoner_avg_time_s", 0.0)],
             ]
             return {"columns": ["Metric", "Value"], "rows": rows}
 
@@ -443,45 +504,194 @@ def _append_run_log(run_id: str, message: str) -> None:
         logger.exception("Failed writing evaluator log for %s", run_id)
 
 
-def _start_evaluator_runner(run_id: str) -> None:
-    with _evaluator_lock:
-        run = _evaluator_runs.get(run_id)
-        if run is None:
-            return
-        process: subprocess.Popen = run["process"]
+def _build_evaluator_command(
+    script_path: Path,
+    limit: int,
+    model: Optional[str],
+    temperature: Optional[float],
+    custom_model: Optional[Dict[str, Any]],
+) -> List[str]:
+    cmd = ["uv", "run", "--project", "backend", "python", "-u", str(script_path), "--limit", str(limit)]
+    if model:
+        cmd.extend(["--model", model])
+    if temperature is not None:
+        cmd.extend(["--temperature", str(temperature)])
+    if custom_model:
+        cmd.extend(["--custom-config-json", json.dumps(custom_model)])
+    return cmd
 
-    assert process.stdout is not None
-    for line in process.stdout:
+
+def _load_custom_model_candidates() -> List[Dict[str, Any]]:
+    if not CUSTOM_MODELS_FILE.exists():
+        return []
+    try:
+        with open(CUSTOM_MODELS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return []
+        return [item for item in data if isinstance(item, dict) and item.get("value")]
+    except Exception:
+        logger.exception("Failed to load custom model candidates from %s", CUSTOM_MODELS_FILE)
+        return []
+
+
+def _custom_payload_from_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "provider_type": entry.get("provider_type"),
+        "base_url": entry.get("base_url"),
+        "model_id": entry.get("model_id"),
+        "api_key": entry.get("api_key"),
+        "context_length": entry.get("context_length"),
+        "temperature_default": entry.get("temperature") if entry.get("temperature") is not None else entry.get("temperature_default", 0.3),
+    }
+
+
+def _build_attempt_chain(request: "EvaluatorRunRequest") -> List[Dict[str, Any]]:
+    attempts: List[Dict[str, Any]] = []
+    tried_models: set[str] = set()
+
+    # Attempt 1: global selected model (from UI)
+    attempts.append(
+        {
+            "model": request.model,
+            "custom_model": request.custom_model,
+            "label": request.model or "backend-default",
+        }
+    )
+    if request.model:
+        tried_models.add(str(request.model))
+
+    # Fallback attempts: custom_models.json top-to-bottom, without re-trying the global model.
+    for entry in _load_custom_model_candidates():
+        model_value = str(entry.get("value"))
+        if model_value in tried_models:
+            continue
+        attempts.append(
+            {
+                "model": model_value,
+                "custom_model": _custom_payload_from_entry(entry),
+                "label": entry.get("label") or model_value,
+            }
+        )
+        tried_models.add(model_value)
+
+    return attempts
+
+
+def _spawn_attempt_process(run: Dict[str, Any]) -> subprocess.Popen:
+    attempt_idx = int(run.get("active_attempt", 0))
+    attempts = run.get("attempts", [])
+    if attempt_idx < 0 or attempt_idx >= len(attempts):
+        raise RuntimeError("No evaluator attempt available")
+
+    attempt = attempts[attempt_idx]
+    script_path = EVALUATOR_SCRIPTS[run["evaluator"]]
+    cmd = _build_evaluator_command(
+        script_path=script_path,
+        limit=run["limit"],
+        model=attempt.get("model"),
+        temperature=run.get("temperature"),
+        custom_model=attempt.get("custom_model"),
+    )
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    process = subprocess.Popen(
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=env,
+    )
+    run["process"] = process
+    run["model"] = attempt.get("model") or "backend-default"
+    run["active_model_label"] = attempt.get("label") or run["model"]
+    run["attempt_failure_kind"] = None
+    return process
+
+
+def _start_evaluator_runner(run_id: str) -> None:
+    while True:
         with _evaluator_lock:
             run = _evaluator_runs.get(run_id)
-            if run is not None:
-                _parse_progress_line(run, line)
-        _append_run_log(run_id, line)
+            if run is None:
+                return
+            process: subprocess.Popen = run["process"]
+            attempt_idx = int(run.get("active_attempt", 0))
+            attempt_label = run.get("active_model_label", run.get("model", "unknown"))
 
-    exit_code = process.wait()
-    with _evaluator_lock:
-        run = _evaluator_runs.get(run_id)
-        if run is None:
-            return
-        if run.get("status") == "cancelled":
+        assert process.stdout is not None
+        for line in process.stdout:
+            with _evaluator_lock:
+                run = _evaluator_runs.get(run_id)
+                if run is not None:
+                    _parse_progress_line(run, line)
+            _append_run_log(run_id, line)
+
+        exit_code = process.wait()
+        with _evaluator_lock:
+            run = _evaluator_runs.get(run_id)
+            if run is None:
+                return
+            if run.get("status") == "cancelled":
+                run["exit_code"] = exit_code
+                run["finished_at"] = datetime.utcnow().isoformat() + "Z"
+                return
+
+            attempts = run.get("attempts", [])
+            failure_kind = run.get("attempt_failure_kind")
+            has_fallback = (
+                exit_code != 0
+                and failure_kind == "model"
+                and (attempt_idx + 1) < len(attempts)
+            )
+            if has_fallback:
+                run["active_attempt"] = attempt_idx + 1
+                run["status"] = "running"
+                run["exit_code"] = None
+                run["finished_at"] = None
+                # restart from scratch for next model attempt
+                run["progress"] = {"total": run["limit"], "active_index": None, "items": []}
+                run["metrics_table"] = None
+                run["tokens"] = {"total_in": 0, "total_out": 0}
+                run["batch_dir"] = None
+                _append_run_log(
+                    run_id,
+                    f"[Evaluator] Attempt failed with model '{attempt_label}' (exit {exit_code}). Retrying with next custom model...\n",
+                )
+                try:
+                    _spawn_attempt_process(run)
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["exit_code"] = exit_code
+                    run["finished_at"] = datetime.utcnow().isoformat() + "Z"
+                    _append_run_log(run_id, f"[Evaluator] Failed to start fallback attempt: {exc}\n")
+                    return
+                continue
+
+            if exit_code != 0 and failure_kind == "fatal":
+                _append_run_log(
+                    run_id,
+                    f"[Evaluator] Stopped due to non-model runtime error on '{attempt_label}'.\n",
+                )
+
+            run["status"] = "completed" if exit_code == 0 else "failed"
             run["exit_code"] = exit_code
             run["finished_at"] = datetime.utcnow().isoformat() + "Z"
+            if run["status"] == "completed":
+                # Final cleanup to prevent last item lingering as pending/running.
+                progress = run.get("progress", {})
+                items = progress.get("items", [])
+                nodes = _workflow_nodes_for(run.get("evaluator", "reasoner"))
+                for item in items:
+                    _mark_unstarted_as_skipped(item, nodes)
+                    if item.get("status") in {"pending", "running"}:
+                        item["status"] = "completed"
+                _normalize_progress_items(progress, run.get("evaluator", "reasoner"))
+            metrics_path = _extract_metrics_path(run["logs"])
+            run["metrics_table"] = _load_metrics_table(run["evaluator"], metrics_path) if metrics_path else None
             return
-        run["status"] = "completed" if exit_code == 0 else "failed"
-        run["exit_code"] = exit_code
-        run["finished_at"] = datetime.utcnow().isoformat() + "Z"
-        if run["status"] == "completed":
-            # Final cleanup to prevent last item lingering as pending/running.
-            progress = run.get("progress", {})
-            items = progress.get("items", [])
-            nodes = _workflow_nodes_for(run.get("evaluator", "reasoner"))
-            for item in items:
-                _mark_unstarted_as_skipped(item, nodes)
-                if item.get("status") in {"pending", "running"}:
-                    item["status"] = "completed"
-            _normalize_progress_items(progress, run.get("evaluator", "reasoner"))
-        metrics_path = _extract_metrics_path(run["logs"])
-        run["metrics_table"] = _load_metrics_table(run["evaluator"], metrics_path) if metrics_path else None
 
 # ============================================
 # REASONING STORAGE
@@ -617,49 +827,42 @@ async def run_evaluator(request: EvaluatorRunRequest):
     run_id = f"{evaluator}_{timestamp}_{uuid.uuid4().hex[:8]}"
     log_path = EVALUATOR_DIR / f"{run_id}.log"
 
-    cmd = ["uv", "run", "--project", "backend", "python", "-u", str(script_path), "--limit", str(request.limit)]
-    if request.model:
-        cmd.extend(["--model", request.model])
-    if request.temperature is not None:
-        cmd.extend(["--temperature", str(request.temperature)])
-    if request.custom_model:
-        cmd.extend(["--custom-config-json", json.dumps(request.custom_model)])
-
-    try:
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        process = subprocess.Popen(
-            cmd,
-            cwd=str(PROJECT_ROOT),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=env,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to start evaluator: {exc}") from exc
+    attempts = _build_attempt_chain(request)
 
     with _evaluator_lock:
-        _evaluator_runs[run_id] = {
+        run = {
             "run_id": run_id,
             "evaluator": evaluator,
             "limit": request.limit,
-            "model": request.model or "default-from-custom-models",
+            "model": request.model or "backend-default",
+            "temperature": request.temperature,
             "status": "running",
             "created_at": datetime.utcnow().isoformat() + "Z",
             "finished_at": None,
             "exit_code": None,
-            "process": process,
+            "process": None,
             "logs": "",
             "log_path": log_path,
             "progress": {"total": request.limit, "active_index": None, "items": []},
             "metrics_table": None,
             "tokens": {"total_in": 0, "total_out": 0},
             "batch_dir": None,
+            "attempts": attempts,
+            "active_attempt": 0,
+            "active_model_label": (attempts[0].get("label") if attempts else (request.model or "backend-default")),
         }
+        _evaluator_runs[run_id] = run
 
-    _append_run_log(run_id, f"[Evaluator] Started {evaluator} with limit={request.limit}\n")
+    try:
+        with _evaluator_lock:
+            run = _evaluator_runs[run_id]
+            _spawn_attempt_process(run)
+    except Exception as exc:
+        with _evaluator_lock:
+            _evaluator_runs.pop(run_id, None)
+        raise HTTPException(status_code=500, detail=f"Failed to start evaluator: {exc}") from exc
+
+    _append_run_log(run_id, f"[Evaluator] Started {evaluator} with limit={request.limit}, model={run.get('active_model_label')}\n")
     thread = threading.Thread(target=_start_evaluator_runner, args=(run_id,), daemon=True)
     thread.start()
 
@@ -685,6 +888,8 @@ async def get_evaluator_run(run_id: str, offset: int = 0):
             "evaluator": run["evaluator"],
             "status": run["status"],
             "exit_code": run["exit_code"],
+            "model": run.get("model"),
+            "active_model_label": run.get("active_model_label"),
             "created_at": run["created_at"],
             "finished_at": run["finished_at"],
             "logs": new_logs,
@@ -729,6 +934,70 @@ async def stop_evaluator_run(run_id: str):
         logger.exception("Failed to terminate evaluator run %s", run_id)
 
     return response_payload
+
+
+@router.post("/evaluators/run/{run_id}/suspend")
+async def suspend_evaluator_run(run_id: str):
+    with _evaluator_lock:
+        run = _evaluator_runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="run_id not found")
+        process: subprocess.Popen = run["process"]
+        current_status = run.get("status")
+        if current_status == "suspended":
+            return {
+                "run_id": run_id,
+                "status": "suspended",
+                "progress": run.get("progress"),
+                "metrics_table": run.get("metrics_table"),
+            }
+        if current_status != "running":
+            raise HTTPException(status_code=409, detail=f"Cannot suspend run in status '{current_status}'")
+
+        try:
+            os.kill(process.pid, signal.SIGSTOP)
+            run["status"] = "suspended"
+            run["finished_at"] = None
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to suspend run: {exc}") from exc
+
+    with _evaluator_lock:
+        run = _evaluator_runs.get(run_id)
+        progress = run.get("progress") if run else None
+        metrics_table = run.get("metrics_table") if run else None
+    return {"run_id": run_id, "status": "suspended", "progress": progress, "metrics_table": metrics_table}
+
+
+@router.post("/evaluators/run/{run_id}/resume")
+async def resume_evaluator_run(run_id: str):
+    with _evaluator_lock:
+        run = _evaluator_runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="run_id not found")
+        process: subprocess.Popen = run["process"]
+        current_status = run.get("status")
+        if current_status == "running":
+            return {
+                "run_id": run_id,
+                "status": "running",
+                "progress": run.get("progress"),
+                "metrics_table": run.get("metrics_table"),
+            }
+        if current_status != "suspended":
+            raise HTTPException(status_code=409, detail=f"Cannot resume run in status '{current_status}'")
+
+        try:
+            os.kill(process.pid, signal.SIGCONT)
+            run["status"] = "running"
+            run["finished_at"] = None
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to resume run: {exc}") from exc
+
+    with _evaluator_lock:
+        run = _evaluator_runs.get(run_id)
+        progress = run.get("progress") if run else None
+        metrics_table = run.get("metrics_table") if run else None
+    return {"run_id": run_id, "status": "running", "progress": progress, "metrics_table": metrics_table}
 
 
 @router.get("/evaluators/run/{run_id}/record/{item_index}")

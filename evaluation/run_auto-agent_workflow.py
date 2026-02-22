@@ -28,6 +28,13 @@ from agents.generator.generator import Generator
 from agents.validator.validator import Validator
 
 
+def _resolve_project_path(path: str) -> str:
+    """Resolve relative paths from project root."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_ROOT, path)
+
+
 DEFAULT_INPUT = (
     "The dataset may only be used for commercial purposes. "
     "Non-commercial research use is required for all applications of this dataset."
@@ -35,6 +42,7 @@ DEFAULT_INPUT = (
 
 
 def _load_default_custom_model(config_path: str) -> Tuple[str, Dict[str, Any], float]:
+    config_path = _resolve_project_path(config_path)
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"custom_models.json not found: {config_path}")
 
@@ -55,7 +63,7 @@ def _load_default_custom_model(config_path: str) -> Tuple[str, Dict[str, Any], f
 
 def _read_input_text(text: Optional[str], file_path: Optional[str]) -> str:
     if file_path:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(_resolve_project_path(file_path), "r", encoding="utf-8") as f:
             return f.read().strip()
     if text:
         return text.strip()
@@ -191,6 +199,14 @@ def run_workflow(
         "reasoning": reasoning,
         "generation": generation,
         "validation": validation,
+        "stage_times": {
+            "parser_time_ms": parser_elapsed,
+            "reasoner_time_ms": reasoner_elapsed,
+            "generator_time_ms": generator_elapsed,
+            "validator_time_ms": validator_elapsed,
+            "regeneration_time_ms": 0,
+            "revalidation_time_ms": 0,
+        },
     }
 
     if not validation.get("is_valid", False):
@@ -239,6 +255,8 @@ def run_workflow(
 
         result["regeneration"] = regeneration
         result["revalidation"] = revalidation
+        result["stage_times"]["regeneration_time_ms"] = regeneration_elapsed
+        result["stage_times"]["revalidation_time_ms"] = revalidation_elapsed
         result["final_output"] = _format_turtle(regenerated_turtle)
     else:
         result["final_output"] = _format_turtle(odrl_turtle)
@@ -303,14 +321,16 @@ def main() -> None:
     parser.add_argument(
         "--models",
         type=str,
-        default=os.path.join(BACKEND_DIR, "config", "custom_models.json"),
+        default=os.path.join("backend", "config", "custom_models.json"),
         help="Path to custom_models.json (first entry used)",
     )
 
     args = parser.parse_args()
     user_text = _read_input_text(args.text, args.file)
 
-    model, custom_config, temperature = _load_default_custom_model(args.models)
+    model, custom_config, temperature = _load_default_custom_model(
+        _resolve_project_path(args.models)
+    )
     print(f"[Workflow] Using model: {model}", flush=True)
 
     result = run_workflow(

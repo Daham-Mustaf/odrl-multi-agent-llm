@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Moon, Sun, RotateCcw } from 'lucide-react'; // ✅ Add RotateCcw
+import { Settings, Moon, Sun, RotateCcw, BarChart3 } from 'lucide-react';
 
 const CompactHeader = ({
   darkMode,
@@ -14,7 +14,8 @@ const CompactHeader = ({
   advancedMode,
   setAdvancedMode,
   onOpenSettings,
-  onReset,  // ✅ ADD THIS PROP
+  onReset,
+  onOpenEvaluator,
 }) => {
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
@@ -123,6 +124,19 @@ const CompactHeader = ({
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reset
+          </button>
+
+          <button
+            onClick={onOpenEvaluator}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+              darkMode
+                ? 'bg-indigo-700 hover:bg-indigo-600 text-white'
+                : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700'
+            }`}
+            title="Open evaluator dashboard"
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Evaluator
           </button>
 
           {/* Settings & Theme */}

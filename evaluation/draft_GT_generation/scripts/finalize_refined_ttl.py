@@ -2,6 +2,16 @@ import argparse
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def resolve_project_path(path: str) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return (PROJECT_ROOT / candidate).resolve()
+
+
 def clean_ttl_content(text: str) -> str:
     cleaned_lines = []
     previous_blank = False
@@ -83,7 +93,7 @@ def main() -> None:
     args = parser.parse_args()
 
     process_session(
-        session_dir=Path(args.session_dir),
+        session_dir=resolve_project_path(args.session_dir),
         prune_non_refined=not args.no_prune,
     )
 
