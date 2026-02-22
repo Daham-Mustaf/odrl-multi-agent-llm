@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { FileText, Copy, Download, CheckCircle, Info, Shield, Ban, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { FileText, Copy, Download, CheckCircle, Info, Shield, Ban, AlertCircle, Maximize2, Minimize2, ArrowRight } from 'lucide-react';
 
 export const ParserTab = ({ 
   parsedData, 
   darkMode = false,
   onCopy = () => {},
-  onDownload = () => {}
+  onDownload = () => {},
+  onContinue = null,  // NEW: Handler for continuing to reasoner
+  isLoading = false   // NEW: Loading state
 }) => {
   const [viewMode, setViewMode] = useState('visual');
   const [copied, setCopied] = useState(false);
   const [jsonCollapsed, setJsonCollapsed] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
+
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -26,10 +29,12 @@ export const ParserTab = ({
   };
 
   if (!parsedData) return null;
+
   const policy = parsedData.policies?.[0] || parsedData;
 
   return (
     <div className={`${cardClass} border rounded-xl shadow-sm overflow-hidden animate-fade-in`}>
+      {/* Header */}
       <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center justify-between">
           <h2 className={`text-xl font-bold ${textClass} flex items-center gap-2`}>
@@ -92,6 +97,8 @@ export const ParserTab = ({
           </div>
         </div>
       </div>
+
+      {/* Main Content */}
       <div className="p-6">
         {viewMode === 'visual' ? (
           compactMode ? (
@@ -124,10 +131,31 @@ export const ParserTab = ({
           </div>
         )}
       </div>
+
+      {/* NEW: Footer with Continue Button */}
+      {onContinue && (
+        <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+          <div className="flex items-center justify-between">
+            <div className={`text-sm ${mutedTextClass}`}>
+              <CheckCircle className="w-4 h-4 inline mr-2 text-green-500" />
+              Parsing complete! Ready to analyze policy.
+            </div>
+            <button
+              onClick={onContinue}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-purple-500/30"
+            >
+              Continue to Reasoning
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
+// Compact View Component
 const CompactView = ({ policy, darkMode, textClass, mutedTextClass }) => {
   return (
     <div className="space-y-3 max-w-4xl">
@@ -155,15 +183,18 @@ const CompactView = ({ policy, darkMode, textClass, mutedTextClass }) => {
           </div>
         </div>
       </div>
+
       <div className={`p-2 rounded text-xs ${darkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
         <span className={`${mutedTextClass} font-semibold`}>Input: </span>
         <span className={`italic ${textClass}`}>"{policy.source_text}"</span>
       </div>
+
       <div className="grid grid-cols-2 gap-3">
         {policy.rules?.map((rule, idx) => (
           <CompactRuleCard key={idx} rule={rule} ruleNumber={idx + 1} darkMode={darkMode} textClass={textClass} mutedTextClass={mutedTextClass} />
         ))}
       </div>
+
       {policy.temporal?.end_date && (
         <div className={`p-2 rounded text-xs flex items-center justify-between ${darkMode ? 'bg-cyan-900/20 border border-cyan-800' : 'bg-cyan-50 border border-cyan-200'}`}>
           <span className={`${mutedTextClass} font-semibold`}>⏰ Temporal Constraint:</span>
@@ -174,13 +205,16 @@ const CompactView = ({ policy, darkMode, textClass, mutedTextClass }) => {
   );
 };
 
+// Compact Rule Card Component
 const CompactRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass }) => {
   const ruleStyles = {
     permission: { gradient: darkMode ? 'from-green-900/30 to-emerald-900/30' : 'from-green-50 to-emerald-50', border: darkMode ? 'border-green-700' : 'border-green-300', iconBg: 'bg-green-500', label: 'Permission', icon: '✓' },
     prohibition: { gradient: darkMode ? 'from-red-900/30 to-rose-900/30' : 'from-red-50 to-rose-50', border: darkMode ? 'border-red-700' : 'border-red-300', iconBg: 'bg-red-500', label: 'Prohibition', icon: '✗' },
     duty: { gradient: darkMode ? 'from-blue-900/30 to-indigo-900/30' : 'from-blue-50 to-indigo-50', border: darkMode ? 'border-blue-700' : 'border-blue-300', iconBg: 'bg-blue-500', label: 'Duty', icon: '!' }
   };
+  
   const style = ruleStyles[rule.rule_type] || ruleStyles.permission;
+  
   return (
     <div className={`p-3 rounded-lg bg-gradient-to-br ${style.gradient} border ${style.border}`}>
       <div className="flex items-center gap-2 mb-2">
@@ -189,6 +223,7 @@ const CompactRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass
           <div className={`text-sm font-bold ${textClass}`}>{style.label}</div>
         </div>
       </div>
+
       <div className="mb-2">
         <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>Actions:</div>
         <div className="flex flex-wrap gap-1">
@@ -199,6 +234,7 @@ const CompactRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass
           ))}
         </div>
       </div>
+
       {rule.constraints && rule.constraints.length > 0 && (
         <div>
           <div className={`text-xs font-semibold mb-1 ${mutedTextClass}`}>Constraints:</div>
@@ -213,6 +249,7 @@ const CompactRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass
   );
 };
 
+// Full Visual View Component
 const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
   return (
     <div className="space-y-6">
@@ -240,6 +277,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
           </div>
         </div>
       </div>
+
       <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800/50 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
         <div className={`text-xs font-semibold mb-2 ${mutedTextClass} flex items-center gap-2`}>
           <FileText className="w-4 h-4" />
@@ -247,6 +285,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
         </div>
         <p className={`text-sm italic ${textClass}`}>"{policy.source_text}"</p>
       </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className={`p-4 rounded-xl ${darkMode ? 'bg-purple-900/20 border border-purple-800' : 'bg-purple-50 border border-purple-200'}`}>
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Assigner (Provider)</div>
@@ -256,6 +295,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
             </span>
           </div>
         </div>
+
         <div className={`p-4 rounded-xl ${darkMode ? 'bg-indigo-900/20 border border-indigo-800' : 'bg-indigo-50 border border-indigo-200'}`}>
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Assignee (Recipient)</div>
           <div className={`px-3 py-2 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
@@ -265,6 +305,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
           </div>
         </div>
       </div>
+
       {policy.targets && policy.targets.length > 0 && (
         <div className={`p-4 rounded-xl ${darkMode ? 'bg-orange-900/20 border border-orange-800' : 'bg-orange-50 border border-orange-200'}`}>
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Target Assets</div>
@@ -284,6 +325,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
           </div>
         </div>
       )}
+
       {policy.rules && policy.rules.length > 0 ? (
         <div className="space-y-4">
           <div className={`text-lg font-bold ${textClass} flex items-center gap-2`}>
@@ -300,6 +342,7 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
           <p className={`text-sm ${mutedTextClass}`}>No rules extracted</p>
         </div>
       )}
+
       {policy.temporal && (policy.temporal.start_date || policy.temporal.end_date) && (
         <div className={`p-4 rounded-xl ${darkMode ? 'bg-cyan-900/20 border border-cyan-800' : 'bg-cyan-50 border border-cyan-200'}`}>
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Temporal Constraints</div>
@@ -323,14 +366,17 @@ const FullVisualView = ({ policy, darkMode, textClass, mutedTextClass }) => {
   );
 };
 
+// Full Rule Card Component
 const FullRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass }) => {
   const ruleStyles = {
     permission: { gradient: darkMode ? 'from-green-900/30 to-emerald-900/30' : 'from-green-50 to-emerald-50', border: darkMode ? 'border-green-700' : 'border-green-300', icon: Shield, iconBg: 'bg-green-500', iconColor: 'text-white', label: 'Permission' },
     prohibition: { gradient: darkMode ? 'from-red-900/30 to-rose-900/30' : 'from-red-50 to-rose-50', border: darkMode ? 'border-red-700' : 'border-red-300', icon: Ban, iconBg: 'bg-red-500', iconColor: 'text-white', label: 'Prohibition' },
     duty: { gradient: darkMode ? 'from-blue-900/30 to-indigo-900/30' : 'from-blue-50 to-indigo-50', border: darkMode ? 'border-blue-700' : 'border-blue-300', icon: AlertCircle, iconBg: 'bg-blue-500', iconColor: 'text-white', label: 'Duty' }
   };
+  
   const style = ruleStyles[rule.rule_type] || ruleStyles.permission;
   const Icon = style.icon;
+  
   return (
     <div className={`p-5 rounded-xl bg-gradient-to-br ${style.gradient} border-2 ${style.border}`}>
       <div className="flex items-center gap-3 mb-4">
@@ -344,6 +390,7 @@ const FullRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass })
           </div>
         </div>
       </div>
+
       <div className="mb-3">
         <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Actions:</div>
         <div className="flex flex-wrap gap-2">
@@ -352,6 +399,7 @@ const FullRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass })
           ))}
         </div>
       </div>
+
       {rule.constraints && rule.constraints.length > 0 && (
         <div>
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Constraints:</div>
@@ -364,6 +412,7 @@ const FullRuleCard = ({ rule, ruleNumber, darkMode, textClass, mutedTextClass })
           </div>
         </div>
       )}
+
       {rule.duties && rule.duties.length > 0 && (
         <div className="mt-3">
           <div className={`text-xs font-semibold mb-2 ${mutedTextClass}`}>Associated Duties:</div>
