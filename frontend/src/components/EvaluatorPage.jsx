@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Circle, Loader2, PlayCircle, SlidersHorizontal, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, PlayCircle, XCircle } from 'lucide-react';
 
 const EvaluatorPage = ({
   darkMode,
@@ -10,10 +10,13 @@ const EvaluatorPage = ({
   temperature,
   apiBaseUrl,
   showToast,
+  registerSuspendHandler,
+  onGlobalModelSwitch,
 }) => {
   const STORAGE_KEY = 'evaluator_dashboard_state_v1';
   const [selectedEvaluator, setSelectedEvaluator] = useState('');
   const [limits, setLimits] = useState({ workflow: 5, reasoner: 5 });
+  const [hydrated, setHydrated] = useState(false);
   const [runState, setRunState] = useState({
     evaluator: '',
     runId: null,
@@ -34,6 +37,7 @@ const EvaluatorPage = ({
   });
   const pollingRef = useRef(null);
   const offsetRef = useRef(0);
+  const runStateRef = useRef(runState);
 
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputClass = darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900';
@@ -80,6 +84,30 @@ const EvaluatorPage = ({
     }
   };
 
+  const suspendEvaluator = async ({ silent = false } = {}) => {
+    const current = runStateRef.current;
+    if (!current?.runId || current?.status !== 'running') return true;
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/storage/evaluators/run/${current.runId}/suspend`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to suspend evaluator');
+      stopPolling();
+      setRunState((prev) => ({
+        ...prev,
+        status: 'suspended',
+        progress: data.progress ?? prev.progress,
+        metricsTable: data.metrics_table ?? prev.metricsTable,
+      }));
+      if (!silent) showToast('Evaluator suspended', 'warning');
+      return true;
+    } catch (error) {
+      if (!silent) showToast(`Suspend failed: ${error.message}`, 'error');
+      return false;
+    }
+  };
+
   const pollRun = async (runId) => {
     const offset = offsetRef.current ?? 0;
 
@@ -90,6 +118,10 @@ const EvaluatorPage = ({
 
       if (typeof data.offset === 'number') {
         offsetRef.current = data.offset;
+      }
+
+      if (data.model && typeof onGlobalModelSwitch === 'function' && data.model !== selectedModel) {
+        onGlobalModelSwitch(data.model, data.active_model_label || data.model);
       }
 
       setRunState((prev) => ({
@@ -107,6 +139,8 @@ const EvaluatorPage = ({
           showToast(`${data.evaluator} evaluator completed`, 'success');
         } else if (data.status === 'cancelled') {
           showToast(`${data.evaluator} evaluator cancelled`, 'warning');
+        } else if (data.status === 'suspended') {
+          // No toast on auto-suspend (tab switches) to avoid noise.
         } else {
           showToast(`${data.evaluator} evaluator failed (exit ${data.exit_code})`, 'error');
         }
@@ -168,6 +202,26 @@ const EvaluatorPage = ({
     }
   };
 
+  const resumeEvaluator = async () => {
+    if (!runState.runId) return;
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/storage/evaluators/run/${runState.runId}/resume`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to resume evaluator');
+      setRunState((prev) => ({
+        ...prev,
+        status: 'running',
+        progress: data.progress ?? prev.progress,
+        metricsTable: data.metrics_table ?? prev.metricsTable,
+      }));
+      showToast('Evaluator resumed', 'info');
+    } catch (error) {
+      showToast(`Resume failed: ${error.message}`, 'error');
+    }
+  };
+
   const viewRecord = async (itemIndex) => {
     if (!runState.runId) return;
     setRecordDialog({
@@ -217,30 +271,43 @@ const EvaluatorPage = ({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (saved.selectedEvaluator) setSelectedEvaluator(saved.selectedEvaluator);
-      if (saved.limits) setLimits(saved.limits);
-      if (saved.runState) {
-        setRunState(saved.runState);
-        offsetRef.current = saved.runState.offset || 0;
-        if (saved.runState.runId && saved.runState.status === 'running') {
-          setResumedRun(true);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.selectedEvaluator) setSelectedEvaluator(saved.selectedEvaluator);
+        if (saved.limits) setLimits(saved.limits);
+        if (saved.runState) {
+          setRunState(saved.runState);
+          offsetRef.current = saved.runState.offset || 0;
+          if (saved.runState.runId && saved.runState.status === 'running') {
+            setResumedRun(true);
+          }
         }
       }
     } catch (error) {
       console.warn('Failed to restore evaluator dashboard state', error);
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     const payload = {
       selectedEvaluator,
       limits,
       runState,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [selectedEvaluator, limits, runState]);
+  }, [hydrated, selectedEvaluator, limits, runState]);
+
+  useEffect(() => {
+    runStateRef.current = runState;
+  }, [runState]);
+
+  useEffect(() => {
+    if (!registerSuspendHandler) return undefined;
+    return registerSuspendHandler(() => suspendEvaluator({ silent: true }));
+  }, [registerSuspendHandler]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!runState.runId || runState.status !== 'running') return;
@@ -258,8 +325,17 @@ const EvaluatorPage = ({
   }, [runState.status]);
 
   useEffect(() => {
-    return () => stopPolling();
-  }, []);
+    return () => {
+      stopPolling();
+      const current = runStateRef.current;
+      if (current?.runId && current?.status === 'running') {
+        fetch(`${apiBaseUrl}/api/storage/evaluators/run/${current.runId}/suspend`, {
+          method: 'POST',
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+  }, [apiBaseUrl]);
 
   const effectiveEvaluator = runState.evaluator || selectedEvaluator;
   const stageNodes = effectiveEvaluator === 'workflow'
@@ -373,19 +449,23 @@ const EvaluatorPage = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={runEvaluator}
+              onClick={runState.status === 'suspended' ? resumeEvaluator : runEvaluator}
               disabled={runState.status === 'running'}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed ${
+                runState.status === 'suspended'
+                  ? 'bg-gradient-to-r from-green-600 to-emerald-600'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600'
+              }`}
             >
               <PlayCircle className="w-4 h-4" />
-              Run
+              {runState.status === 'suspended' ? 'Continue' : 'Run'}
             </button>
-            {runState.status === 'running' && (
+            {(runState.status === 'running' || runState.status === 'suspended') && (
               <button
                 onClick={stopCurrentRun}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white"
               >
-                Stop
+                Cancel
               </button>
             )}
           </div>
@@ -407,6 +487,8 @@ const EvaluatorPage = ({
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 ) : item.status === 'cancelled' ? (
                   <XCircle className="w-4 h-4 text-red-500" />
+                ) : item.status === 'running' && runState.status === 'suspended' ? (
+                  <Loader2 className="w-4 h-4 text-yellow-500" />
                 ) : item.status === 'running' ? (
                   <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 ) : (
@@ -414,9 +496,10 @@ const EvaluatorPage = ({
                 )}
                 <span
                   title={`Input ${item.index}: ${item.input_preview || ''}`}
-                  className={`text-sm ${textClass} flex-1 min-w-0 truncate`}
+                  className={`text-sm ${item.status === 'running' && runState.status === 'suspended' ? 'text-yellow-500' : textClass} flex-1 min-w-0 truncate`}
                 >
                   Input {item.index}: {item.input_preview || '(loading...)'}
+                  {item.status === 'running' && runState.status === 'suspended' ? ' (suspended)' : ''}
                 </span>
                 {item.record_available && (
                   <button

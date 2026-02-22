@@ -11,7 +11,7 @@ What `run_workflow.py` does
 - Prints concise status messages for each agent.
 
 How to run
-`cd /home/yxpeng/Projects/Papers/2026/odrl-multi-agent-llm/evaluation`
+`cd evaluation`
 - Default input:
   `uv run --project ../backend python run_workflow.py`
 - Custom text:

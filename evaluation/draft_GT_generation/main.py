@@ -23,11 +23,10 @@ from scripts.util import (
 )
 
 
-DEFAULT_MODELS_CONFIG = (
-    "/home/yxpeng/Projects/Papers/2026/odrl-multi-agent-llm/backend/config/custom_models.json"
-)
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 EVALUATION_ROOT = os.path.dirname(PROJECT_ROOT)
+REPO_ROOT = os.path.dirname(EVALUATION_ROOT)
+DEFAULT_MODELS_CONFIG = os.path.join("backend", "config", "custom_models.json")
 DEFAULT_TASKS_DIR = os.path.join(EVALUATION_ROOT, "data", "text2policy", "inputs")
 DEFAULT_RESULTS_DIR = os.path.join(EVALUATION_ROOT, "data", "text2policy", "draft_GT")
 
@@ -47,7 +46,15 @@ def sanitize_name(text: str) -> str:
     return "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in text)
 
 
+def resolve_project_path(path: str) -> str:
+    """Resolve relative path against repository root."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(REPO_ROOT, path)
+
+
 def load_model_config(models_config_path: str, model_name: str) -> Dict:
+    models_config_path = resolve_project_path(models_config_path)
     with open(models_config_path, "r", encoding="utf-8") as f:
         configs = json.load(f)
 
@@ -314,6 +321,8 @@ def run(
     prune_non_refined: bool,
     export_benchmark_jsonl: bool,
 ):
+    tasks_dir = resolve_project_path(tasks_dir)
+    results_dir = resolve_project_path(results_dir)
     model_cfg = load_model_config(models_config, model_name)
     model_id = model_cfg["model_id"]
     safe_model_id = sanitize_name(model_id)

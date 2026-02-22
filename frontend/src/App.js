@@ -31,6 +31,7 @@ import { ReasonerTab } from './components/tabs/ReasonerTab';
 import { GeneratorTab } from './components/tabs/GeneratorTab';
 import { ValidatorTab } from './components/tabs/ValidatorTab';
 import StatusTab from "./components/tabs/StatusTab";
+import EvaluatorPage from './components/EvaluatorPage';
 import SettingsModal from './components/SettingsModal';
 import SimpleExampleCards from './components/SimpleExampleCards';
 import CompactHeader from './components/CompactHeader';
@@ -196,6 +197,8 @@ const ODRLDemo = () => {
   } = useChatHistory(50);
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
   const [completedStages, setCompletedStages] = useState([]);
+  const evaluatorSuspendHandlerRef = useRef(null);
+  const lastAutoSwitchRef = useRef(null);
   
   // Refs
   const abortControllerRef = useRef(new AbortController());
@@ -220,6 +223,45 @@ const ODRLDemo = () => {
   const resetAbortController = () => {
     abortControllerRef.current = new AbortController();
   };
+
+  const registerEvaluatorSuspendHandler = React.useCallback((handler) => {
+    evaluatorSuspendHandlerRef.current = handler;
+    return () => {
+      if (evaluatorSuspendHandlerRef.current === handler) {
+        evaluatorSuspendHandlerRef.current = null;
+      }
+    };
+  }, []);
+
+  const applyGlobalModelSwitch = React.useCallback((nextModel, sourceLabel = null) => {
+    if (!nextModel) return;
+    setSelectedModel((prev) => {
+      if (prev === nextModel) return prev;
+      localStorage.setItem('selectedModel', nextModel);
+      const dedupeKey = `${prev || 'none'}->${nextModel}`;
+      if (lastAutoSwitchRef.current !== dedupeKey) {
+        lastAutoSwitchRef.current = dedupeKey;
+        const shown = sourceLabel || nextModel;
+        showToast(`Model unavailable. Auto-switched to ${shown}`, 'warning');
+      }
+      return nextModel;
+    });
+  }, [showToast]);
+
+  const handleTabSwitch = React.useCallback(async (nextTab) => {
+    if (
+      activeTab === 'evaluators' &&
+      nextTab !== 'evaluators' &&
+      typeof evaluatorSuspendHandlerRef.current === 'function'
+    ) {
+      try {
+        await evaluatorSuspendHandlerRef.current();
+      } catch (error) {
+        console.warn('Failed to suspend evaluator before tab switch', error);
+      }
+    }
+    setActiveTab(nextTab);
+  }, [activeTab]);
 
   const getModelConfig = React.useCallback((modelValue) => {
     console.log('[getModelConfig] Input:', modelValue);
@@ -306,17 +348,11 @@ const ODRLDemo = () => {
           console.log('[Init] Step 4: Restoring saved model...');
           
           if (savedModel.startsWith('custom:')) {
-            const exists = customModels.some(m => m.value === savedModel);
-            console.log(`[Init] Custom model exists: ${exists}`);
-            
-            if (exists) {
-              setSelectedModel(savedModel);
-              console.log('[Init]  Restored:', savedModel);
-            } else {
-              console.warn('[Init] ⚠️ Model not found, clearing');
-              localStorage.removeItem('selectedModel');
-              showToast('Saved model no longer exists', 'warning');
-            }
+            // Avoid auto-restoring custom endpoints because stale/invalid URLs can
+            // surface as upstream 502 errors during Parse.
+            console.warn('[Init] Skipping auto-restore for custom model');
+            localStorage.removeItem('selectedModel');
+            showToast('Custom model was not auto-restored. Please choose one manually.', 'warning');
           } else {
             setSelectedModel(savedModel);
           }
@@ -1665,13 +1701,13 @@ const handleSaveToBackend = async () => {
   advancedMode={advancedMode}
   setAdvancedMode={setAdvancedMode}
   onOpenSettings={() => setSettingsOpen(true)}
-  onOpenPerAgentSettings={() => setPerAgentModalOpen(true)}  // NEW!
-  
+  onOpenEvaluator={() => setActiveTab('evaluators')}
+  onReset={resetDemo}
 />
 
       <CompactAgentNav
       activeTab={activeTab}
-      setActiveTab={setActiveTab}
+      setActiveTab={handleTabSwitch}
       agentStates={agentStates}
       parsedData={parsedData}
       reasoningResult={reasoningResult}
@@ -1871,7 +1907,7 @@ const handleSaveToBackend = async () => {
           Reset
         </button>
         <span>•</span>
-        <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+        <a href={`${API_BASE_URL}/docs`} target="_blank" rel="noopener noreferrer" className={`hover:underline ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
           API Docs
         </a>
       </div>
@@ -1956,6 +1992,21 @@ const handleSaveToBackend = async () => {
     }}
   />
 )}
+
+        {activeTab === 'evaluators' && (
+          <EvaluatorPage
+            darkMode={darkMode}
+            textClass={textClass}
+            mutedTextClass={mutedTextClass}
+            selectedModel={selectedModel}
+            customModels={customModels}
+            temperature={temperature}
+            apiBaseUrl={API_BASE_URL}
+            showToast={showToast}
+            registerSuspendHandler={registerEvaluatorSuspendHandler}
+            onGlobalModelSwitch={applyGlobalModelSwitch}
+          />
+        )}
  
       {activeTab === 'status' && (
   <StatusTab

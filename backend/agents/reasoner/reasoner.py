@@ -5,7 +5,7 @@ UNIVERSAL CONTRADICTION DETECTOR
 Use-case independent systematic analysis
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
@@ -75,6 +75,19 @@ class Issue(BaseModel):
         default=None,
         description="Type of conflict detected. MUST be one of the 12 specific conflict types: 'unmeasurable_terms', 'temporal_overlap', 'temporal_expired_policy', 'temporal_impossible_sequence', 'spatial_hierarchy_conflict', 'spatial_overlap_conflict', 'action_hierarchy_conflict', 'action_subsumption_conflict', 'role_hierarchy_conflict', 'party_specification_inconsistency', 'circular_approval_dependency', 'workflow_cycle_conflict'. If a conflict is detected, this field MUST be set to the appropriate type."
     )
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def _normalize_category_aliases(cls, value):
+        """Normalize common alias labels from LLM outputs to enum values."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            aliases = {
+                "unmeasurable_terms": IssueCategory.VAGUE_TERM.value,
+                "unmeasurable_term": IssueCategory.VAGUE_TERM.value,
+            }
+            return aliases.get(normalized, normalized)
+        return value
 
 class ReasoningResult(BaseModel):
     """Pure analysis output - NO data modification"""

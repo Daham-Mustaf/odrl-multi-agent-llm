@@ -35,19 +35,19 @@ RULE_TEMPLATE = os.path.join(BASE_DIR,config['RULE_TEMPLATE'])
 
 
 # # Path for the directory containing ODRL files:
-# ODRL_POLICY_DIRECTORY = "C:/Users/mustafa/Desktop/odrl-langchane/generated_odrl_from_template"
-# ODRL_POLICY_ONTOLOGY_GEN = "C:/Users/mustafa/Desktop/odrl-langchane/generated_odrl_from_ontology" 
-# REFINED_ODRL = "C:/Users/mustafa/Desktop/odrl-langchane/refined_odrl"
+# ODRL_POLICY_DIRECTORY = "generated_odrl_from_template"
+# ODRL_POLICY_ONTOLOGY_GEN = "generated_odrl_from_ontology"
+# REFINED_ODRL = "refined_odrl"
 
 # # Define the path as a constant
-# ODRL_ONTOLOGY_PATH = "C:/Users/mustafa/Desktop/odrl-langchane/data/ontology/odrl.ttl"
+# ODRL_ONTOLOGY_PATH = "data/ontology/odrl.ttl"
 
 
 
 # # Path for the directory containing ODRL Shapes:
-# AGREEMENT_SHAPES = "C:/Users/mustafa/Desktop/odrl-langchane/ODRL_policy_validation_shapes/ODRL_Agreement_Shape.ttl" 
-# OFFER_SHAPES = "C:/Users/mustafa/Desktop/odrl-langchane/ODRL_policy_validation_shapes/ODRL_Offer_Shape.ttl" 
-# RULE_SHAPES = "C:/Users/mustafa/Desktop/odrl-langchane/ODRL_policy_validation_shapes/ODRL_Rule_Shapes.ttl" 
+# AGREEMENT_SHAPES = "ODRL_policy_validation_shapes/ODRL_Agreement_Shape.ttl"
+# OFFER_SHAPES = "ODRL_policy_validation_shapes/ODRL_Offer_Shape.ttl"
+# RULE_SHAPES = "ODRL_policy_validation_shapes/ODRL_Rule_Shapes.ttl"
 
 
 

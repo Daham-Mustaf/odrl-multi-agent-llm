@@ -5,7 +5,7 @@ This document describes how to run `main.py` with the current project setup.
 ## 1) One-Time Setup
 
 ```bash
-cd /home/yxpeng/Projects/Papers/2026/odrl-multi-agent-llm/evaluation/draft_GT_generation
+cd evaluation/draft_GT_generation
 uv sync --project config
 ```
 

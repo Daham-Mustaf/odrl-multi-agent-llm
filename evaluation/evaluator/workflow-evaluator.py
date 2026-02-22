@@ -14,6 +14,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 RUN_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, "evaluation", "run_auto-agent_workflow.py")
 
 
+def _resolve_project_path(path: str) -> str:
+    """Resolve relative paths from project root."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(PROJECT_ROOT, path)
+
+
 def _load_workflow_module():
     spec = importlib.util.spec_from_file_location("run_auto_agent_workflow", RUN_WORKFLOW_PATH)
     if spec is None or spec.loader is None:
@@ -39,6 +46,31 @@ ODRL_NAMESPACE = "http://www.w3.org/ns/odrl/2/"
 ODRL = Namespace(ODRL_NAMESPACE) if Namespace else None
 XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema#"
 
+_MODEL_ERROR_HINTS = (
+    "502",
+    "503",
+    "504",
+    "bad gateway",
+    "service unavailable",
+    "gateway timeout",
+    "connection error",
+    "connection refused",
+    "connection reset",
+    "read timeout",
+    "timed out",
+    "rate limit",
+    "api key",
+    "unauthorized",
+    "forbidden",
+    "authentication",
+    "invalid_request_error",
+    "model_not_found",
+    "provider",
+    "litellm",
+    "openai",
+    "anthropic",
+)
+
 
 def _collapse_whitespace(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
@@ -50,6 +82,40 @@ def normalize_text(value: Any) -> str:
     if not isinstance(value, str):
         value = str(value)
     return _collapse_whitespace(value).lower()
+
+
+def _is_model_runtime_error(exc: Exception) -> bool:
+    text = normalize_text(str(exc))
+    if not text:
+        return False
+    return any(hint in text for hint in _MODEL_ERROR_HINTS)
+
+
+def _normalize_right_operand(value: Any) -> str:
+    """Lenient normalization for rightOperand matching.
+
+    Tolerates datatype annotation and quoting differences, e.g.:
+    - "non-commercial"^^xsd:string == non-commercial
+    - "P2Y"^^xsd:duration == P2Y
+    - 1^^xsd:integer == "1"^^xsd:integer
+    """
+    text = normalize_text(value)
+    if not text:
+        return ""
+
+    # Drop datatype suffix for comparison-level tolerance.
+    if "^^" in text:
+        text = text.split("^^", 1)[0].strip()
+
+    # Drop language tag if present (e.g., "abc"@en).
+    if re.match(r'^".*"\s*@[a-z0-9-]+$', text):
+        text = re.sub(r"\s*@[a-z0-9-]+$", "", text).strip()
+
+    # Unquote simple quoted literal values.
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+        text = text[1:-1].strip()
+
+    return text
 
 
 def normalize_scalar_for_exact(value: Any) -> str:
@@ -86,7 +152,7 @@ def _normalize_triplet(triplet: Iterable[Any]) -> Tuple[str, str, str]:
     return (
         normalize_text(parts[0]),
         normalize_text(parts[1]),
-        normalize_text(parts[2]),
+        _normalize_right_operand(parts[2]),
     )
 
 
@@ -455,14 +521,13 @@ def _row_prf(gold_set: set, pred_set: set) -> Tuple[float, float, float]:
 
 
 def evaluate_predictions(gold_rows: List[Dict[str, Any]], pred_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    scalar_fields = ["policy_type", "assigner", "assignee", "targets", "start_date", "end_date", "duration"]
+    scalar_fields = ["policy_type"]
     list_fields = [
         "permission_actions",
         "permission_triplets",
         "permission_duties",
         "prohibition_actions",
         "prohibition_triplets",
-        "prohibition_duties",
     ]
 
     scalar_accuracy: Dict[str, float] = {}
@@ -558,14 +623,26 @@ def _load_rows_from_json(
     end: Optional[int] = None,
     limit: Optional[int] = 5,
 ) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, list):
-        raise ValueError("JSON dataset must be a list of objects")
+    path = _resolve_project_path(path)
+    rows: List[Dict[str, Any]] = []
+    if str(path).lower().endswith(".jsonl"):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rows.append(dict(json.loads(line)))
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            raise ValueError("JSON dataset must be a list of objects")
+        rows = [dict(row) for row in data]
+
     if end is not None:
-        slice_end = min(end + 1, len(data))
-        return [dict(row) for row in data[start:slice_end]]
-    return [dict(row) for row in data[start : start + (limit or 5)]]
+        slice_end = min(end + 1, len(rows))
+        return rows[start:slice_end]
+    return rows[start : start + (limit or 5)]
 
 
 DATASET_FIELDS: List[Tuple[str, str]] = [
@@ -613,18 +690,27 @@ def _write_record_file(
     output_path: str,
     gold_rows: List[Dict[str, Any]],
     parsed_preds: List[Dict[str, Any]],
-    turtle_preds: List[Dict[str, Any]],
+    generation_preds: List[Dict[str, Any]],
+    regeneration_preds: List[Dict[str, Any]],
 ) -> None:
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["Record", "Column", "Input", "Gold", "Parsed Data", "Turtle Final Output"]
+            [
+                "Record",
+                "Column",
+                "Input",
+                "Gold",
+                "Parsed Data",
+                "Generation Output",
+                "Regeneration Output",
+            ]
         )
-        for idx, (gold, parsed, turtle) in enumerate(
-            zip(gold_rows, parsed_preds, turtle_preds), 1
+        for idx, (gold, parsed, generation, regeneration) in enumerate(
+            zip(gold_rows, parsed_preds, generation_preds, regeneration_preds), 1
         ):
             writer.writerow(
-                [idx, "Input", _format_value(gold.get("input")), "", "", ""]
+                [idx, "Input", _format_value(gold.get("input")), "", "", "", ""]
             )
             for label, key in DATASET_FIELDS:
                 gold_value = _format_value(gold.get(key))
@@ -635,7 +721,8 @@ def _write_record_file(
                         "",
                         gold_value,
                         _format_value(parsed.get(key)),
-                        _format_value(turtle.get(key)),
+                        _format_value(generation.get(key)),
+                        _format_value(regeneration.get(key)),
                     ]
                 )
             writer.writerow([])
@@ -659,70 +746,104 @@ def _compute_delta(parsed_value: Any, turtle_value: Any) -> str:
         return ""
 
 
+def _format_seconds(value: Any) -> str:
+    try:
+        if value is None or value == "":
+            return ""
+        return f"{float(value):.2f}"
+    except Exception:
+        return str(value)
+
+
+def _display_seconds(value: Any) -> str:
+    """Human-friendly runtime display for console output."""
+    formatted = _format_seconds(value)
+    return formatted if formatted else "-"
+
+
 def _write_metrics_file(output_path: str, metrics: Dict[str, Any]) -> None:
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Field", "Metric", "Parsed Data", "Turtle Final Output", "Delta (Final - Parser)"])
+        writer.writerow(
+            [
+                "Field",
+                "Metric",
+                "Parsed Data",
+                "Generation Output",
+                "Regeneration Output",
+                "Delta (Generation - Parser)",
+                "Delta (Regeneration - Parser)",
+            ]
+        )
 
         parsed = metrics.get("parsed_data", {})
-        turtle = metrics.get("turtle_final_output", {})
+        generation = metrics.get("generation_output", {})
+        regeneration = metrics.get("regeneration_output", {})
 
         parsed_scalar = parsed.get("scalar_accuracy", {})
-        turtle_scalar = turtle.get("scalar_accuracy", {})
+        generation_scalar = generation.get("scalar_accuracy", {})
+        regeneration_scalar = regeneration.get("scalar_accuracy", {})
         scalar_order = [
             "policy_type",
-            "assigner",
-            "assignee",
-            "targets",
-            "start_date",
-            "end_date",
-            "duration",
         ]
-        writer.writerow(["Scalar (Exact Match)", "", "", ""])
+        writer.writerow(["Scalar (Exact Match)", "", "", "", "", "", ""])
         for field in scalar_order:
-            if field in parsed_scalar or field in turtle_scalar:
+            if field in parsed_scalar or field in generation_scalar or field in regeneration_scalar:
                 parsed_value = parsed_scalar.get(field, "")
-                turtle_value = turtle_scalar.get(field, "")
+                generation_value = generation_scalar.get(field, "")
+                regeneration_value = regeneration_scalar.get(field, "")
                 writer.writerow(
                     [
                         field,
                         "accuracy",
                         _format_metric(parsed_value),
-                        _format_metric(turtle_value),
-                        _compute_delta(parsed_value, turtle_value),
+                        _format_metric(generation_value),
+                        _format_metric(regeneration_value),
+                        _compute_delta(parsed_value, generation_value),
+                        _compute_delta(parsed_value, regeneration_value),
                     ]
                 )
         writer.writerow([])
 
         parsed_lists = parsed.get("list_metrics", {})
-        turtle_lists = turtle.get("list_metrics", {})
+        generation_lists = generation.get("list_metrics", {})
+        regeneration_lists = regeneration.get("list_metrics", {})
         list_order = [
             "permission_actions",
             "permission_triplets",
             "permission_duties",
             "prohibition_actions",
             "prohibition_triplets",
-            "prohibition_duties",
         ]
-        writer.writerow(["List Metrics (P/R/F1)", "", "", ""])
+        writer.writerow(["List Metrics (P/R/F1)", "", "", "", "", "", ""])
         for field in list_order:
-            if field not in parsed_lists and field not in turtle_lists:
+            if (
+                field not in parsed_lists
+                and field not in generation_lists
+                and field not in regeneration_lists
+            ):
                 continue
             parsed_metrics = parsed_lists.get(field, {})
-            turtle_metrics = turtle_lists.get(field, {})
+            generation_metrics = generation_lists.get(field, {})
+            regeneration_metrics = regeneration_lists.get(field, {})
             parsed_precision = parsed_metrics.get("precision")
-            turtle_precision = turtle_metrics.get("precision")
+            generation_precision = generation_metrics.get("precision")
+            regeneration_precision = regeneration_metrics.get("precision")
             parsed_recall = parsed_metrics.get("recall")
-            turtle_recall = turtle_metrics.get("recall")
+            generation_recall = generation_metrics.get("recall")
+            regeneration_recall = regeneration_metrics.get("recall")
             parsed_f1 = parsed_metrics.get("f1")
-            turtle_f1 = turtle_metrics.get("f1")
+            generation_f1 = generation_metrics.get("f1")
+            regeneration_f1 = regeneration_metrics.get("f1")
             writer.writerow(
                 [
                     field,
                     "precision",
                     _format_metric(parsed_precision),
-                    _format_metric(turtle_precision),
-                    _compute_delta(parsed_precision, turtle_precision),
+                    _format_metric(generation_precision),
+                    _format_metric(regeneration_precision),
+                    _compute_delta(parsed_precision, generation_precision),
+                    _compute_delta(parsed_precision, regeneration_precision),
                 ]
             )
             writer.writerow(
@@ -730,8 +851,10 @@ def _write_metrics_file(output_path: str, metrics: Dict[str, Any]) -> None:
                     field,
                     "recall",
                     _format_metric(parsed_recall),
-                    _format_metric(turtle_recall),
-                    _compute_delta(parsed_recall, turtle_recall),
+                    _format_metric(generation_recall),
+                    _format_metric(regeneration_recall),
+                    _compute_delta(parsed_recall, generation_recall),
+                    _compute_delta(parsed_recall, regeneration_recall),
                 ]
             )
             writer.writerow(
@@ -739,24 +862,46 @@ def _write_metrics_file(output_path: str, metrics: Dict[str, Any]) -> None:
                     field,
                     "f1",
                     _format_metric(parsed_f1),
-                    _format_metric(turtle_f1),
-                    _compute_delta(parsed_f1, turtle_f1),
+                    _format_metric(generation_f1),
+                    _format_metric(regeneration_f1),
+                    _compute_delta(parsed_f1, generation_f1),
+                    _compute_delta(parsed_f1, regeneration_f1),
                 ]
             )
         writer.writerow([])
 
-        writer.writerow(["End-to-End (Exact Match)", "", "", ""])
+        writer.writerow(["End-to-End (Exact Match)", "", "", "", "", "", ""])
         parsed_end = parsed.get("end_to_end_accuracy", "")
-        turtle_end = turtle.get("end_to_end_accuracy", "")
+        generation_end = generation.get("end_to_end_accuracy", "")
+        regeneration_end = regeneration.get("end_to_end_accuracy", "")
         writer.writerow(
             [
                 "end_to_end_accuracy",
                 "accuracy",
                 _format_metric(parsed_end),
-                _format_metric(turtle_end),
-                _compute_delta(parsed_end, turtle_end),
+                _format_metric(generation_end),
+                _format_metric(regeneration_end),
+                _compute_delta(parsed_end, generation_end),
+                _compute_delta(parsed_end, regeneration_end),
             ]
         )
+        writer.writerow([])
+
+        avg_stage_times = metrics.get("avg_stage_times_seconds", {})
+        writer.writerow(["Average Runtime (s)", "", "", "", "", "", ""])
+        for field in ("parser", "reasoner", "generator", "validator"):
+            value = avg_stage_times.get(field, "")
+            writer.writerow(
+                [
+                    f"{field}_avg_time_s",
+                    "seconds",
+                    "-",
+                    "-",
+                    _format_seconds(value),
+                    "-",
+                    "-",
+                ]
+            )
 
 def _save_evaluation_record(
     batch_dir: str,
@@ -767,9 +912,11 @@ def _save_evaluation_record(
     model: str,
     temperature: float,
     parsed_pred: Dict[str, Any],
-    turtle_pred: Dict[str, Any],
+    generation_pred: Dict[str, Any],
+    regeneration_pred: Dict[str, Any],
     runtime_row: Dict[str, Any],
     last_generator_turtle: Optional[str] = None,
+    run_error: str = "",
 ) -> str:
     """Save one evaluation record to a JSON file under the batch directory.
     last_generator_turtle: raw turtle from the last generator run (regeneration if any, else generation).
@@ -799,8 +946,10 @@ def _save_evaluation_record(
         "final_output": final_output,
         "metrics": result.get("metrics"),
         "extracted_parsed_pred": parsed_pred,
-        "extracted_turtle_pred": turtle_pred,
+        "extracted_generation_pred": generation_pred,
+        "extracted_regeneration_pred": regeneration_pred,
         "runtime": runtime_row,
+        "run_error": run_error,
     }
 
     with open(path, "w", encoding="utf-8") as f:
@@ -892,11 +1041,15 @@ def main() -> None:
         default=None,
         help="0-based end index of the range (inclusive). If set, overrides --limit.",
     )
-    parser.add_argument("--dataset-json", type=str, default=None)
+    parser.add_argument(
+        "--dataset-json",
+        type=str,
+        default=os.path.join("evaluation", "data", "text2policy", "Ground_Truth", "text2ttl_GT.jsonl"),
+    )
     parser.add_argument(
         "--models",
         type=str,
-        default=os.path.join(PROJECT_ROOT, "backend", "config", "custom_models.json"),
+        default=os.path.join("backend", "config", "custom_models.json"),
     )
     parser.add_argument("--model", type=str, default=None, help="Override model value (e.g., custom:deepseek-chat)")
     parser.add_argument("--temperature", type=float, default=None, help="Override temperature")
@@ -910,7 +1063,7 @@ def main() -> None:
 
     if args.dataset_json:
         rows = _load_rows_from_json(
-            args.dataset_json,
+            _resolve_project_path(args.dataset_json),
             start=args.start,
             end=args.end,
             limit=args.limit,
@@ -937,73 +1090,125 @@ def main() -> None:
         else:
             custom_config = {}
     else:
-        model, custom_config, default_temperature = _load_default_custom_model(args.models)
+        model, custom_config, default_temperature = _load_default_custom_model(
+            _resolve_project_path(args.models)
+        )
         temperature = args.temperature if args.temperature is not None else default_temperature
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    results_dir = os.path.join(os.path.dirname(__file__), "results", "evaluation")
+    results_dir = _resolve_project_path(
+        os.path.join("evaluation", "evaluator", "results", "evaluation")
+    )
     batch_dir = os.path.join(results_dir, f"batch_{timestamp}")
     os.makedirs(batch_dir, exist_ok=True)
-    print(f"EVAL_BATCH_DIR|path={batch_dir}", flush=True)
+    print(f"EVAL_BATCH_DIR|path={os.path.relpath(batch_dir)}", flush=True)
 
     gold_rows: List[Dict[str, Any]] = []
     parsed_preds: List[Dict[str, Any]] = []
-    turtle_preds: List[Dict[str, Any]] = []
+    generation_preds: List[Dict[str, Any]] = []
+    regeneration_preds: List[Dict[str, Any]] = []
     runtime_rows: List[Dict[str, Any]] = []
+    failed_records = 0
 
     total_rows = len(rows)
     for idx, row in enumerate(rows, 1):
         gold = extract_gold_row(row)
         user_text = gold.get("input") or ""
-        if not user_text:
-            raise ValueError(f"Row {idx} is missing Input text")
-
-        preview = user_text.replace("\n", " ").replace("|", "/")[:160]
+        preview = (user_text or "").replace("\n", " ").replace("|", "/")[:160]
         print(f"EVAL_ITEM_START|idx={idx}|total={total_rows}|input={preview}", flush=True)
-
-        result = run_workflow(
-            user_text=user_text,
-            model=model,
-            custom_config=custom_config,
-            temperature=temperature,
-        )
-
-        gold_rows.append(gold)
-        parsed_pred = extract_from_parsed_data(result.get("parsed_data") or {})
-        parsed_preds.append(parsed_pred)
-
-        # Use the actual last generator output: regeneration if present, else first generation.
-        # run_workflow's final_output is rdflib-formatted; we want the raw last run for evaluation and recording.
-        last_turtle = (result.get("regeneration") or {}).get("odrl_turtle") or (result.get("generation") or {}).get("odrl_turtle") or result.get("final_output")
-        turtle_pred = extract_from_turtle(last_turtle) if last_turtle else None
-        turtle_pred = turtle_pred or {}
-        turtle_preds.append(turtle_pred)
-
-        metrics = result.get("metrics", {})
-        parser_metrics = metrics.get("parser", {})
-        reasoner_metrics = metrics.get("reasoner", {})
-        generator_metrics = metrics.get("generator", {})
-        validator_metrics = metrics.get("validator", {})
-        total_metrics = metrics.get("total", {})
+        row_error = ""
+        result: Dict[str, Any] = {}
+        parsed_pred: Dict[str, Any] = {}
+        generation_pred: Dict[str, Any] = {}
+        regeneration_pred: Dict[str, Any] = {}
+        last_turtle: Optional[str] = None
         runtime_row = {
             "record": idx,
             "input": user_text,
-            "parser_time_ms": parser_metrics.get("time_ms", ""),
-            "reasoner_time_ms": reasoner_metrics.get("time_ms", ""),
-            "generator_time_ms": generator_metrics.get("time_ms", ""),
-            "validator_time_ms": validator_metrics.get("time_ms", ""),
-            "total_time_ms": total_metrics.get("time_ms", ""),
-            "parser_input_tokens": parser_metrics.get("input_tokens", ""),
-            "parser_output_tokens": parser_metrics.get("output_tokens", ""),
-            "reasoner_input_tokens": reasoner_metrics.get("input_tokens", ""),
-            "reasoner_output_tokens": reasoner_metrics.get("output_tokens", ""),
-            "generator_input_tokens": generator_metrics.get("input_tokens", ""),
-            "generator_output_tokens": generator_metrics.get("output_tokens", ""),
-            "validator_input_tokens": validator_metrics.get("input_tokens", ""),
-            "validator_output_tokens": validator_metrics.get("output_tokens", ""),
-            "total_input_tokens": total_metrics.get("input_tokens", ""),
-            "total_output_tokens": total_metrics.get("output_tokens", ""),
+            "parser_time_ms": "",
+            "reasoner_time_ms": "",
+            "generator_time_ms": "",
+            "validator_time_ms": "",
+            "total_time_ms": "",
+            "parser_input_tokens": "",
+            "parser_output_tokens": "",
+            "reasoner_input_tokens": "",
+            "reasoner_output_tokens": "",
+            "generator_input_tokens": "",
+            "generator_output_tokens": "",
+            "validator_input_tokens": "",
+            "validator_output_tokens": "",
+            "total_input_tokens": "",
+            "total_output_tokens": "",
         }
+
+        try:
+            if not user_text:
+                raise ValueError(f"Row {idx} is missing Input text")
+
+            result = run_workflow(
+                user_text=user_text,
+                model=model,
+                custom_config=custom_config,
+                temperature=temperature,
+            )
+
+            parsed_pred = extract_from_parsed_data(result.get("parsed_data") or {})
+            generation_turtle = (result.get("generation") or {}).get("odrl_turtle")
+            generation_pred = extract_from_turtle(generation_turtle) if generation_turtle else None
+            generation_pred = generation_pred or {}
+            # Use the actual last generator output: regeneration if present, else first generation.
+            last_turtle = (result.get("regeneration") or {}).get("odrl_turtle") or (result.get("generation") or {}).get("odrl_turtle") or result.get("final_output")
+            regeneration_pred = extract_from_turtle(last_turtle) if last_turtle else None
+            regeneration_pred = regeneration_pred or {}
+
+            metrics = result.get("metrics", {})
+            stage_times = result.get("stage_times", {})
+            parser_metrics = metrics.get("parser", {})
+            reasoner_metrics = metrics.get("reasoner", {})
+            generator_metrics = metrics.get("generator", {})
+            validator_metrics = metrics.get("validator", {})
+            total_metrics = metrics.get("total", {})
+            runtime_row = {
+                "record": idx,
+                "input": user_text,
+                # Use first-pass stage times only (exclude regeneration/revalidation).
+                "parser_time_ms": stage_times.get("parser_time_ms", parser_metrics.get("time_ms", "")),
+                "reasoner_time_ms": stage_times.get("reasoner_time_ms", reasoner_metrics.get("time_ms", "")),
+                "generator_time_ms": stage_times.get("generator_time_ms", generator_metrics.get("time_ms", "")),
+                "validator_time_ms": stage_times.get("validator_time_ms", validator_metrics.get("time_ms", "")),
+                "total_time_ms": total_metrics.get("time_ms", ""),
+                "parser_input_tokens": parser_metrics.get("input_tokens", ""),
+                "parser_output_tokens": parser_metrics.get("output_tokens", ""),
+                "reasoner_input_tokens": reasoner_metrics.get("input_tokens", ""),
+                "reasoner_output_tokens": reasoner_metrics.get("output_tokens", ""),
+                "generator_input_tokens": generator_metrics.get("input_tokens", ""),
+                "generator_output_tokens": generator_metrics.get("output_tokens", ""),
+                "validator_input_tokens": validator_metrics.get("input_tokens", ""),
+                "validator_output_tokens": validator_metrics.get("output_tokens", ""),
+                "total_input_tokens": total_metrics.get("input_tokens", ""),
+                "total_output_tokens": total_metrics.get("output_tokens", ""),
+            }
+        except Exception as exc:
+            row_error = str(exc).replace("\n", " ")[:1000]
+            failed_records += 1
+            print(f"EVAL_ITEM_ERROR|idx={idx}|error={row_error}", flush=True)
+            if _is_model_runtime_error(exc):
+                print(
+                    f"EVAL_ATTEMPT_MODEL_ERROR|idx={idx}|error={row_error}",
+                    flush=True,
+                )
+                raise SystemExit(2)
+            print(
+                f"EVAL_ATTEMPT_FATAL|idx={idx}|error={row_error}",
+                flush=True,
+            )
+            raise SystemExit(1)
+
+        gold_rows.append(gold)
+        parsed_preds.append(parsed_pred)
+        generation_preds.append(generation_pred)
+        regeneration_preds.append(regeneration_pred)
         runtime_rows.append(runtime_row)
         print(
             "EVAL_ITEM_TOKENS|"
@@ -1030,9 +1235,11 @@ def main() -> None:
             model=model,
             temperature=temperature,
             parsed_pred=parsed_pred,
-            turtle_pred=turtle_pred,
+            generation_pred=generation_pred,
+            regeneration_pred=regeneration_pred,
             runtime_row=runtime_row,
             last_generator_turtle=last_turtle,
+            run_error=row_error,
         )
         print(f"EVAL_ITEM_DONE|idx={idx}", flush=True)
 
@@ -1042,30 +1249,91 @@ def main() -> None:
     tokens_path = os.path.join(batch_dir, "tokens.csv")
 
     # 1) Generate records CSV first (same content used for metrics)
-    _write_record_file(record_path, gold_rows, parsed_preds, turtle_preds)
+    _write_record_file(
+        record_path,
+        gold_rows,
+        parsed_preds,
+        generation_preds,
+        regeneration_preds,
+    )
 
     # 2) Then compute performance from those records (normalize then compare)
     parsed_metrics = evaluate_predictions(gold_rows, parsed_preds)
-    turtle_metrics = evaluate_predictions(gold_rows, turtle_preds)
+    generation_metrics = evaluate_predictions(gold_rows, generation_preds)
+    regeneration_metrics = evaluate_predictions(gold_rows, regeneration_preds)
+
+    def _avg_stage_seconds(key: str) -> Optional[float]:
+        values: List[float] = []
+        for row in runtime_rows:
+            raw = row.get(key)
+            if raw in ("", None):
+                continue
+            try:
+                values.append(float(raw))
+            except Exception:
+                continue
+        if not values:
+            return None
+        return round((sum(values) / len(values)) / 1000.0, 2)
+
+    avg_stage_times_seconds = {
+        "parser": _avg_stage_seconds("parser_time_ms"),
+        "reasoner": _avg_stage_seconds("reasoner_time_ms"),
+        "generator": _avg_stage_seconds("generator_time_ms"),
+        "validator": _avg_stage_seconds("validator_time_ms"),
+    }
 
     print("\n=== Parsed Data Evaluation ===", flush=True)
     print(json.dumps(parsed_metrics, ensure_ascii=False, indent=2), flush=True)
-    print("\n=== Turtle Final Output Evaluation ===", flush=True)
-    print(json.dumps(turtle_metrics, ensure_ascii=False, indent=2), flush=True)
+    print("\n=== Generation Output Evaluation ===", flush=True)
+    print(json.dumps(generation_metrics, ensure_ascii=False, indent=2), flush=True)
+    print("\n=== Regeneration Output Evaluation ===", flush=True)
+    print(json.dumps(regeneration_metrics, ensure_ascii=False, indent=2), flush=True)
+    print("\n=== Average Runtime (s) ===", flush=True)
+    print(
+        json.dumps(
+            {
+                "parse_avg_time_s": _display_seconds(avg_stage_times_seconds.get("parser")),
+                "reasoner_avg_time_s": _display_seconds(avg_stage_times_seconds.get("reasoner")),
+                "generator_avg_time_s": _display_seconds(avg_stage_times_seconds.get("generator")),
+                "validator_avg_time_s": _display_seconds(avg_stage_times_seconds.get("validator")),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        flush=True,
+    )
 
     combined_metrics = {
         "parsed_data": parsed_metrics,
-        "turtle_final_output": turtle_metrics,
+        "generation_output": generation_metrics,
+        "regeneration_output": regeneration_metrics,
+        "failed_records": failed_records,
+        "total_records": len(gold_rows),
+        "avg_stage_times_seconds": avg_stage_times_seconds,
     }
     _write_metrics_file(metrics_path, combined_metrics)
     _write_time_metrics_file(time_path, runtime_rows)
     _write_token_metrics_file(tokens_path, runtime_rows)
-    print(f"\nBatch dir: {batch_dir}", flush=True)
-    print(f"Records saved: {record_path}", flush=True)
-    print(f"Metrics saved: {metrics_path}", flush=True)
-    print(f"Time saved: {time_path}", flush=True)
-    print(f"Tokens saved: {tokens_path}", flush=True)
-
+    avg_runtime_path = os.path.join(batch_dir, "avg_runtime.json")
+    with open(avg_runtime_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "parse_avg_time_s": avg_stage_times_seconds.get("parser"),
+                "reasoner_avg_time_s": avg_stage_times_seconds.get("reasoner"),
+                "generator_avg_time_s": avg_stage_times_seconds.get("generator"),
+                "validator_avg_time_s": avg_stage_times_seconds.get("validator"),
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    print(f"\nBatch dir: {os.path.relpath(batch_dir)}", flush=True)
+    print(f"Records saved: {os.path.relpath(record_path)}", flush=True)
+    print(f"Metrics saved: {os.path.relpath(metrics_path)}", flush=True)
+    print(f"Time saved: {os.path.relpath(time_path)}", flush=True)
+    print(f"Tokens saved: {os.path.relpath(tokens_path)}", flush=True)
+    print(f"Average runtime saved: {os.path.relpath(avg_runtime_path)}", flush=True)
 
 if __name__ == "__main__":
     main()
