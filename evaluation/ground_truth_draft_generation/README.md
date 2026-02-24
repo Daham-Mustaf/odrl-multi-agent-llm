@@ -5,7 +5,7 @@ This document describes how to run `main.py` with the current project setup.
 ## 1) One-Time Setup
 
 ```bash
-cd evaluation/draft_GT_generation
+cd evaluation/ground_truth_draft_generation
 uv sync --project config
 ```
 

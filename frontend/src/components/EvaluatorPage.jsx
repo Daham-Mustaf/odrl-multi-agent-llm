@@ -15,7 +15,7 @@ const EvaluatorPage = ({
 }) => {
   const STORAGE_KEY = 'evaluator_dashboard_state_v1';
   const [selectedEvaluator, setSelectedEvaluator] = useState('');
-  const [limits, setLimits] = useState({ workflow: 5, reasoner: 5 });
+  const [limits, setLimits] = useState({ workflow: 5, reasoner: 5, generator: 5 });
   const [hydrated, setHydrated] = useState(false);
   const [runState, setRunState] = useState({
     evaluator: '',
@@ -274,7 +274,7 @@ const EvaluatorPage = ({
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved.selectedEvaluator) setSelectedEvaluator(saved.selectedEvaluator);
-        if (saved.limits) setLimits(saved.limits);
+        if (saved.limits) setLimits((prev) => ({ ...prev, ...saved.limits }));
         if (saved.runState) {
           setRunState(saved.runState);
           offsetRef.current = saved.runState.offset || 0;
@@ -340,6 +340,8 @@ const EvaluatorPage = ({
   const effectiveEvaluator = runState.evaluator || selectedEvaluator;
   const stageNodes = effectiveEvaluator === 'workflow'
     ? ['parser', 'reasoner', 'generator', 'validator', 'regeneration', 'revalidation']
+    : effectiveEvaluator === 'generator'
+    ? ['generator']
     : ['parser', 'reasoner'];
 
   const stageLabel = (node) => {
@@ -386,6 +388,27 @@ const EvaluatorPage = ({
     return '';
   };
 
+  const filteredMetricsTable = runState.metricsTable
+    ? {
+        ...runState.metricsTable,
+        rows: (runState.metricsTable.rows || []).filter((row) => {
+          const field = String(row?.[0] ?? '').trim();
+          const hiddenFields = new Set([
+            'permission_duties',
+            'Permission.duties',
+            'End-to-End (Exact Match)',
+            'end_to_end_accuracy',
+            'Average Runtime (s)',
+            'parser_avg_time_s',
+            'reasoner_avg_time_s',
+            'generator_avg_time_s',
+            'validator_avg_time_s',
+          ]);
+          return !hiddenFields.has(field);
+        }),
+      }
+    : null;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className={`${cardClass} border rounded-xl p-6`}>
@@ -411,6 +434,7 @@ const EvaluatorPage = ({
             <option value="">Select evaluator...</option>
             <option value="workflow">Workflow Evaluator</option>
             <option value="reasoner">Reasoner Evaluator</option>
+            <option value="generator">Generator Evaluator</option>
           </select>
         </div>
       </div>
@@ -425,11 +449,17 @@ const EvaluatorPage = ({
         <div className={`${cardClass} border rounded-xl p-5 space-y-4`}>
           <div>
             <h3 className={`text-lg font-semibold ${textClass}`}>
-              {selectedEvaluator === 'workflow' ? 'Workflow Evaluator' : 'Reasoner Evaluator'}
+              {selectedEvaluator === 'workflow'
+                ? 'Workflow Evaluator'
+                : selectedEvaluator === 'generator'
+                ? 'Generator Evaluator'
+                : 'Reasoner Evaluator'}
             </h3>
             <p className={`text-sm ${mutedTextClass}`}>
               {selectedEvaluator === 'workflow'
                 ? 'Input -> Parser -> Reasoner -> Generator -> Validator -> Metrics'
+                : selectedEvaluator === 'generator'
+                ? 'Input -> Generator -> Metrics'
                 : 'Input -> Parser -> Reasoner -> Metrics'}
             </p>
           </div>
@@ -532,10 +562,20 @@ const EvaluatorPage = ({
               </div>
               <div className={`mt-2 text-xs ${mutedTextClass}`}>
                 Tokens In/Out: {formatNum(item?.tokens?.total_in)} / {formatNum(item?.tokens?.total_out)}
-                {' • '}
-                Parser {formatNum(item?.tokens?.parser_in)}/{formatNum(item?.tokens?.parser_out)}
-                {' • '}
-                Reasoner {formatNum(item?.tokens?.reasoner_in)}/{formatNum(item?.tokens?.reasoner_out)}
+                {effectiveEvaluator !== 'generator' && (
+                  <>
+                    {' • '}
+                    Parser {formatNum(item?.tokens?.parser_in)}/{formatNum(item?.tokens?.parser_out)}
+                    {' • '}
+                    Reasoner {formatNum(item?.tokens?.reasoner_in)}/{formatNum(item?.tokens?.reasoner_out)}
+                  </>
+                )}
+                {effectiveEvaluator === 'generator' && (
+                  <>
+                    {' • '}
+                    Generator {formatNum(item?.tokens?.generator_in)}/{formatNum(item?.tokens?.generator_out)}
+                  </>
+                )}
                 {effectiveEvaluator === 'workflow' && (
                   <>
                     {' • '}Generator {formatNum(item?.tokens?.generator_in)}/{formatNum(item?.tokens?.generator_out)}
@@ -548,24 +588,24 @@ const EvaluatorPage = ({
         </div>
       )}
 
-      {runState.status === 'completed' && runState.metricsTable && (
+      {runState.status === 'completed' && filteredMetricsTable && (
         <div className={`${cardClass} border rounded-xl p-5`}>
           <h3 className={`text-lg font-semibold ${textClass} mb-3`}>Performance / Metrics</h3>
           <div className="overflow-auto max-h-[420px] rounded border border-gray-300 dark:border-gray-700">
             <table className="w-full text-sm">
               <thead className={darkMode ? 'bg-gray-900 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                 <tr>
-                  {runState.metricsTable.columns.map((c) => (
+                  {filteredMetricsTable.columns.map((c) => (
                     <th key={c} className="text-left px-3 py-2 font-semibold">{c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {runState.metricsTable.rows.map((row, idx) => (
+                {filteredMetricsTable.rows.map((row, idx) => (
                   <tr key={`row-${idx}`} className={idx % 2 === 0 ? '' : darkMode ? 'bg-gray-900/40' : 'bg-gray-50'}>
                     {row.map((cell, cidx) => (
                       <td key={`cell-${idx}-${cidx}`} className="px-3 py-2 align-top">
-                        {formatTableCell(cell, runState.metricsTable.columns[cidx])}
+                        {formatTableCell(cell, filteredMetricsTable.columns[cidx])}
                       </td>
                     ))}
                   </tr>

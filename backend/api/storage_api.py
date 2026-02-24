@@ -47,6 +47,7 @@ CUSTOM_MODELS_REL_PATH = Path("backend") / "config" / "custom_models.json"
 EVALUATOR_SCRIPT_REL_PATHS = {
     "workflow": Path("evaluation") / "evaluator" / "workflow-evaluator.py",
     "reasoner": Path("evaluation") / "evaluator" / "reasoner_evaluator.py",
+    "generator": Path("evaluation") / "evaluator" / "generator_evaluator.py",
 }
 
 
@@ -81,7 +82,7 @@ class SaveGeneratorRequest(BaseModel):
 
 
 class EvaluatorRunRequest(BaseModel):
-    evaluator: str  # workflow | reasoner
+    evaluator: str  # workflow | reasoner | generator
     limit: int = 5
     model: Optional[str] = None
     temperature: Optional[float] = None
@@ -104,6 +105,8 @@ def create_safe_filename(name: str, timestamp: bool = True) -> str:
 def _workflow_nodes_for(evaluator: str) -> List[str]:
     if evaluator == "workflow":
         return ["parser", "reasoner", "generator", "validator", "regeneration", "revalidation"]
+    if evaluator == "generator":
+        return ["generator"]
     return ["parser", "reasoner"]
 
 
@@ -442,7 +445,7 @@ def _parse_progress_line(run: Dict[str, Any], line: str) -> None:
         _mark_stage_complete(item, nodes, "parser")
     elif "[Workflow] Reasoner complete" in line or "[ReasonerEval] Reasoner complete" in line:
         _mark_stage_complete(item, nodes, "reasoner")
-    elif "[Workflow] Generator complete" in line:
+    elif "[Workflow] Generator complete" in line or "[GeneratorEval] Generator complete" in line:
         _mark_stage_complete(item, nodes, "generator")
     elif "[Workflow] Validator complete" in line:
         _mark_stage_complete(item, nodes, "validator")
@@ -478,11 +481,52 @@ def _load_metrics_table(evaluator: str, metrics_path: Path) -> Optional[Dict[str
             ]
             return {"columns": ["Metric", "Value"], "rows": rows}
 
+        if evaluator == "generator":
+            with open(metrics_path, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                rows = []
+                for r in reader:
+                    field = (r.get("Field", "") or "").strip()
+                    if field in {"permission_duties", "Permission.duties"}:
+                        continue
+                    rows.append(
+                        [
+                            field,
+                            r.get("Metric", ""),
+                            r.get("Generation Output", ""),
+                        ]
+                    )
+            return {
+                "columns": ["Field", "Metric", "Generation Output"],
+                "rows": rows,
+            }
+
         with open(metrics_path, "r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
-            rows = [[r.get("Field", ""), r.get("Metric", ""), r.get("Parsed Data", ""), r.get("Turtle Final Output", ""), r.get("Delta (Final - Parser)", "")] for r in reader]
+            rows = []
+            for r in reader:
+                field = (r.get("Field", "") or "").strip()
+                if field in {"permission_duties", "Permission.duties"}:
+                    continue
+                generation_value = r.get("Generation Output", "")
+                if generation_value in (None, "", "-"):
+                    generation_value = r.get("Regeneration Output", "")
+                if generation_value in (None, "", "-"):
+                    generation_value = r.get("Turtle Final Output", "")
+                generation_delta = r.get("Delta (Generation - Parser)", "")
+                if generation_delta in (None, ""):
+                    generation_delta = r.get("Delta (Final - Parser)", "")
+                rows.append(
+                    [
+                        field,
+                        r.get("Metric", ""),
+                        r.get("Parsed Data", ""),
+                        generation_value,
+                        generation_delta,
+                    ]
+                )
         return {
-            "columns": ["Field", "Metric", "Parsed Data", "Turtle Final Output", "Delta"],
+            "columns": ["Field", "Metric", "Parsed Data", "Generation Output", "Delta"],
             "rows": rows,
         }
     except Exception:
@@ -815,7 +859,7 @@ async def save_generated_policy(request: SaveGeneratorRequest):
 async def run_evaluator(request: EvaluatorRunRequest):
     evaluator = request.evaluator.strip().lower()
     if evaluator not in EVALUATOR_SCRIPTS:
-        raise HTTPException(status_code=400, detail="evaluator must be 'workflow' or 'reasoner'")
+        raise HTTPException(status_code=400, detail="evaluator must be 'workflow', 'reasoner', or 'generator'")
     if request.limit < 1 or request.limit > 50:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 50")
 

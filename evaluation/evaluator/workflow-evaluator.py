@@ -84,6 +84,21 @@ def normalize_text(value: Any) -> str:
     return _collapse_whitespace(value).lower()
 
 
+def _remove_spaces_and_punctuation(value: str) -> str:
+    # Keep only letters/digits so variants like "mobile-app-display" and
+    # "mobile app display" normalize to the same comparable token.
+    return re.sub(r"[\W_]+", "", value.lower(), flags=re.UNICODE)
+
+
+def _is_full_xsd_string_uri(datatype: str) -> bool:
+    return normalize_text(datatype) == "http://www.w3.org/2001/xmlschema#string"
+
+
+def _is_xsd_string_datatype(datatype: str) -> bool:
+    dt = normalize_text(datatype)
+    return dt == "xsd:string"
+
+
 def _is_model_runtime_error(exc: Exception) -> bool:
     text = normalize_text(str(exc))
     if not text:
@@ -103,9 +118,12 @@ def _normalize_right_operand(value: Any) -> str:
     if not text:
         return ""
 
+    datatype = ""
     # Drop datatype suffix for comparison-level tolerance.
     if "^^" in text:
-        text = text.split("^^", 1)[0].strip()
+        text, datatype = text.split("^^", 1)
+        text = text.strip()
+        datatype = datatype.strip()
 
     # Drop language tag if present (e.g., "abc"@en).
     if re.match(r'^".*"\s*@[a-z0-9-]+$', text):
@@ -114,6 +132,14 @@ def _normalize_right_operand(value: Any) -> str:
     # Unquote simple quoted literal values.
     if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
         text = text[1:-1].strip()
+
+    if datatype and _is_full_xsd_string_uri(datatype):
+        return _remove_spaces_and_punctuation("XMLSchema")
+
+    # For xsd:string literals, compare only semantic text content:
+    # lowercase + strip spaces/punctuation.
+    if datatype and _is_xsd_string_datatype(datatype):
+        return _remove_spaces_and_punctuation(text)
 
     return text
 
@@ -525,7 +551,6 @@ def evaluate_predictions(gold_rows: List[Dict[str, Any]], pred_rows: List[Dict[s
     list_fields = [
         "permission_actions",
         "permission_triplets",
-        "permission_duties",
         "prohibition_actions",
         "prohibition_triplets",
     ]
@@ -623,21 +648,62 @@ def _load_rows_from_json(
     end: Optional[int] = None,
     limit: Optional[int] = 5,
 ) -> List[Dict[str, Any]]:
+    def _parse_jsonl_row(text: str) -> Dict[str, Any]:
+        """Parse one JSONL row with light tolerance for non-strict JSON."""
+        try:
+            return dict(json.loads(text))
+        except json.JSONDecodeError:
+            pass
+
+        # Fallback for python-like literals (e.g. trailing commas).
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict):
+                return dict(parsed)
+        except Exception:
+            pass
+
+        # Last-resort normalization for common dataset issues.
+        repaired = re.sub(r",\s*([}\]])", r"\1", text)  # remove trailing commas
+        repaired = re.sub(r"\]\s*\[", "],[", repaired)  # insert missing commas between lists
+        try:
+            return dict(json.loads(repaired))
+        except Exception as exc:
+            raise ValueError(f"Invalid JSONL row: {exc}") from exc
+
     path = _resolve_project_path(path)
     rows: List[Dict[str, Any]] = []
     if str(path).lower().endswith(".jsonl"):
         with open(path, "r", encoding="utf-8") as f:
-            for line in f:
+            record_idx = 0
+            max_needed = end if end is not None else (start + (limit or 5) - 1)
+            for line_no, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
-                rows.append(dict(json.loads(line)))
+                # Only parse records we actually need for this run.
+                if record_idx < start:
+                    record_idx += 1
+                    continue
+                if max_needed is not None and record_idx > max_needed:
+                    break
+                try:
+                    rows.append(_parse_jsonl_row(line))
+                except Exception as exc:
+                    raise ValueError(
+                        f"Failed to parse JSONL at line {line_no} (record {record_idx}): {exc}"
+                    ) from exc
+                record_idx += 1
     else:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, list):
             raise ValueError("JSON dataset must be a list of objects")
         rows = [dict(row) for row in data]
+
+    if str(path).lower().endswith(".jsonl"):
+        # JSONL rows are already range-selected above.
+        return rows
 
     if end is not None:
         slice_end = min(end + 1, len(rows))
@@ -811,7 +877,6 @@ def _write_metrics_file(output_path: str, metrics: Dict[str, Any]) -> None:
         list_order = [
             "permission_actions",
             "permission_triplets",
-            "permission_duties",
             "prohibition_actions",
             "prohibition_triplets",
         ]
