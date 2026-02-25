@@ -1,5 +1,5 @@
 policy_type,field,metric,Generator-Only,Parser-Only,Workflow,Delta(Workflow - Parser),Delta(Workflow - Generator)
-odrl:agreement,policy_type,accuracy,0.9000,0.0500,0.0500,0.00%,-85.00%
+odrl:agreement,policy_type,accuracy,0.9000,0.5000,0.5000,0.00%,-40.00%
 odrl:offer,policy_type,accuracy,1.0000,0.8947,0.8947,0.00%,-10.53%
 odrl:set,policy_type,accuracy,0.6364,1.0000,1.0000,0.00%,36.36%
 ,,,,,,,

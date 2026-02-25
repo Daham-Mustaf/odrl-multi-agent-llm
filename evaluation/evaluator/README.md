@@ -1,6 +1,57 @@
 # Evaluator Usage (DeepSeek + All Ground Truth)
 
-使用两个 evaluator 的默认 dataset 设置，并指定 `deepseek` 执行全量 ground truth。
+This guide uses the default dataset settings of both evaluators and runs all ground-truth samples with `deepseek`.
+
+## Custom Model Configuration (English Guide + Template)
+
+If you want to run evaluators with a custom model, you must provide the model configuration first.
+
+You have two options:
+
+1. **Edit file manually**  
+   Add your model entry in:
+   `backend/config/custom_models.json`
+2. **Add from Frontend UI**  
+   Open the frontend model settings page and add a custom model there.  
+   The backend will store the entry into `backend/config/custom_models.json`.
+
+> Security note: never commit real API keys. Use placeholders in docs and local secrets in your runtime environment.
+
+### `custom_models.json` template
+
+```json
+[
+  {
+    "value": "custom:your-model-name",
+    "label": "Your Model Label",
+    "provider_type": "openai-compatible",
+    "base_url": "https://your-provider-endpoint/v1",
+    "model_id": "your-model-name",
+    "api_key": "YOUR_API_KEY",
+    "context_length": 4096,
+    "temperature_default": 0.3,
+    "created_at": 0,
+    "updated_at": 0
+  }
+]
+```
+
+### Additional entry template (append inside the same JSON array)
+
+```json
+{
+  "value": "custom:another-model",
+  "label": "Another Model",
+  "provider_type": "openai-compatible",
+  "base_url": "https://your-provider-endpoint/v1",
+  "model_id": "another-model",
+  "api_key": "YOUR_API_KEY",
+  "context_length": 4096,
+  "temperature_default": 0.3,
+  "created_at": 0,
+  "updated_at": 0
+}
+```
 
 ## 1) 进入项目根目录
 
