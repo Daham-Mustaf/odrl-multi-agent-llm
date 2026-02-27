@@ -12,7 +12,7 @@ export const ParserTab = ({
   const [viewMode, setViewMode] = useState('visual');
   const [copied, setCopied] = useState(false);
   const [jsonCollapsed, setJsonCollapsed] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);
+  const [compactMode, setCompactMode] = useState(true);
 
   const textClass = darkMode ? 'text-white' : 'text-gray-900';
   const mutedTextClass = darkMode ? 'text-gray-400' : 'text-gray-600';

@@ -388,7 +388,8 @@ class ConstraintCompatibilityValidator(BaseValidator):
     def get_shape_ttl(self) -> str:
         rules = []
         for operand_name, operand_info in ODRLLeftOperands.OPERANDS.items():
-            compatible_ops = " ".join([f"odrl:{op.value}" for op in operand_info.compatible_operators])
+            # SPARQL NOT IN requires comma-separated values.
+            compatible_ops = ", ".join([f"odrl:{op.value}" for op in operand_info.compatible_operators])
             
             rule = f"""
 <CompatibilityRule_{operand_name}> a sh:NodeShape ;
@@ -417,18 +418,15 @@ class ConstraintCompatibilityValidator(BaseValidator):
     def process_violations(self, violations: List[Dict[str, Any]]) -> List[ValidationIssue]:
         issues = []
         for violation in violations:
-            #FIX: Extract operand from focus node, not from value
             focus_node = str(violation.get("focus_node", ""))
             operator_value = str(violation.get("value", ""))
-            
-            # Extract operand name from the violation message or focus node
-            message = violation.get("message", "")
-            
+
             # Parse operand from message like "Incompatible operator for dateTime"
+            message = str(violation.get("message", ""))
             operand_name = None
             if "for " in message:
-                operand_name = message.split("for ")[-1].strip()
-            
+                operand_name = message.split("for ", 1)[-1].strip().strip(".\"'")
+
             if operand_name:
                 operand_info = ODRLLeftOperands.get_operand(operand_name)
                 if operand_info:
@@ -436,9 +434,13 @@ class ConstraintCompatibilityValidator(BaseValidator):
                     operator_short = self._extract_operator_from_value(operator_value)
                     constraint_violated = f"Operator '{operator_short}' not compatible with leftOperand '{operand_name}'. Valid operators: {valid_ops}"
                 else:
-                    constraint_violated = f"Unknown operand '{operand_name}'"
+                    constraint_violated = f"Unknown operand '{operand_name}' in compatibility rule"
             else:
-                constraint_violated = "Operator-operand compatibility issue"
+                operator_short = self._extract_operator_from_value(operator_value)
+                constraint_violated = (
+                    f"Operator-operand compatibility issue (operator: '{operator_short}'). "
+                    f"Raw SHACL message: {message or 'N/A'}"
+                )
             
             issues.append(ValidationIssue(
                 issue_type="Operator Compatibility",

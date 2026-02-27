@@ -13,6 +13,7 @@ const CompactHeader = ({
   setAutoProgress,
   advancedMode,
   setAdvancedMode,
+  onOpenPerAgent,
   onOpenSettings,
   onReset,
   onOpenEvaluator,
@@ -30,7 +31,7 @@ const CompactHeader = ({
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
               OP
             </div>
-            <span className={`font-bold text-sm ${textClass}`}>ODRL Generator</span>
+            <span className={`font-bold text-sm ${textClass}`}>ODRL Multi-Agent System</span>
           </div>
 
           {/* Divider */}
@@ -95,6 +96,23 @@ const CompactHeader = ({
               Per-Agent Models
             </span>
           </label>
+
+          <button
+            onClick={onOpenPerAgent}
+            disabled={!advancedMode}
+            className={`px-2.5 py-1 text-xs rounded-md border transition ${
+              advancedMode
+                ? darkMode
+                  ? 'border-purple-500 text-purple-300 hover:bg-purple-500/10'
+                  : 'border-purple-400 text-purple-700 hover:bg-purple-50'
+                : darkMode
+                  ? 'border-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'border-gray-300 text-gray-400 cursor-not-allowed'
+            }`}
+            title={advancedMode ? 'Configure per-agent models' : 'Enable Per-Agent Models first'}
+          >
+            Configure
+          </button>
 
           {/* Auto-Progress Toggle */}
           <label className="flex items-center gap-2 cursor-pointer">

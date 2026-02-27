@@ -22,17 +22,75 @@ Automated generation of machine-readable data usage policies through a four-agen
 
 ## Quick Start
 
-**Local Development:**
-```bash
-# Backend
-cd backend && uv sync
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+### Prerequisites
+- Python 3.11+
+- `uv` installed ([Astral uv](https://docs.astral.sh/uv/))
+- Node.js 20+
+- At least one LLM provider key (for example Openai)
 
-# Frontend
-cd frontend && npm install && npm start
+### 1) Clone and enter project
+```bash
+git clone https://github.com/Daham-Mustaf/odrl-multi-agent-llm.git
+cd odrl-multi-agent-llm
 ```
 
-**Production:** [📖 Deployment Guide →](docs/DEPLOYMENT.md)
+### 2) Configure backend
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edit `backend/.env` (example):
+```env
+ENABLE_GROQ=true
+GROQ_API_KEY=your_key_here
+DEFAULT_MODEL=groq:llama-3.3-70b-versatile
+```
+
+Then install dependencies:
+```bash
+uv sync
+```
+
+### 3) Configure frontend
+```bash
+cd ../frontend
+cp .env.example .env
+```
+
+Edit `frontend/.env`:
+```env
+REACT_APP_API_URL=http://localhost:8000
+DISABLE_ESLINT_PLUGIN=true
+```
+
+Then install dependencies:
+```bash
+npm install
+```
+
+### 4) Run with two terminals
+Terminal 1 (backend):
+```bash
+cd backend
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Terminal 2 (frontend):
+```bash
+cd frontend
+HOST=0.0.0.0 PORT=3000 npm start
+```
+
+Open: `http://localhost:3000`
+
+### 5) Quick verification
+Backend health check:
+```bash
+curl http://localhost:8000/health
+```
+
+**Production deployment:** [Deployment Guide](docs/DEPLOYMENT.md)
 
 ## Architecture
 ```mermaid
@@ -64,9 +122,19 @@ graph LR
 
 ## 🎬 Demo
 
-**Video Demo:** [Watch on YouTube](coming soon...)  
+**Video Demo:** https://youtu.be/bpEZx8cqiRQ  
 
 **Screenshot Demos:** Check the full demos [here](docs/index.md).
+
+### ACL Demo Package (Installable)
+
+This repository serves as the **installable package** for ACL demo evaluation.
+
+- Source code: [github.com/Daham-Mustaf/odrl-multi-agent-llm](https://github.com/Daham-Mustaf/odrl-multi-agent-llm)
+- Stable version: use the tagged release for your submission (recommended) or a fixed commit hash
+- Installation and run instructions: see `Quick Start` and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+If a public live demo endpoint is not available, reviewers can reproduce the system locally from this package using the steps above.
 
 
 ## Tech Stack
@@ -75,12 +143,6 @@ graph LR
 **Frontend:** React • Tailwind CSS  
 **LLMs:** Groq • Ollama • OpenAI-compatible • Google GenAI
 
-## Research Context
-
-Developed at **Fraunhofer FIT** & **RWTH Aachen University** for:
-- NFDI4Culture
-- Daten-Raum-Kultur (DRK)
-- Cultural Heritage Dataspaces
 
 
 ## Authors

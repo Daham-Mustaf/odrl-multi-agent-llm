@@ -138,7 +138,7 @@ Add custom LLM endpoints:
 {
   "value": "custom:your-model",
   "label": "Your Model Name",
-  "provider_type": "openai",
+  "provider_type": "openai-compatible",
   "base_url": "https://your-endpoint.com/v1",
   "model_id": "your-model-id",
   "api_key": "optional-key",

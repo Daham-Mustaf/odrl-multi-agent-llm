@@ -44,6 +44,7 @@ import { saveGeneratedPolicy, saveReasoningAnalysis } from './utils/storageApi';
 
 // API Configuration
 const API_BASE_URL = API_URL;
+const AGENT_MODEL_KEYS = ['parser', 'reasoner', 'generator', 'validator'];
 
 // ============================================
 // TOAST NOTIFICATION COMPONENT
@@ -158,12 +159,33 @@ const ODRLDemo = () => {
   const [selectedModel, setSelectedModel] = useState(null);
   const [temperature, setTemperature] = useState(0.3);
   const [customModels, setCustomModels] = useState([]);
-  const [advancedMode, setAdvancedMode] = useState(false);
-  const [agentModels, setAgentModels] = useState({
-    parser: null,      
-    reasoner: null,
-    generator: null,
-    validator: null
+  const [advancedMode, setAdvancedMode] = useState(() => {
+    try {
+      return localStorage.getItem('advancedMode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [agentModels, setAgentModels] = useState(() => {
+    const defaultModels = {
+      parser: null,
+      reasoner: null,
+      generator: null,
+      validator: null
+    };
+    try {
+      const saved = localStorage.getItem('agentModels');
+      if (!saved) return defaultModels;
+      const parsed = JSON.parse(saved);
+      return {
+        parser: parsed?.parser || null,
+        reasoner: parsed?.reasoner || null,
+        generator: parsed?.generator || null,
+        validator: parsed?.validator || null
+      };
+    } catch {
+      return defaultModels;
+    }
   });
   
   // Custom Model Management
@@ -247,6 +269,15 @@ const ODRLDemo = () => {
       return nextModel;
     });
   }, [showToast]);
+
+  const handleAdvancedModeToggle = React.useCallback((enabled) => {
+    setAdvancedMode(enabled);
+    if (enabled) {
+      setPerAgentModalOpen(true);
+    } else {
+      setPerAgentModalOpen(false);
+    }
+  }, []);
 
   const handleTabSwitch = React.useCallback(async (nextTab) => {
     if (
@@ -370,6 +401,36 @@ const ODRLDemo = () => {
     
     initializeApp();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    localStorage.setItem('advancedMode', String(advancedMode));
+  }, [advancedMode]);
+
+  useEffect(() => {
+    localStorage.setItem('agentModels', JSON.stringify(agentModels));
+  }, [agentModels]);
+
+  useEffect(() => {
+    const availableModels = new Set([
+      ...providers.flatMap((p) => p.models).map((m) => m.value),
+      ...customModels.map((m) => m.value)
+    ]);
+    if (availableModels.size === 0) return;
+
+    let hasChanges = false;
+    const sanitized = { ...agentModels };
+    AGENT_MODEL_KEYS.forEach((key) => {
+      const value = sanitized[key];
+      if (value && !availableModels.has(value)) {
+        sanitized[key] = null;
+        hasChanges = true;
+      }
+    });
+    if (hasChanges) {
+      setAgentModels(sanitized);
+      showToast('Some per-agent models were unavailable and reset to default', 'warning');
+    }
+  }, [providers, customModels, agentModels, showToast]);
 
   useEffect(() => {
     console.log('[Debug] Selected Model Changed:', selectedModel);
@@ -1585,42 +1646,19 @@ const handleDownloadODRL = (content, filename = 'policy.ttl') => {
   }
 };
 
-// Function to save ODRL to backend storage
-const handleSaveToBackend = async () => {
+// Function to save ODRL to clipboard from Validator tab
+const handleSaveToClipboard = async () => {
   if (!generatedODRL?.odrl_turtle) {
-    showToast('No policy to save', 'warning');
+    showToast('No policy to copy', 'warning');
     return;
   }
-  
+
   try {
-    const metadata = {
-      name: `Policy_${new Date().toISOString().split('T')[0]}`,
-      description: inputText,
-      odrl_turtle: generatedODRL.odrl_turtle,
-      validation_status: validationResult?.is_valid ? 'valid' : 'invalid',
-      created_at: new Date().toISOString(),
-      metadata: {
-        model_used: generatedODRL.model_used,
-        processing_time_ms: generatedODRL.processing_time_ms,
-        attempt_number: generatedODRL.attempt_number
-      }
-    };
-    
-    // Call your storage API
-    const response = await fetch(`${API_BASE_URL}/api/storage/save`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(metadata)
-    });
-    
-    if (response.ok) {
-      showToast('Policy saved to library!', 'success');
-    } else {
-      throw new Error('Save failed');
-    }
+    await navigator.clipboard.writeText(generatedODRL.odrl_turtle);
+    showToast('Policy copied to clipboard successfully!', 'success');
   } catch (error) {
-    console.error('Save error:', error);
-    showToast('Failed to save policy', 'error');
+    console.error('Clipboard copy error:', error);
+    showToast('Failed to copy policy to clipboard', 'error');
   }
 };
 
@@ -1699,7 +1737,8 @@ const handleSaveToBackend = async () => {
   autoProgress={autoProgress}
   setAutoProgress={setAutoProgress}
   advancedMode={advancedMode}
-  setAdvancedMode={setAdvancedMode}
+  setAdvancedMode={handleAdvancedModeToggle}
+  onOpenPerAgent={() => setPerAgentModalOpen(true)}
   onOpenSettings={() => setSettingsOpen(true)}
   onOpenEvaluator={() => setActiveTab('evaluators')}
   onReset={resetDemo}
@@ -1981,7 +2020,7 @@ const handleSaveToBackend = async () => {
     
     // ✅ ADD THESE PROPS:
     onDownload={(content, filename) => handleDownloadODRL(content, filename)}
-    onSave={handleSaveToBackend}
+    onSave={handleSaveToClipboard}
     onStartNew={handleStartNew}
     onEditManually={handleEditManually}
     metrics={{
