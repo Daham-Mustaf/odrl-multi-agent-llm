@@ -87,6 +87,7 @@ Developed at **Fraunhofer FIT** & **RWTH Aachen University** for:
 
 
 - **Daham M. Mustafa** - Fraunhofer FIT, Sankt Augustin, Germany
+- **Yixin Peng** - RWTH Aachen University, Germany
 - **Diego Collarana** - Fraunhofer FIT, Sankt Augustin, Germany
 - **Christoph Lange** - Fraunhofer FIT & RWTH Aachen University, Germany
 - **Christoph Quix** - Fraunhofer FIT & RWTH Aachen University, Germany
@@ -100,6 +101,7 @@ If you use this software in your research, please cite:
 ```bibtex
 @software{mustafa_2025_odrl,
   author       = {Mustafa, Daham M. and
+                  Yixin, Peng and
                   Collarana, Diego and
                   Lange, Christoph and
                   Quix, Christoph and
