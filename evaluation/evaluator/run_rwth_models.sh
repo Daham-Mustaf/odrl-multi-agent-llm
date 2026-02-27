@@ -16,7 +16,6 @@ RATE_LIMIT_BUFFER_SEC="${RATE_LIMIT_BUFFER_SEC:-120}"
 
 MODELS=(
   "custom:deepseek-chat"
-  "RWTHLLM:gpt-oss-120b"
 )
 
 mkdir -p "${RUNS_DIR}"

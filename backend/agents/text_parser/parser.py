@@ -154,12 +154,19 @@ Constraints apply to **specific rules** based on context:
 - use → **odrl:use**
 - archive, backup → **odrl:archive**
 
+
 ### 5. POLICY-LEVEL METADATA (Single per policy)
-- policy_id: "policy_1"
-- policy_type: "odrl:Set" / "odrl:Offer" / "odrl:Agreement"
-- assigner: Organization/person granting rights
-- assignee: Recipients of the policy
-- targets: Assets the policy applies to
+- policy_id: a unique identifier for the policy
+- policy_type: one of the following: "odrl:Set" / "odrl:Offer" / "odrl:Agreement" (see Policy Types Definition below)
+- assigner: Organization/person granting rights (if not specified, use "not_specified")
+- assignee: List of Recipients of the policy (if not specified, use "not_specified")
+- targets: List of Assets the policy applies to (if not specified, use "not_specified")
+
+(**Policy Types Definition:**
+- odrl:Set (generic policy collection. An ODRL Policy of subclass Set represents any combination of Rules. The Set Policy subclass is also the default subclass of Policy (if none is specified).)
+- odrl:Offer (provider offers to recipients. An ODRL Policy of subclass Offer represents Rules that are being offered from assigner Parties. An Offer is typically used to make available Policies to a wider audience, but does not grant any Rules. An ODRL Policy of subclass Offer: MUST have one assigner property value (of type Party) to indicate the functional role in the same Rules.)
+- odrl:Agreement (binding agreement between parties. An ODRL Policy of subclass Agreement represents Rules that have been granted from assigner to assignee Parties. An Agreement is typically used to grant the terms of the Rules between the Parties. An ODRL Policy of subclass Agreement: MUST have one assigner property value (of type Party) to indicate the functional role in the same Rules. MUST have one assignee property value (of type Party) to indicate the functional role in the same Rules.)
+)
 
 ### 6. TEMPORAL OBJECT (Policy-level)
 Extract from phrases like:
@@ -167,7 +174,7 @@ Extract from phrases like:
 - "starting from 2025-01-01" → start_date
 - "valid for 30 days" → duration
 
-## OUTPUT STRUCTURE:
+## Example OUTPUT STRUCTURE:
 
 {{{{
   "policies": [
@@ -265,9 +272,12 @@ class TextParser:
         
         try:
             parser = PydanticOutputParser(pydantic_object=ParsedPolicies)
+            # PURE_EXTRACTION_PROMPT contains JSON examples/reference maps; escape braces
+            # so ChatPromptTemplate does not treat them as missing template variables.
+            escaped_system_prompt = PURE_EXTRACTION_PROMPT.replace("{", "{{").replace("}", "}}")
             
             prompt = ChatPromptTemplate.from_messages([
-                ("system", PURE_EXTRACTION_PROMPT),
+                ("system", escaped_system_prompt),
                 ("human", "{text}\n\n{format_instructions}")
             ])
             

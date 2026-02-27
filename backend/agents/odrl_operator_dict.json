@@ -1,0 +1,18 @@
+{
+  "odrl:eq": "Indicating that a given value equals the right operand of the Constraint.",
+  "odrl:gt": "Indicating that a given value is greater than the right operand of the Constraint.",
+  "odrl:gteq": "Indicating that a given value is greater than or equal to the right operand of the Constraint.",
+  "odrl:hasPart": "A set-based operator indicating that a given value contains the right operand of the Constraint.",
+  "odrl:isA": "A set-based operator indicating that a given value is an instance of the right operand of the Constraint.",
+  "odrl:isAllOf": "A set-based operator indicating that a given value is all of the right operand of the Constraint.",
+  "odrl:isAnyOf": "A set-based operator indicating that a given value is any of the right operand of the Constraint.",
+  "odrl:isNoneOf": "A set-based operator indicating that a given value is none of the right operand of the Constraint.",
+  "odrl:isPartOf": "A set-based operator indicating that a given value is contained by the right operand of the Constraint.",
+  "odrl:lt": "Indicating that a given value is less than the right operand of the Constraint.",
+  "odrl:lteq": "Indicating that a given value is less than or equal to the right operand of the Constraint.",
+  "odrl:neq": "Indicating that a given value is not equal to the right operand of the Constraint.",
+  "odrl:andSequence": "The relation is satisfied when each of the Constraints are satisfied in the order specified. This property MUST only be used for Logical Constraints, and the list of operand values MUST be Constraint instances. The order of the list MUST be preserved. The andSequence operator is an example where there may be temporal conditional requirements between the operands. This may lead to situations where the outcome is unresolvable, such as deadlock if one of the Constraints is unable to be satisfied. ODRL Processing systems SHOULD plan for these scenarios and implement mechanisms to resolve them.",
+  "odrl:or": "The relation is satisfied when at least one of the Constraints is satisfied. This property MUST only be used for Logical Constraints, and the list of operand values MUST be Constraint instances.",
+  "odrl:and": "The relation is satisfied when all of the Constraints are satisfied. This property MUST only be used for Logical Constraints, and the list of operand values MUST be Constraint instances.",
+  "odrl:xone": "The relation is satisfied when only one, and not more, of the Constaints is satisfied This property MUST only be used for Logical Constraints, and the list of operand values MUST be Constraint instances."
+}
