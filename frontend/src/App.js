@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useRef } from 'react';
 
 // Utilities
@@ -1558,7 +1559,7 @@ const handleSaveToBackend = async () => {
   try {
     const metadata = {
       name: `Policy_${new Date().toISOString().split('T')[0]}`,
-      description: originalText || inputText,
+      description: inputText,
       odrl_turtle: generatedODRL.odrl_turtle,
       validation_status: validationResult?.is_valid ? 'valid' : 'invalid',
       created_at: new Date().toISOString(),
